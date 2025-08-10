@@ -1,0 +1,3 @@
+import { useEffect, useState } from 'react';
+import { Sun, Moon } from 'lucide-react';
+export default function ThemeToggle(){ const [dark,setDark]=useState(()=>document.documentElement.classList.contains('dark')); useEffect(()=>{ if(dark){document.documentElement.classList.add('dark'); localStorage.setItem('witar-theme','dark');} else {document.documentElement.classList.remove('dark'); localStorage.setItem('witar-theme','light');}},[dark]); return <button className='btn btn-ghost rounded-xl' onClick={()=>setDark(d=>!d)}>{dark?<Sun size={18}/>:<Moon size={18}/>}<span className='ml-2 text-sm'>{dark?'Claro':'Oscuro'}</span></button> }

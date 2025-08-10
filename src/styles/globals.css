@@ -1,0 +1,72 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 210 60% 99%;
+  --foreground: 210 31% 20%;
+  --card: 0 0% 100%;
+  --popover: 0 0% 100%;
+  --primary: 213 27% 36%;
+  --primary-dark: 215 28% 26%;
+  --primary-foreground: 0 0% 100%;
+  --cta: 12 100% 67%;
+  --cta-foreground: 0 0% 100%;
+  --secondary: 214 67% 95%;
+  --secondary-foreground: 210 31% 20%;
+  --muted: 214 67% 95%;
+  --muted-foreground: 216 16% 44%;
+  --accent: 214 67% 95%;
+  --destructive: 359 100% 65%;
+  --destructive-foreground: 0 0% 100%;
+  --success: 165 100% 39%;
+  --success-foreground: 0 0% 100%;
+  --toast: 25 95% 95%;
+  --toast-foreground: 20 14% 20%;
+  --toast-border: 25 85% 85%;
+  --border: 215 33% 90%;
+  --input: 215 33% 90%;
+  --ring: 213 27% 36%;
+}
+.dark {
+  --background: 210 31% 10%;
+  --foreground: 210 60% 99%;
+  --card: 210 31% 12%;
+  --popover: 210 31% 12%;
+  --primary: 213 27% 42%;
+  --primary-dark: 215 28% 26%;
+  --primary-foreground: 0 0% 100%;
+  --cta: 12 100% 67%;
+  --cta-foreground: 0 0% 100%;
+  --secondary: 210 31% 18%;
+  --secondary-foreground: 210 60% 99%;
+  --muted: 210 31% 18%;
+  --muted-foreground: 0 0% 92%;
+  --accent: 210 31% 18%;
+  --destructive: 359 100% 65%;
+  --destructive-foreground: 0 0% 100%;
+  --success: 165 100% 39%;
+  --success-foreground: 0 0% 100%;
+  --toast: 25 45% 15%;
+  --toast-foreground: 25 95% 95%;
+  --toast-border: 25 55% 25%;
+  --border: 210 31% 25%;
+  --input: 210 31% 25%;
+  --ring: 213 27% 42%;
+}
+
+:root { --radius: 12px; }
+html, body, #root { height: 100%; }
+
+@layer components {
+  .card { @apply bg-card border border-border rounded-2xl shadow-soft; }
+  .btn { @apply inline-flex items-center justify-center rounded-xl font-semibold transition-shadow; }
+  .btn-primary { @apply bg-primary text-primary-foreground hover:shadow-soft px-4 py-2; }
+  .btn-secondary { @apply bg-secondary text-foreground px-4 py-2; }
+  .btn-ghost { @apply bg-transparent border border-border text-foreground px-4 py-2; }
+  .input { @apply w-full rounded-xl border border-input bg-background px-3 py-2 outline-none focus:ring-4 focus:ring-ring/20; }
+  .badge { @apply inline-flex items-center rounded-full px-2 py-1 text-xs bg-secondary text-foreground; }
+  .table { @apply w-full border-separate border-spacing-0 text-sm; }
+  .th { @apply text-left bg-muted text-foreground/80 px-4 py-3 border-b border-border; }
+  .td { @apply px-4 py-3 border-t border-border; }
+}

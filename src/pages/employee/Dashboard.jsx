@@ -1,0 +1,1 @@
+export default function EmployeeDashboard(){return (<div className='space-y-4'><h1 className='text-2xl font-semibold'>Mi dashboard</h1><div className='card p-4'>Reloj de fichaje (Iniciar/Pausar/Finalizar)</div></div>);}

@@ -1,0 +1,1 @@
+export default function MyRequests(){return (<div className='space-y-4'><h1 className='text-2xl font-semibold'>Mis solicitudes</h1><div className='card p-4'>Crear solicitud de vacaciones / baja / modificación de fichaje.</div></div>);}

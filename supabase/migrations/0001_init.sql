@@ -1,0 +1,1 @@
+-- Pega aquí el SQL completo cuando conectes Supabase (incluido en versiones previas).

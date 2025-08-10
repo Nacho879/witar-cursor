@@ -1,0 +1,1 @@
+export default function ManagerRequests(){return (<div className='space-y-4'><h1 className='text-2xl font-semibold'>Solicitudes del equipo</h1><div className='card p-4'>Aquí verás las solicitudes para aprobar o rechazar.</div></div>);}

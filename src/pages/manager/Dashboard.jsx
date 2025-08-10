@@ -1,0 +1,1 @@
+export default function ManagerDashboard(){return (<div><h1 className='text-2xl font-semibold mb-4'>Dashboard (Manager)</h1><div className='grid md:grid-cols-3 gap-4'><div className='card p-4'>Mi equipo: 8 personas</div><div className='card p-4'>Fichajes hoy: 21</div><div className='card p-4'>Solicitudes pendientes: 2</div></div></div>);}
