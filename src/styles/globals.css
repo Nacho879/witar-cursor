@@ -69,4 +69,12 @@ html, body, #root { height: 100%; }
   .table { @apply w-full border-separate border-spacing-0 text-sm; }
   .th { @apply text-left bg-muted text-foreground/80 px-4 py-3 border-b border-border; }
   .td { @apply px-4 py-3 border-t border-border; }
+  
+  /* Grid pattern for hero section */
+  .bg-grid-slate-200 {
+    background-image: 
+      linear-gradient(to right, rgb(226 232 240) 1px, transparent 1px),
+      linear-gradient(to bottom, rgb(226 232 240) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
 }

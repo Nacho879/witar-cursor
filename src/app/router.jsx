@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import Protected from './Protected';
+import LandingPage from '@/pages/LandingPage';
 import Login from '@/pages/auth/Login';
 import RegisterOwner from '@/pages/auth/RegisterOwner';
 
@@ -26,7 +27,8 @@ import MyRequests from '@/pages/employee/MyRequests';
 import MyDocuments from '@/pages/employee/MyDocuments';
 
 const router = createBrowserRouter([
-  { path: "/", element: <Login /> },
+  { path: "/", element: <LandingPage /> },
+  { path: "/login", element: <Login /> },
   { path: "/register", element: <RegisterOwner /> },
 
   { path: "/owner", element: <Protected roles={['owner']}><OwnerLayout><OwnerDashboard/></OwnerLayout></Protected> },
