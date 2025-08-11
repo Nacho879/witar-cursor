@@ -8,6 +8,7 @@ import AcceptInvitation from '@/pages/auth/AcceptInvitation';
 
 import OwnerLayout from '@/components/layout/OwnerLayout';
 import OwnerDashboard from '@/pages/owner/Dashboard';
+import CompanyDashboard from '@/pages/owner/CompanyDashboard';
 import OwnerEmployees from '@/pages/owner/Employees';
 import OwnerInvitations from '@/pages/owner/Invitations';
 import OwnerDepartments from '@/pages/owner/Departments';
@@ -35,6 +36,7 @@ const router = createBrowserRouter([
   { path: "/accept-invitation", element: <AcceptInvitation /> },
 
   { path: "/owner", element: <Protected roles={['owner']}><OwnerLayout><OwnerDashboard/></OwnerLayout></Protected> },
+  { path: "/owner/company", element: <Protected roles={['owner']}><OwnerLayout><CompanyDashboard/></OwnerLayout></Protected> },
   { path: "/owner/employees", element: <Protected roles={['owner','admin']}><OwnerLayout><OwnerEmployees/></OwnerLayout></Protected> },
   { path: "/owner/invitations", element: <Protected roles={['owner','admin']}><OwnerLayout><OwnerInvitations/></OwnerLayout></Protected> },
   { path: "/owner/departments", element: <Protected roles={['owner','admin']}><OwnerLayout><OwnerDepartments/></OwnerLayout></Protected> },

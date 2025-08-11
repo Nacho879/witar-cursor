@@ -36,6 +36,10 @@ export default function OwnerLayout({ children }){
         <div className='p-4 font-semibold'>Witar — Owner</div>
         <nav className='flex flex-col gap-2 p-2'>
           <a className='px-3 py-2 rounded hover:bg-secondary' href='/owner'>Dashboard</a>
+          <a className='px-3 py-2 rounded hover:bg-secondary flex items-center gap-2' href='/owner/company'>
+            <Building2 className='w-4 h-4' />
+            Empresa
+          </a>
           <a className='px-3 py-2 rounded hover:bg-secondary' href='/owner/employees'>Empleados</a>
           <a className='px-3 py-2 rounded hover:bg-secondary flex items-center gap-2 justify-between' href='/owner/invitations'>
             <div className='flex items-center gap-2'>
