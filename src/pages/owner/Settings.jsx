@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { 
-  Settings, 
+  Settings as SettingsIcon, 
   Building2, 
   Users, 
   Clock, 
@@ -383,9 +383,9 @@ export default function Settings() {
         {/* Quick Actions */}
         <div className="card p-6">
           <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
-              <Settings className="w-5 h-5 text-gray-600" />
-            </div>
+                          <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
+                <SettingsIcon className="w-5 h-5 text-gray-600" />
+              </div>
             <div>
               <h3 className="font-semibold text-foreground">Acciones Rápidas</h3>
               <p className="text-sm text-muted-foreground">Gestionar configuración</p>
@@ -403,7 +403,7 @@ export default function Settings() {
               onClick={loadCompanyData}
               className="w-full btn btn-ghost btn-sm"
             >
-              <Settings className="w-4 h-4" />
+              <SettingsIcon className="w-4 h-4" />
               Recargar Datos
             </button>
           </div>

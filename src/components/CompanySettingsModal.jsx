@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { X, Building2, Settings, AlertCircle, CheckCircle, Save } from 'lucide-react';
+import { X, Building2, Settings as SettingsIcon, AlertCircle, CheckCircle, Save } from 'lucide-react';
 
 export default function CompanySettingsModal({ isOpen, onClose, company, onSettingsSaved }) {
   const [loading, setLoading] = React.useState(false);
@@ -248,7 +248,7 @@ export default function CompanySettingsModal({ isOpen, onClose, company, onSetti
         <div className="flex items-center justify-between p-6 border-b border-border">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-              <Settings className="w-5 h-5 text-blue-600" />
+              <SettingsIcon className="w-5 h-5 text-blue-600" />
             </div>
             <div>
               <h2 className="text-xl font-semibold text-foreground">Configuración de Empresa</h2>
@@ -269,10 +269,10 @@ export default function CompanySettingsModal({ isOpen, onClose, company, onSetti
         <div className="flex border-b border-border">
           {[
             { id: 'general', label: 'Datos Generales', icon: Building2 },
-            { id: 'schedule', label: 'Horarios', icon: Settings },
-            { id: 'timeclock', label: 'Fichajes', icon: Settings },
-            { id: 'requests', label: 'Solicitudes', icon: Settings },
-            { id: 'notifications', label: 'Notificaciones', icon: Settings }
+            { id: 'schedule', label: 'Horarios', icon: SettingsIcon },
+            { id: 'timeclock', label: 'Fichajes', icon: SettingsIcon },
+            { id: 'requests', label: 'Solicitudes', icon: SettingsIcon },
+            { id: 'notifications', label: 'Notificaciones', icon: SettingsIcon }
           ].map((tab) => {
             const TabIcon = tab.icon;
             return (
