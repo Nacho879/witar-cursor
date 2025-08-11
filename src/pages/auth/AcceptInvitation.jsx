@@ -1,0 +1,220 @@
+import * as React from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { supabase } from '@/lib/supabaseClient';
+import { CheckCircle, XCircle, Clock, Building2, User } from 'lucide-react';
+
+export default function AcceptInvitation() {
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const [loading, setLoading] = React.useState(true);
+  const [invitation, setInvitation] = React.useState(null);
+  const [error, setError] = React.useState(null);
+  const [accepting, setAccepting] = React.useState(false);
+  const [success, setSuccess] = React.useState(false);
+
+  const token = searchParams.get('token');
+
+  React.useEffect(() => {
+    if (token) {
+      verifyInvitation();
+    } else {
+      setError('Token de invitación no válido');
+      setLoading(false);
+    }
+  }, [token]);
+
+  async function verifyInvitation() {
+    try {
+      const { data, error } = await supabase
+        .from('invitations')
+        .select(`
+          *,
+          companies (
+            id,
+            name,
+            slug,
+            description
+          )
+        `)
+        .eq('token', token)
+        .eq('status', 'pending')
+        .single();
+
+      if (error || !data) {
+        setError('Invitación no válida o expirada');
+        setLoading(false);
+        return;
+      }
+
+      // Verificar que no ha expirado
+      if (new Date(data.expires_at) < new Date()) {
+        setError('La invitación ha expirado');
+        setLoading(false);
+        return;
+      }
+
+      setInvitation(data);
+      setLoading(false);
+    } catch (error) {
+      console.error('Error verifying invitation:', error);
+      setError('Error al verificar la invitación');
+      setLoading(false);
+    }
+  }
+
+  async function acceptInvitation() {
+    setAccepting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('accept-admin-invitation', {
+        body: { token }
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      if (data.success) {
+        setSuccess(true);
+        // Redirigir después de 3 segundos
+        setTimeout(() => {
+          navigate('/owner');
+        }, 3000);
+      } else {
+        setError(data.error || 'Error al aceptar la invitación');
+      }
+    } catch (error) {
+      console.error('Error accepting invitation:', error);
+      setError('Error al aceptar la invitación');
+    } finally {
+      setAccepting(false);
+    }
+  }
+
+  function getRoleDisplayName(role) {
+    switch (role) {
+      case 'admin':
+        return 'Administrador';
+      case 'manager':
+        return 'Jefe de Equipo';
+      case 'employee':
+        return 'Empleado';
+      default:
+        return role;
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Verificando invitación...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="card p-8 w-full max-w-md text-center">
+          <XCircle className="w-16 h-16 text-destructive mx-auto mb-4" />
+          <h1 className="text-2xl font-bold text-foreground mb-4">Invitación Inválida</h1>
+          <p className="text-muted-foreground mb-6">{error}</p>
+          <button 
+            onClick={() => navigate('/login')}
+            className="btn btn-primary"
+          >
+            Ir al Login
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (success) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="card p-8 w-full max-w-md text-center">
+          <CheckCircle className="w-16 h-16 text-success mx-auto mb-4" />
+          <h1 className="text-2xl font-bold text-foreground mb-4">¡Invitación Aceptada!</h1>
+          <p className="text-muted-foreground mb-6">
+            Has sido agregado exitosamente a {invitation.companies.name} como {getRoleDisplayName(invitation.role)}.
+          </p>
+          <div className="animate-pulse">
+            <p className="text-sm text-muted-foreground">Redirigiendo...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background p-6">
+      <div className="card p-8 w-full max-w-md">
+        <div className="text-center mb-8">
+          <Building2 className="w-16 h-16 text-primary mx-auto mb-4" />
+          <h1 className="text-2xl font-bold text-foreground mb-2">Invitación de Empresa</h1>
+          <p className="text-muted-foreground">
+            Has sido invitado a unirte a una empresa
+          </p>
+        </div>
+
+        <div className="space-y-6">
+          {/* Información de la empresa */}
+          <div className="bg-secondary p-4 rounded-lg">
+            <h3 className="font-semibold text-foreground mb-2">Empresa</h3>
+            <p className="text-lg font-bold text-primary">{invitation.companies.name}</p>
+            {invitation.companies.description && (
+              <p className="text-sm text-muted-foreground mt-1">
+                {invitation.companies.description}
+              </p>
+            )}
+          </div>
+
+          {/* Información del rol */}
+          <div className="bg-secondary p-4 rounded-lg">
+            <h3 className="font-semibold text-foreground mb-2">Rol</h3>
+            <div className="flex items-center gap-2">
+              <User className="w-5 h-5 text-primary" />
+              <span className="font-medium">{getRoleDisplayName(invitation.role)}</span>
+            </div>
+          </div>
+
+          {/* Información de expiración */}
+          <div className="bg-secondary p-4 rounded-lg">
+            <h3 className="font-semibold text-foreground mb-2">Expiración</h3>
+            <div className="flex items-center gap-2">
+              <Clock className="w-5 h-5 text-muted-foreground" />
+              <span className="text-sm text-muted-foreground">
+                Expira el {new Date(invitation.expires_at).toLocaleDateString()}
+              </span>
+            </div>
+          </div>
+
+          {/* Botones de acción */}
+          <div className="space-y-3">
+            <button 
+              onClick={acceptInvitation}
+              disabled={accepting}
+              className="btn btn-primary w-full"
+            >
+              {accepting ? 'Aceptando...' : 'Aceptar Invitación'}
+            </button>
+            
+            <button 
+              onClick={() => navigate('/login')}
+              className="btn btn-ghost w-full"
+            >
+              Cancelar
+            </button>
+          </div>
+
+          <p className="text-xs text-muted-foreground text-center">
+            Al aceptar esta invitación, tendrás acceso a la plataforma de {invitation.companies.name}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+} 

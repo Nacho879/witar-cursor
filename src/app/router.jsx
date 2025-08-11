@@ -4,6 +4,7 @@ import Protected from './Protected';
 import LandingPage from '@/pages/LandingPage';
 import Login from '@/pages/auth/Login';
 import RegisterOwner from '@/pages/auth/RegisterOwner';
+import AcceptInvitation from '@/pages/auth/AcceptInvitation';
 
 import OwnerLayout from '@/components/layout/OwnerLayout';
 import OwnerDashboard from '@/pages/owner/Dashboard';
@@ -30,6 +31,7 @@ const router = createBrowserRouter([
   { path: "/", element: <LandingPage /> },
   { path: "/login", element: <Login /> },
   { path: "/register", element: <RegisterOwner /> },
+  { path: "/accept-invitation", element: <AcceptInvitation /> },
 
   { path: "/owner", element: <Protected roles={['owner']}><OwnerLayout><OwnerDashboard/></OwnerLayout></Protected> },
   { path: "/owner/employees", element: <Protected roles={['owner','admin']}><OwnerLayout><OwnerEmployees/></OwnerLayout></Protected> },
