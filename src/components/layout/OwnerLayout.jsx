@@ -1,6 +1,7 @@
-import ThemeToggle from '@/components/common/ThemeToggle'; 
+import ThemeToggle from '@/components/common/ThemeToggle';
 import { Mail } from 'lucide-react';
 import InvitationBadge from '@/components/InvitationBadge';
+import NotificationCenter from '@/components/NotificationCenter';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 
@@ -54,7 +55,8 @@ export default function OwnerLayout({ children }){
           <a className='px-3 py-2 rounded hover:bg-secondary' href='/owner/settings'>Configuración</a>
           <a className='px-3 py-2 rounded hover:bg-secondary' href='/owner/billing'>Facturación</a>
         </nav>
-        <div className='p-3'>
+        <div className='p-3 flex items-center justify-between'>
+          <NotificationCenter />
           <ThemeToggle/>
         </div>
       </aside>
