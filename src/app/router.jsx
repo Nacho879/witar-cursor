@@ -16,6 +16,7 @@ import OwnerTimeEntries from '@/pages/owner/TimeEntries';
 import OwnerRequests from '@/pages/owner/Requests';
 import OwnerSettings from '@/pages/owner/Settings';
 import OwnerBilling from '@/pages/owner/Billing';
+import OwnerReports from '@/pages/owner/Reports';
 
 import ManagerLayout from '@/components/layout/ManagerLayout';
 import ManagerDashboard from '@/pages/manager/Dashboard';
@@ -44,6 +45,7 @@ const router = createBrowserRouter([
   { path: "/owner/requests", element: <Protected roles={['owner','admin']}><OwnerLayout><OwnerRequests/></OwnerLayout></Protected> },
   { path: "/owner/settings", element: <Protected roles={['owner']}><OwnerLayout><OwnerSettings/></OwnerLayout></Protected> },
   { path: "/owner/billing", element: <Protected roles={['owner']}><OwnerLayout><OwnerBilling/></OwnerLayout></Protected> },
+  { path: "/owner/reports", element: <Protected roles={['owner','admin']}><OwnerLayout><OwnerReports/></OwnerLayout></Protected> },
 
   { path: "/manager", element: <Protected roles={['manager']}><ManagerLayout><ManagerDashboard/></ManagerLayout></Protected> },
   { path: "/manager/team", element: <Protected roles={['manager']}><ManagerLayout><ManagerTeam/></ManagerLayout></Protected> },

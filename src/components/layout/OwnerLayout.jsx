@@ -1,5 +1,5 @@
 import ThemeToggle from '@/components/common/ThemeToggle';
-import { Mail } from 'lucide-react';
+import { Mail, BarChart3 } from 'lucide-react';
 import InvitationBadge from '@/components/InvitationBadge';
 import NotificationCenter from '@/components/NotificationCenter';
 import { useState, useEffect } from 'react';
@@ -54,6 +54,10 @@ export default function OwnerLayout({ children }){
           <a className='px-3 py-2 rounded hover:bg-secondary' href='/owner/requests'>Solicitudes</a>
           <a className='px-3 py-2 rounded hover:bg-secondary' href='/owner/settings'>Configuración</a>
           <a className='px-3 py-2 rounded hover:bg-secondary' href='/owner/billing'>Facturación</a>
+          <a className='px-3 py-2 rounded hover:bg-secondary flex items-center gap-2' href='/owner/reports'>
+            <BarChart3 className='w-4 h-4' />
+            Reportes
+          </a>
         </nav>
         <div className='p-3 flex items-center justify-between'>
           <NotificationCenter />
