@@ -1,5 +1,7 @@
 import * as React from 'react';
 import { supabase } from '@/lib/supabaseClient';
+import { BillingService } from '@/lib/billingService';
+import { loadStripe } from '@stripe/stripe-js';
 import { 
   CreditCard, 
   Users, 
@@ -12,7 +14,8 @@ import {
   Building2,
   DollarSign,
   Shield,
-  Zap
+  Zap,
+  ExternalLink
 } from 'lucide-react';
 
 export default function Billing() {
@@ -22,6 +25,7 @@ export default function Billing() {
   const [subscription, setSubscription] = React.useState(null);
   const [invoices, setInvoices] = React.useState([]);
   const [showContactModal, setShowContactModal] = React.useState(false);
+  const [processingPayment, setProcessingPayment] = React.useState(false);
 
   React.useEffect(() => {
     loadBillingData();
@@ -154,6 +158,88 @@ export default function Billing() {
         return { label: 'Fallida', color: 'bg-red-100 text-red-800' };
       default:
         return { label: 'Desconocido', color: 'bg-gray-100 text-gray-800' };
+    }
+  }
+
+  // Función para iniciar el proceso de pago con Stripe
+  async function handleStartSubscription() {
+    try {
+      setProcessingPayment(true);
+      
+      const employeeCount = employees.length;
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        alert('Debes estar autenticado para continuar');
+        return;
+      }
+
+      const { data: userRole } = await supabase
+        .from('user_company_roles')
+        .select('company_id')
+        .eq('user_id', user.id)
+        .eq('is_active', true)
+        .single();
+
+      if (!userRole) {
+        alert('No se encontró la empresa');
+        return;
+      }
+
+      // Crear sesión de checkout
+      const { url } = await BillingService.createCheckoutSession(
+        userRole.company_id, 
+        employeeCount
+      );
+
+      // Redirigir a Stripe Checkout
+      if (url) {
+        window.location.href = url;
+      }
+    } catch (error) {
+      console.error('Error starting subscription:', error);
+      alert('Error al iniciar el proceso de pago. Inténtalo de nuevo.');
+    } finally {
+      setProcessingPayment(false);
+    }
+  }
+
+  // Función para abrir el portal de facturación
+  async function handleOpenPortal() {
+    try {
+      setProcessingPayment(true);
+      
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        alert('Debes estar autenticado para continuar');
+        return;
+      }
+
+      const { data: userRole } = await supabase
+        .from('user_company_roles')
+        .select('company_id')
+        .eq('user_id', user.id)
+        .eq('is_active', true)
+        .single();
+
+      if (!userRole) {
+        alert('No se encontró la empresa');
+        return;
+      }
+
+      // Crear sesión del portal
+      const { url } = await BillingService.createPortalSession(userRole.company_id);
+
+      // Abrir portal de facturación
+      if (url) {
+        window.open(url, '_blank');
+      }
+    } catch (error) {
+      console.error('Error opening portal:', error);
+      alert('Error al abrir el portal de facturación. Inténtalo de nuevo.');
+    } finally {
+      setProcessingPayment(false);
     }
   }
 
@@ -310,6 +396,28 @@ export default function Billing() {
                 <span>Notificaciones en tiempo real</span>
               </div>
             </div>
+          </div>
+
+          {/* Botones de acción */}
+          <div className="mt-6 space-y-3">
+            {!subscription ? (
+              <button
+                onClick={handleStartSubscription}
+                disabled={processingPayment}
+                className="w-full btn btn-primary"
+              >
+                {processingPayment ? 'Procesando...' : 'Iniciar Suscripción'}
+              </button>
+            ) : (
+              <button
+                onClick={handleOpenPortal}
+                disabled={processingPayment}
+                className="w-full btn btn-outline flex items-center gap-2"
+              >
+                <ExternalLink className="w-4 h-4" />
+                {processingPayment ? 'Procesando...' : 'Gestionar Suscripción'}
+              </button>
+            )}
           </div>
         </div>
 

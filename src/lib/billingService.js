@@ -323,6 +323,68 @@ export class BillingService {
     }
   }
 
+  // Crear sesión de checkout de Stripe
+  static async createCheckoutSession(companyId, employeeCount) {
+    try {
+      const { data, error } = await supabase.functions.invoke('stripe-checkout', {
+        body: { companyId, employeeCount }
+      });
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error creating checkout session:', error);
+      throw error;
+    }
+  }
+
+  // Crear sesión del portal de facturación
+  static async createPortalSession(companyId) {
+    try {
+      const { data, error } = await supabase.functions.invoke('stripe-portal', {
+        body: { companyId }
+      });
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error creating portal session:', error);
+      throw error;
+    }
+  }
+
+  // Verificar estado de la suscripción
+  static async checkSubscriptionStatus(companyId) {
+    try {
+      const { data: company } = await supabase
+        .from('companies')
+        .select('subscription_status, stripe_subscription_id')
+        .eq('id', companyId)
+        .single();
+
+      return company?.subscription_status || 'inactive';
+    } catch (error) {
+      console.error('Error checking subscription status:', error);
+      return 'inactive';
+    }
+  }
+
+  // Actualizar límite de empleados
+  static async updateEmployeeLimit(companyId, newLimit) {
+    try {
+      const { error } = await supabase
+        .from('companies')
+        .update({ employee_limit: newLimit })
+        .eq('id', companyId);
+
+      if (error) throw error;
+      return true;
+    } catch (error) {
+      console.error('Error updating employee limit:', error);
+      return false;
+    }
+  }
+
   // Obtener información de contacto para ventas
   static getSalesContactInfo() {
     return {
