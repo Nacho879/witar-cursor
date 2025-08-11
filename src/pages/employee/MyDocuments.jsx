@@ -159,9 +159,10 @@ export default function MyDocuments() {
     return true;
   });
 
-  function handleDocumentUploaded(newDocument) {
+  async function handleDocumentUploaded(newDocument) {
     setDocuments(prev => [newDocument, ...prev]);
-    calculateStats([newDocument, ...documents], (await supabase.auth.getUser()).data.user.id);
+    const { data: { user } } = await supabase.auth.getUser();
+    calculateStats([newDocument, ...documents], user.id);
   }
 
   if (loading) {
