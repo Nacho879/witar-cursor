@@ -14,6 +14,7 @@ import {
   Coffee,
   AlertCircle
 } from 'lucide-react';
+import TimeClock from '@/components/TimeClock';
 
 export default function EmployeeDashboard() {
   const [userProfile, setUserProfile] = React.useState(null);
@@ -27,6 +28,11 @@ export default function EmployeeDashboard() {
   const [recentRequests, setRecentRequests] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
   const [currentTime, setCurrentTime] = React.useState(new Date());
+
+  function handleTimeEntry(newEntry) {
+    // Recargar los datos del dashboard cuando se crea un nuevo fichaje
+    loadDashboardData();
+  }
 
   React.useEffect(() => {
     loadDashboardData();
@@ -399,6 +405,9 @@ export default function EmployeeDashboard() {
           </div>
         </div>
       </div>
+
+      {/* Time Clock */}
+      <TimeClock onTimeEntry={handleTimeEntry} />
 
       {/* Quick Actions */}
       <div className="card">
