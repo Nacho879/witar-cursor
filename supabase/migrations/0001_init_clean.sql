@@ -1,13 +1,7 @@
--- =====================================================
--- MIGRACIÓN INICIAL - SISTEMA DE ROLES Y JERARQUÍA
--- =====================================================
-
 -- Habilitar extensiones necesarias
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- =====================================================
--- TABLA DE EMPRESAS
--- =====================================================
+-- Tabla de empresas
 CREATE TABLE companies (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name VARCHAR(255) NOT NULL,
@@ -19,33 +13,29 @@ CREATE TABLE companies (
     website VARCHAR(255),
     logo_url TEXT,
     industry VARCHAR(100),
-    size VARCHAR(50), -- 'small', 'medium', 'large'
-    status VARCHAR(20) DEFAULT 'active', -- 'active', 'inactive', 'suspended'
+    size VARCHAR(50),
+    status VARCHAR(20) DEFAULT 'active',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- =====================================================
--- TABLA DE DEPARTAMENTOS
--- =====================================================
+-- Tabla de departamentos
 CREATE TABLE departments (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
     name VARCHAR(255) NOT NULL,
     description TEXT,
-    manager_id UUID, -- Referencia a user_company_roles
+    manager_id UUID,
     status VARCHAR(20) DEFAULT 'active',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     UNIQUE(company_id, name)
 );
 
--- =====================================================
--- TABLA DE ROLES DE USUARIO EN EMPRESA
--- =====================================================
+-- Tabla de roles de usuario en empresa
 CREATE TABLE user_company_roles (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL, -- Referencia a auth.users
+    user_id UUID NOT NULL,
     company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
     role VARCHAR(20) NOT NULL CHECK (role IN ('owner', 'admin', 'manager', 'employee')),
     department_id UUID REFERENCES departments(id) ON DELETE SET NULL,
@@ -58,13 +48,11 @@ CREATE TABLE user_company_roles (
     UNIQUE(user_id, company_id)
 );
 
--- =====================================================
--- TABLA DE INVITACIONES
--- =====================================================
+-- Tabla de invitaciones
 CREATE TABLE invitations (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
-    invited_by UUID NOT NULL, -- user_id del que envía la invitación
+    invited_by UUID NOT NULL,
     email VARCHAR(255) NOT NULL,
     role VARCHAR(20) NOT NULL CHECK (role IN ('admin', 'manager', 'employee')),
     department_id UUID REFERENCES departments(id) ON DELETE SET NULL,
@@ -77,12 +65,10 @@ CREATE TABLE invitations (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- =====================================================
--- TABLA DE PERFILES DE USUARIO
--- =====================================================
+-- Tabla de perfiles de usuario
 CREATE TABLE user_profiles (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL UNIQUE, -- Referencia a auth.users
+    user_id UUID NOT NULL UNIQUE,
     full_name VARCHAR(255) NOT NULL,
     avatar_url TEXT,
     phone VARCHAR(50),
@@ -98,12 +84,10 @@ CREATE TABLE user_profiles (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- =====================================================
--- TABLA DE REGISTROS DE TIEMPO
--- =====================================================
+-- Tabla de registros de tiempo
 CREATE TABLE time_entries (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL, -- Referencia a auth.users
+    user_id UUID NOT NULL,
     company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
     entry_type VARCHAR(20) NOT NULL CHECK (entry_type IN ('clock_in', 'clock_out', 'break_start', 'break_end')),
     entry_time TIMESTAMP WITH TIME ZONE NOT NULL,
@@ -113,47 +97,41 @@ CREATE TABLE time_entries (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- =====================================================
--- TABLA DE SOLICITUDES (VACACIONES, LICENCIAS, ETC.)
--- =====================================================
+-- Tabla de solicitudes
 CREATE TABLE requests (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL, -- Referencia a auth.users
+    user_id UUID NOT NULL,
     company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
     request_type VARCHAR(50) NOT NULL CHECK (request_type IN ('vacation', 'sick_leave', 'personal_leave', 'other')),
     start_date DATE NOT NULL,
     end_date DATE NOT NULL,
     reason TEXT,
     status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'cancelled')),
-    approved_by UUID, -- user_id del aprobador
+    approved_by UUID,
     approved_at TIMESTAMP WITH TIME ZONE,
     notes TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- =====================================================
--- TABLA DE DOCUMENTOS
--- =====================================================
+-- Tabla de documentos
 CREATE TABLE documents (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL, -- Referencia a auth.users
+    user_id UUID NOT NULL,
     company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
     title VARCHAR(255) NOT NULL,
     description TEXT,
     file_url TEXT NOT NULL,
     file_type VARCHAR(50),
     file_size INTEGER,
-    category VARCHAR(100), -- 'contract', 'id', 'certificate', 'other'
-    is_public BOOLEAN DEFAULT false, -- Si es visible para managers/admins
-    uploaded_by UUID NOT NULL, -- user_id del que subió el documento
+    category VARCHAR(100),
+    is_public BOOLEAN DEFAULT false,
+    uploaded_by UUID NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- =====================================================
--- TABLA DE CONFIGURACIONES DE EMPRESA
--- =====================================================
+-- Tabla de configuraciones de empresa
 CREATE TABLE company_settings (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     company_id UUID NOT NULL UNIQUE REFERENCES companies(id) ON DELETE CASCADE,
@@ -168,41 +146,29 @@ CREATE TABLE company_settings (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- =====================================================
--- ÍNDICES PARA OPTIMIZACIÓN
--- =====================================================
-
--- Índices para user_company_roles
+-- Índices para optimización
 CREATE INDEX idx_user_company_roles_user_id ON user_company_roles(user_id);
 CREATE INDEX idx_user_company_roles_company_id ON user_company_roles(company_id);
 CREATE INDEX idx_user_company_roles_role ON user_company_roles(role);
 CREATE INDEX idx_user_company_roles_supervisor_id ON user_company_roles(supervisor_id);
 
--- Índices para invitations
 CREATE INDEX idx_invitations_company_id ON invitations(company_id);
 CREATE INDEX idx_invitations_email ON invitations(email);
 CREATE INDEX idx_invitations_token ON invitations(token);
 CREATE INDEX idx_invitations_status ON invitations(status);
 
--- Índices para time_entries
 CREATE INDEX idx_time_entries_user_id ON time_entries(user_id);
 CREATE INDEX idx_time_entries_company_id ON time_entries(company_id);
 CREATE INDEX idx_time_entries_entry_time ON time_entries(entry_time);
 
--- Índices para requests
 CREATE INDEX idx_requests_user_id ON requests(user_id);
 CREATE INDEX idx_requests_company_id ON requests(company_id);
 CREATE INDEX idx_requests_status ON requests(status);
 CREATE INDEX idx_requests_approved_by ON requests(approved_by);
 
--- Índices para documents
 CREATE INDEX idx_documents_user_id ON documents(user_id);
 CREATE INDEX idx_documents_company_id ON documents(company_id);
 CREATE INDEX idx_documents_category ON documents(category);
-
--- =====================================================
--- FUNCIONES Y TRIGGERS
--- =====================================================
 
 -- Función para actualizar updated_at automáticamente
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -223,10 +189,6 @@ CREATE TRIGGER update_requests_updated_at BEFORE UPDATE ON requests FOR EACH ROW
 CREATE TRIGGER update_documents_updated_at BEFORE UPDATE ON documents FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_company_settings_updated_at BEFORE UPDATE ON company_settings FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- =====================================================
--- POLÍTICAS RLS (ROW LEVEL SECURITY)
--- =====================================================
-
 -- Habilitar RLS en todas las tablas
 ALTER TABLE companies ENABLE ROW LEVEL SECURITY;
 ALTER TABLE departments ENABLE ROW LEVEL SECURITY;
@@ -238,11 +200,7 @@ ALTER TABLE requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE documents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE company_settings ENABLE ROW LEVEL SECURITY;
 
--- =====================================================
--- FUNCIONES DE AYUDA
--- =====================================================
-
--- Función para obtener el rol de un usuario en una empresa
+-- Funciones de ayuda
 CREATE OR REPLACE FUNCTION get_user_role_in_company(user_uuid UUID, company_uuid UUID)
 RETURNS VARCHAR(20) AS $$
 BEGIN
@@ -256,7 +214,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Función para verificar si un usuario es owner de una empresa
 CREATE OR REPLACE FUNCTION is_company_owner(user_uuid UUID, company_uuid UUID)
 RETURNS BOOLEAN AS $$
 BEGIN
@@ -271,7 +228,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Función para verificar si un usuario es admin de una empresa
 CREATE OR REPLACE FUNCTION is_company_admin(user_uuid UUID, company_uuid UUID)
 RETURNS BOOLEAN AS $$
 BEGIN
@@ -284,14 +240,4 @@ BEGIN
         AND is_active = true
     );
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
--- =====================================================
--- DATOS INICIALES (OPCIONAL)
--- =====================================================
-
--- Insertar configuración por defecto para empresas
-INSERT INTO company_settings (company_id, working_hours_per_day, working_days_per_week, timezone, allow_overtime, require_location, auto_approve_requests, max_vacation_days)
-SELECT id, 8.0, 5, 'UTC', true, false, false, 20
-FROM companies
-WHERE id NOT IN (SELECT company_id FROM company_settings);
+$$ LANGUAGE plpgsql SECURITY DEFINER; 
