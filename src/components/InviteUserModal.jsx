@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { X, Mail, User, Building2, Users, Send } from 'lucide-react';
+import { BillingService } from '@/lib/billingService';
+import { X, Mail, User, Building2, Users, Send, AlertTriangle } from 'lucide-react';
 
 export default function InviteUserModal({ isOpen, onClose, companyId, departments = [] }) {
   const [email, setEmail] = React.useState('');
@@ -46,6 +47,13 @@ export default function InviteUserModal({ isOpen, onClose, companyId, department
     setMessage('');
 
     try {
+      // Verificar límite del plan antes de enviar invitación
+      const canAddEmployee = await BillingService.canAddEmployee(companyId);
+      if (!canAddEmployee) {
+        setMessage('Error: Has alcanzado el límite de 25 empleados de tu plan. Contacta con ventas para un plan personalizado.');
+        return;
+      }
+
       // Generar token único
       const token = crypto.randomUUID();
 
