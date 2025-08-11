@@ -9,6 +9,7 @@ import AcceptInvitation from '@/pages/auth/AcceptInvitation';
 import OwnerLayout from '@/components/layout/OwnerLayout';
 import OwnerDashboard from '@/pages/owner/Dashboard';
 import OwnerEmployees from '@/pages/owner/Employees';
+import OwnerInvitations from '@/pages/owner/Invitations';
 import OwnerDepartments from '@/pages/owner/Departments';
 import OwnerTimeEntries from '@/pages/owner/TimeEntries';
 import OwnerRequests from '@/pages/owner/Requests';
@@ -35,6 +36,7 @@ const router = createBrowserRouter([
 
   { path: "/owner", element: <Protected roles={['owner']}><OwnerLayout><OwnerDashboard/></OwnerLayout></Protected> },
   { path: "/owner/employees", element: <Protected roles={['owner','admin']}><OwnerLayout><OwnerEmployees/></OwnerLayout></Protected> },
+  { path: "/owner/invitations", element: <Protected roles={['owner','admin']}><OwnerLayout><OwnerInvitations/></OwnerLayout></Protected> },
   { path: "/owner/departments", element: <Protected roles={['owner','admin']}><OwnerLayout><OwnerDepartments/></OwnerLayout></Protected> },
   { path: "/owner/time-entries", element: <Protected roles={['owner','admin']}><OwnerLayout><OwnerTimeEntries/></OwnerLayout></Protected> },
   { path: "/owner/requests", element: <Protected roles={['owner','admin']}><OwnerLayout><OwnerRequests/></OwnerLayout></Protected> },
