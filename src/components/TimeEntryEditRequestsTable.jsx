@@ -24,7 +24,7 @@ export default function TimeEntryEditRequestsTable({ userRole }) {
     try {
       setLoading(true);
       
-      let query = supabase
+      const query = supabase
         .from('time_entry_edit_requests')
         .select(`
           *,
@@ -35,10 +35,6 @@ export default function TimeEntryEditRequestsTable({ userRole }) {
             notes,
             location_lat,
             location_lng
-          ),
-          user_profiles!time_entry_edit_requests_user_id_fkey (
-            full_name,
-            avatar_url
           )
         `)
         .eq('company_id', userRole.company_id);

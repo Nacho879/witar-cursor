@@ -9,7 +9,8 @@ import {
   CreditCard, 
   Home,
   Menu,
-  X
+  X,
+  Bell
 } from 'lucide-react';
 import InvitationBadge from '@/components/InvitationBadge';
 import FloatingTimeClock from '@/components/FloatingTimeClock';
@@ -133,6 +134,14 @@ export default function OwnerLayout({ children }){
             >
               <BarChart3 className='w-4 h-4' />
               <span className='lg:block'>Reportes</span>
+            </a>
+            <a 
+              className='px-3 py-2 rounded hover:bg-secondary flex items-center gap-2 transition-colors' 
+              href='/owner/notifications'
+              onClick={() => setSidebarOpen(false)}
+            >
+              <Bell className='w-4 h-4' />
+              <span className='lg:block'>Notificaciones</span>
             </a>
           </nav>
         </aside>

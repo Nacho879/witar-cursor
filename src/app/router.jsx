@@ -19,6 +19,7 @@ import OwnerRequests from '@/pages/owner/Requests';
 import OwnerSettings from '@/pages/owner/Settings';
 import OwnerBilling from '@/pages/owner/Billing';
 import OwnerReports from '@/pages/owner/Reports';
+import Notifications from '@/pages/Notifications';
 
 import AdminLayout from '@/components/layout/AdminLayout';
 import AdminDashboard from '@/pages/admin/Dashboard';
@@ -61,6 +62,7 @@ const router = createBrowserRouter([
   { path: "/owner/settings", element: <Protected roles={['owner']}><OwnerLayout><OwnerSettings/></OwnerLayout></Protected> },
   { path: "/owner/billing", element: <Protected roles={['owner']}><OwnerLayout><OwnerBilling/></OwnerLayout></Protected> },
   { path: "/owner/reports", element: <Protected roles={['owner']}><OwnerLayout><OwnerReports/></OwnerLayout></Protected> },
+  { path: "/owner/notifications", element: <Protected roles={['owner']}><OwnerLayout><Notifications /></OwnerLayout></Protected> },
 
   // Admin routes (solo admin)
   { path: "/admin", element: <Protected roles={['admin']}><AdminLayout><AdminDashboard/></AdminLayout></Protected> },

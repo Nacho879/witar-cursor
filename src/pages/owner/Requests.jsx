@@ -62,37 +62,14 @@ export default function Requests() {
       // Cargar solicitudes normales
       const { data: normalRequests, error } = await supabase
         .from('requests')
-        .select(`
-          *,
-          user_company_roles!requests_user_id_fkey (
-            user_profiles (
-              full_name,
-              avatar_url
-            ),
-            departments (
-              name
-            )
-          )
-        `)
+        .select('*')
         .eq('company_id', companyId)
         .order('created_at', { ascending: false });
 
       // Cargar solicitudes de edición de fichajes
       const { data: timeEditRequests, error: timeEditError } = await supabase
         .from('time_entry_edit_requests')
-        .select(`
-          *,
-          time_entries (
-            id,
-            entry_type,
-            entry_time,
-            notes
-          ),
-          user_profiles!time_entry_edit_requests_user_id_fkey (
-            full_name,
-            avatar_url
-          )
-        `)
+        .select('*')
         .eq('company_id', companyId)
         .order('created_at', { ascending: false });
 
@@ -116,11 +93,7 @@ export default function Requests() {
           timeEditRequests.forEach(request => {
             allRequests.push({
               ...request,
-              request_type: 'time_edit',
-              user_company_roles: {
-                user_profiles: request.user_profiles,
-                departments: null
-              }
+              request_type: 'time_edit'
             });
           });
         }

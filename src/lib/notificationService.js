@@ -372,15 +372,7 @@ export class NotificationService {
     try {
       const { data, error } = await supabase
         .from('notifications')
-        .select(`
-          *,
-          user_company_roles!notifications_sender_id_fkey (
-            user_profiles (
-              full_name,
-              email
-            )
-          )
-        `)
+        .select('*')
         .eq('company_id', companyId)
         .or(`recipient_id.eq.${userId},recipient_id.is.null`)
         .order('created_at', { ascending: false })
