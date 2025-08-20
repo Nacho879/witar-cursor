@@ -14,7 +14,7 @@ import {
   Users,
   Briefcase,
   ShieldCheck,
-  Building2,
+  Building,
   Rocket,
   ArrowRight
 } from 'lucide-react';
@@ -252,7 +252,7 @@ const LandingPage = () => {
                 { icon: ShieldCheck, title: "Seguridad Garantizada", description: "Tus datos están protegidos con los más altos estándares de seguridad." },
                 { icon: CalendarOff, title: "Gestión de Ausencias", description: "Control completo de vacaciones, licencias y días libres." },
                 { icon: FolderKanban, title: "Organización Total", description: "Todos los documentos y procesos en un solo lugar organizado." },
-                { icon: Building2, title: "Escalable", description: "Crece con tu empresa, desde startups hasta grandes corporaciones." },
+                { icon: Building, title: "Escalable", description: "Crece con tu empresa, desde startups hasta grandes corporaciones." },
                 { icon: BarChart, title: "Analytics Avanzados", description: "Reportes detallados para optimizar la gestión de recursos." },
                 { icon: Rocket, title: "Implementación Rápida", description: "Empieza a usar Witar en minutos, sin complicaciones." }
               ].map((benefit, index) => (

@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabaseClient';
-import { CheckCircle, XCircle, Clock, Building2, User } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, Building, User } from 'lucide-react';
 
 export default function AcceptInvitation() {
   const [searchParams] = useSearchParams();
@@ -65,7 +65,17 @@ export default function AcceptInvitation() {
   async function acceptInvitation() {
     setAccepting(true);
     try {
-      const { data, error } = await supabase.functions.invoke('accept-admin-invitation', {
+      // Verificar si el usuario está autenticado
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        // Si no está autenticado, redirigir al login con el token
+        navigate(`/login?invitation=${token}`);
+        return;
+      }
+
+      // Si está autenticado, aceptar la invitación
+      const { data, error } = await supabase.functions.invoke('accept-employee-invitation', {
         body: { token }
       });
 
@@ -75,9 +85,12 @@ export default function AcceptInvitation() {
 
       if (data.success) {
         setSuccess(true);
-        // Redirigir después de 3 segundos
+        // Redirigir según el rol
+        const redirectPath = data.role === 'owner' ? '/owner' : 
+                           data.role === 'admin' ? '/owner' : 
+                           data.role === 'manager' ? '/manager' : '/employee';
         setTimeout(() => {
-          navigate('/owner');
+          navigate(redirectPath);
         }, 3000);
       } else {
         setError(data.error || 'Error al aceptar la invitación');
@@ -153,7 +166,7 @@ export default function AcceptInvitation() {
     <div className="min-h-screen flex items-center justify-center bg-background p-6">
       <div className="card p-8 w-full max-w-md">
         <div className="text-center mb-8">
-          <Building2 className="w-16 h-16 text-primary mx-auto mb-4" />
+          <Building className="w-16 h-16 text-primary mx-auto mb-4" />
           <h1 className="text-2xl font-bold text-foreground mb-2">Invitación de Empresa</h1>
           <p className="text-muted-foreground">
             Has sido invitado a unirte a una empresa

@@ -28,23 +28,27 @@ serve(async (req) => {
       throw new Error('Missing required parameters')
     }
 
-    // Calcular precio (1,50€ por empleado)
-    const unitPrice = 150 // 1.50€ en centavos
-    const totalPrice = employeeCount * unitPrice
+    // Crear un producto y precio en Stripe si no existe
+    const product = await stripe.products.create({
+      name: 'Plan Witar',
+      description: 'Plan de gestión de recursos humanos',
+    })
+
+    const price = await stripe.prices.create({
+      product: product.id,
+      unit_amount: 150, // 1.50€ en centavos
+      currency: 'eur',
+      recurring: {
+        interval: 'month',
+      },
+    })
 
     // Crear sesión de checkout
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       line_items: [
         {
-          price_data: {
-            currency: 'eur',
-            product_data: {
-              name: `Plan Witar - ${employeeCount} empleados`,
-              description: `Plan de gestión de recursos humanos para ${employeeCount} empleados`,
-            },
-            unit_amount: unitPrice,
-          },
+          price: price.id,
           quantity: employeeCount,
         },
       ],

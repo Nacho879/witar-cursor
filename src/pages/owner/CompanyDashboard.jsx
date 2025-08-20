@@ -175,12 +175,9 @@ export default function CompanyDashboard() {
       const { data, error } = await supabase
         .from('user_company_roles')
         .select(`
+          user_id,
           joined_at,
           role,
-          user_profiles (
-            full_name,
-            avatar_url
-          ),
           departments (
             name
           )
@@ -191,7 +188,22 @@ export default function CompanyDashboard() {
         .limit(5);
 
       if (!error && data) {
-        setRecentHires(data);
+        // Obtener perfiles de usuario por separado
+        const hiresWithProfiles = await Promise.all(
+          data.map(async (hire) => {
+            const { data: profile } = await supabase
+              .from('user_profiles')
+              .select('full_name, avatar_url')
+              .eq('user_id', hire.user_id)
+              .single();
+            
+            return {
+              ...hire,
+              profile: profile || {}
+            };
+          })
+        );
+        setRecentHires(hiresWithProfiles);
       }
     } catch (error) {
       console.error('Error loading recent hires:', error);
@@ -200,15 +212,12 @@ export default function CompanyDashboard() {
 
   async function loadTopPerformers(companyId) {
     try {
-      // Simular top performers basado en horas trabajadas
+      // Obtener empleados activos
       const { data, error } = await supabase
         .from('user_company_roles')
         .select(`
+          user_id,
           role,
-          user_profiles (
-            full_name,
-            avatar_url
-          ),
           departments (
             name
           )
@@ -218,14 +227,47 @@ export default function CompanyDashboard() {
         .limit(5);
 
       if (!error && data) {
-        // Agregar métricas simuladas
-        const performersWithMetrics = data.map((performer, index) => ({
-          ...performer,
-          hoursWorked: Math.floor(Math.random() * 20) + 35, // 35-55 horas
-          productivity: Math.floor(Math.random() * 20) + 80, // 80-100%
-          rank: index + 1
-        }));
-        setTopPerformers(performersWithMetrics);
+        // Obtener perfiles de usuario por separado
+        const performersWithProfiles = await Promise.all(
+          data.map(async (performer, index) => {
+            const { data: profile } = await supabase
+              .from('user_profiles')
+              .select('full_name, avatar_url')
+              .eq('user_id', performer.user_id)
+              .single();
+            
+            // Calcular horas trabajadas reales
+            const weekStart = new Date();
+            weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+            weekStart.setHours(0, 0, 0, 0);
+            
+            const { data: timeEntries } = await supabase
+              .from('time_entries')
+              .select('*')
+              .eq('user_id', performer.user_id)
+              .gte('entry_time', weekStart.toISOString());
+
+            let hoursWorked = 0;
+            if (timeEntries) {
+              hoursWorked = timeEntries.reduce((total, entry) => {
+                if (entry.clock_out && entry.clock_in) {
+                  const duration = new Date(entry.clock_out) - new Date(entry.clock_in);
+                  return total + (duration / (1000 * 60 * 60));
+                }
+                return total;
+              }, 0);
+            }
+            
+            return {
+              ...performer,
+              profile: profile || {},
+              hoursWorked: Math.round(hoursWorked * 10) / 10, // Redondear a 1 decimal
+              productivity: hoursWorked > 0 ? Math.min(100, Math.round((hoursWorked / 40) * 100)) : 0, // Basado en 40h semanales
+              rank: index + 1
+            };
+          })
+        );
+        setTopPerformers(performersWithProfiles);
       }
     } catch (error) {
       console.error('Error loading top performers:', error);
@@ -462,20 +504,20 @@ export default function CompanyDashboard() {
                 {recentHires.map((hire) => (
                   <div key={hire.joined_at} className="flex items-center gap-3 p-3 rounded-lg hover:bg-secondary transition-colors">
                     <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center flex-shrink-0">
-                      {hire.user_profiles?.avatar_url ? (
+                      {hire.profile?.avatar_url ? (
                         <img 
-                          src={hire.user_profiles.avatar_url} 
-                          alt={hire.user_profiles.full_name}
+                          src={hire.profile.avatar_url} 
+                          alt={hire.profile.full_name}
                           className="w-10 h-10 rounded-full object-cover"
                         />
                       ) : (
                         <span className="text-sm font-medium text-primary">
-                          {hire.user_profiles?.full_name?.charAt(0) || 'U'}
+                          {hire.profile?.full_name?.charAt(0) || 'U'}
                         </span>
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-foreground">{hire.user_profiles?.full_name}</p>
+                      <p className="font-medium text-foreground">{hire.profile?.full_name}</p>
                       <p className="text-sm text-muted-foreground">
                         {hire.departments?.name || 'Sin departamento'} • {hire.role}
                       </p>
@@ -511,20 +553,20 @@ export default function CompanyDashboard() {
                       <span className="text-sm font-bold text-primary">#{performer.rank}</span>
                     </div>
                     <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center flex-shrink-0">
-                      {performer.user_profiles?.avatar_url ? (
+                      {performer.profile?.avatar_url ? (
                         <img 
-                          src={performer.user_profiles.avatar_url} 
-                          alt={performer.user_profiles.full_name}
+                          src={performer.profile.avatar_url} 
+                          alt={performer.profile.full_name}
                           className="w-10 h-10 rounded-full object-cover"
                         />
                       ) : (
                         <span className="text-sm font-medium text-primary">
-                          {performer.user_profiles?.full_name?.charAt(0) || 'U'}
+                          {performer.profile?.full_name?.charAt(0) || 'U'}
                         </span>
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-foreground">{performer.user_profiles?.full_name}</p>
+                      <p className="font-medium text-foreground">{performer.profile?.full_name}</p>
                       <p className="text-sm text-muted-foreground">
                         {performer.departments?.name || 'Sin departamento'}
                       </p>

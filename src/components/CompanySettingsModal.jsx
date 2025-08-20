@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { X, Building2, Settings as SettingsIcon, AlertCircle, CheckCircle, Save } from 'lucide-react';
+import { X, Building2, Settings as SettingsIcon, AlertCircle, CheckCircle, Save, Clock, Bell, Users } from 'lucide-react';
 
 export default function CompanySettingsModal({ isOpen, onClose, company, onSettingsSaved }) {
   const [loading, setLoading] = React.useState(false);
@@ -12,34 +12,33 @@ export default function CompanySettingsModal({ isOpen, onClose, company, onSetti
   const [website, setWebsite] = React.useState('');
   const [phone, setPhone] = React.useState('');
   const [address, setAddress] = React.useState('');
-  const [city, setCity] = React.useState('');
-  const [state, setState] = React.useState('');
-  const [zipCode, setZipCode] = React.useState('');
-  const [country, setCountry] = React.useState('España');
+  const [email, setEmail] = React.useState('');
+  const [industry, setIndustry] = React.useState('');
+  const [size, setSize] = React.useState('small');
   
   // Configuración de horarios
-  const [workDays, setWorkDays] = React.useState(['monday', 'tuesday', 'wednesday', 'thursday', 'friday']);
-  const [workStartTime, setWorkStartTime] = React.useState('09:00');
-  const [workEndTime, setWorkEndTime] = React.useState('18:00');
-  const [breakStartTime, setBreakStartTime] = React.useState('13:00');
-  const [breakEndTime, setBreakEndTime] = React.useState('14:00');
+  const [workingHoursPerDay, setWorkingHoursPerDay] = React.useState(8.0);
+  const [workingDaysPerWeek, setWorkingDaysPerWeek] = React.useState(5);
+  const [timezone, setTimezone] = React.useState('UTC');
   
   // Configuración de fichajes
   const [requireLocation, setRequireLocation] = React.useState(false);
   const [allowOvertime, setAllowOvertime] = React.useState(true);
-  const [maxOvertimeHours, setMaxOvertimeHours] = React.useState(40);
-  const [autoApproveOvertime, setAutoApproveOvertime] = React.useState(false);
   
   // Configuración de solicitudes
-  const [defaultVacationDays, setDefaultVacationDays] = React.useState(22);
   const [autoApproveRequests, setAutoApproveRequests] = React.useState(false);
-  const [requireApprovalForOvertime, setRequireApprovalForOvertime] = React.useState(true);
+  const [maxVacationDays, setMaxVacationDays] = React.useState(20);
   
-  // Configuración de notificaciones
-  const [emailNotifications, setEmailNotifications] = React.useState(true);
-  const [pushNotifications, setPushNotifications] = React.useState(true);
+  // Configuración de alertas
+  const [notifyTimeClock, setNotifyTimeClock] = React.useState(true);
+  const [notifyRequests, setNotifyRequests] = React.useState(true);
+  const [notifyEmployees, setNotifyEmployees] = React.useState(true);
+  const [notifyDocuments, setNotifyDocuments] = React.useState(true);
+  const [notifyInvitations, setNotifyInvitations] = React.useState(true);
   const [notifyLateArrivals, setNotifyLateArrivals] = React.useState(true);
   const [notifyAbsences, setNotifyAbsences] = React.useState(true);
+  const [notifyOvertime, setNotifyOvertime] = React.useState(true);
+  const [notifySystemWarnings, setNotifySystemWarnings] = React.useState(true);
   
   const [message, setMessage] = React.useState('');
 
@@ -57,10 +56,9 @@ export default function CompanySettingsModal({ isOpen, onClose, company, onSetti
       setWebsite(company.website || '');
       setPhone(company.phone || '');
       setAddress(company.address || '');
-      setCity(company.city || '');
-      setState(company.state || '');
-      setZipCode(company.zip_code || '');
-      setCountry(company.country || 'España');
+      setEmail(company.email || '');
+      setIndustry(company.industry || '');
+      setSize(company.size || 'small');
 
       // Cargar configuraciones
       const { data: settings, error } = await supabase
@@ -71,28 +69,28 @@ export default function CompanySettingsModal({ isOpen, onClose, company, onSetti
 
       if (!error && settings) {
         // Configuración de horarios
-        setWorkDays(settings.work_days || ['monday', 'tuesday', 'wednesday', 'thursday', 'friday']);
-        setWorkStartTime(settings.work_start_time || '09:00');
-        setWorkEndTime(settings.work_end_time || '18:00');
-        setBreakStartTime(settings.break_start_time || '13:00');
-        setBreakEndTime(settings.break_end_time || '14:00');
+        setWorkingHoursPerDay(settings.working_hours_per_day || 8.0);
+        setWorkingDaysPerWeek(settings.working_days_per_week || 5);
+        setTimezone(settings.timezone || 'UTC');
 
         // Configuración de fichajes
         setRequireLocation(settings.require_location || false);
         setAllowOvertime(settings.allow_overtime || true);
-        setMaxOvertimeHours(settings.max_overtime_hours || 40);
-        setAutoApproveOvertime(settings.auto_approve_overtime || false);
 
         // Configuración de solicitudes
-        setDefaultVacationDays(settings.default_vacation_days || 22);
         setAutoApproveRequests(settings.auto_approve_requests || false);
-        setRequireApprovalForOvertime(settings.require_approval_for_overtime || true);
+        setMaxVacationDays(settings.max_vacation_days || 20);
 
-        // Configuración de notificaciones
-        setEmailNotifications(settings.email_notifications || true);
-        setPushNotifications(settings.push_notifications || true);
-        setNotifyLateArrivals(settings.notify_late_arrivals || true);
-        setNotifyAbsences(settings.notify_absences || true);
+        // Configuración de alertas
+        setNotifyTimeClock(settings.notify_time_clock !== false);
+        setNotifyRequests(settings.notify_requests !== false);
+        setNotifyEmployees(settings.notify_employees !== false);
+        setNotifyDocuments(settings.notify_documents !== false);
+        setNotifyInvitations(settings.notify_invitations !== false);
+        setNotifyLateArrivals(settings.notify_late_arrivals !== false);
+        setNotifyAbsences(settings.notify_absences !== false);
+        setNotifyOvertime(settings.notify_overtime !== false);
+        setNotifySystemWarnings(settings.notify_system_warnings !== false);
       }
     } catch (error) {
       console.error('Error loading company data:', error);
@@ -115,12 +113,7 @@ export default function CompanySettingsModal({ isOpen, onClose, company, onSetti
       return false;
     }
 
-    if (maxOvertimeHours < 0 || maxOvertimeHours > 168) {
-      setMessage('Error: Las horas extra máximas deben estar entre 0 y 168');
-      return false;
-    }
-
-    if (defaultVacationDays < 0 || defaultVacationDays > 365) {
+    if (maxVacationDays < 0 || maxVacationDays > 365) {
       setMessage('Error: Los días de vacaciones deben estar entre 0 y 365');
       return false;
     }
@@ -153,10 +146,9 @@ export default function CompanySettingsModal({ isOpen, onClose, company, onSetti
           website: website.trim() || null,
           phone: phone.trim() || null,
           address: address.trim() || null,
-          city: city.trim() || null,
-          state: state.trim() || null,
-          zip_code: zipCode.trim() || null,
-          country: country.trim(),
+          email: email.trim() || null,
+          industry: industry.trim() || null,
+          size: size.trim() || null,
           updated_at: new Date().toISOString()
         })
         .eq('id', company.id);
@@ -168,23 +160,25 @@ export default function CompanySettingsModal({ isOpen, onClose, company, onSetti
         .from('company_settings')
         .upsert({
           company_id: company.id,
-          work_days: workDays,
-          work_start_time: workStartTime,
-          work_end_time: workEndTime,
-          break_start_time: breakStartTime,
-          break_end_time: breakEndTime,
+          working_hours_per_day: workingHoursPerDay,
+          working_days_per_week: workingDaysPerWeek,
+          timezone: timezone,
           require_location: requireLocation,
           allow_overtime: allowOvertime,
-          max_overtime_hours: maxOvertimeHours,
-          auto_approve_overtime: autoApproveOvertime,
-          default_vacation_days: defaultVacationDays,
           auto_approve_requests: autoApproveRequests,
-          require_approval_for_overtime: requireApprovalForOvertime,
-          email_notifications: emailNotifications,
-          push_notifications: pushNotifications,
+          max_vacation_days: maxVacationDays,
+          notify_time_clock: notifyTimeClock,
+          notify_requests: notifyRequests,
+          notify_employees: notifyEmployees,
+          notify_documents: notifyDocuments,
+          notify_invitations: notifyInvitations,
           notify_late_arrivals: notifyLateArrivals,
           notify_absences: notifyAbsences,
+          notify_overtime: notifyOvertime,
+          notify_system_warnings: notifySystemWarnings,
           updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'company_id'
         });
 
       if (settingsError) throw settingsError;
@@ -200,10 +194,9 @@ export default function CompanySettingsModal({ isOpen, onClose, company, onSetti
           website: website.trim() || null,
           phone: phone.trim() || null,
           address: address.trim() || null,
-          city: city.trim() || null,
-          state: state.trim() || null,
-          zip_code: zipCode.trim() || null,
-          country: country.trim()
+          email: email.trim() || null,
+          industry: industry.trim() || null,
+          size: size.trim() || null
         });
       }
 
@@ -220,24 +213,6 @@ export default function CompanySettingsModal({ isOpen, onClose, company, onSetti
       setLoading(false);
     }
   }
-
-  function toggleWorkDay(day) {
-    setWorkDays(prev => 
-      prev.includes(day) 
-        ? prev.filter(d => d !== day)
-        : [...prev, day]
-    );
-  }
-
-  const workDaysOptions = [
-    { value: 'monday', label: 'Lunes' },
-    { value: 'tuesday', label: 'Martes' },
-    { value: 'wednesday', label: 'Miércoles' },
-    { value: 'thursday', label: 'Jueves' },
-    { value: 'friday', label: 'Viernes' },
-    { value: 'saturday', label: 'Sábado' },
-    { value: 'sunday', label: 'Domingo' }
-  ];
 
   if (!isOpen) return null;
 
@@ -272,7 +247,7 @@ export default function CompanySettingsModal({ isOpen, onClose, company, onSetti
             { id: 'schedule', label: 'Horarios', icon: SettingsIcon },
             { id: 'timeclock', label: 'Fichajes', icon: SettingsIcon },
             { id: 'requests', label: 'Solicitudes', icon: SettingsIcon },
-            { id: 'notifications', label: 'Notificaciones', icon: SettingsIcon }
+            { id: 'alerts', label: 'Alertas', icon: Bell }
           ].map((tab) => {
             const TabIcon = tab.icon;
             return (
@@ -344,11 +319,11 @@ export default function CompanySettingsModal({ isOpen, onClose, company, onSetti
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-2">País</label>
+                  <label className="block text-sm font-medium mb-2">Email</label>
                   <input
-                    type="text"
-                    value={country}
-                    onChange={(e) => setCountry(e.target.value)}
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
                     className="input w-full"
                   />
                 </div>
@@ -364,31 +339,22 @@ export default function CompanySettingsModal({ isOpen, onClose, company, onSetti
                 />
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <label className="block text-sm font-medium mb-2">Ciudad</label>
+                  <label className="block text-sm font-medium mb-2">Industria</label>
                   <input
                     type="text"
-                    value={city}
-                    onChange={(e) => setCity(e.target.value)}
+                    value={industry}
+                    onChange={(e) => setIndustry(e.target.value)}
                     className="input w-full"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-2">Provincia</label>
+                  <label className="block text-sm font-medium mb-2">Tamaño</label>
                   <input
                     type="text"
-                    value={state}
-                    onChange={(e) => setState(e.target.value)}
-                    className="input w-full"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Código Postal</label>
-                  <input
-                    type="text"
-                    value={zipCode}
-                    onChange={(e) => setZipCode(e.target.value)}
+                    value={size}
+                    onChange={(e) => setSize(e.target.value)}
                     className="input w-full"
                   />
                 </div>
@@ -398,63 +364,110 @@ export default function CompanySettingsModal({ isOpen, onClose, company, onSetti
 
           {/* Schedule Tab */}
           {activeTab === 'schedule' && (
-            <div className="space-y-6">
-              <div>
-                <label className="block text-sm font-medium mb-3">Días Laborables</label>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  {workDaysOptions.map((day) => (
-                    <label key={day.value} className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={workDays.includes(day.value)}
-                        onChange={() => toggleWorkDay(day.value)}
-                        className="w-4 h-4"
-                      />
-                      <span className="text-sm">{day.label}</span>
+            <div className="space-y-8">
+              {/* Horario de trabajo */}
+              <div className="card p-6">
+                <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
+                  <Clock className="w-5 h-5 text-blue-600" />
+                  Horario de Trabajo
+                </h3>
+                
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div>
+                    <label className="block text-sm font-medium mb-2">
+                      Horas por día <span className="text-muted-foreground">(estándar)</span>
                     </label>
-                  ))}
+                    <div className="relative">
+                      <input
+                        type="number"
+                        value={workingHoursPerDay}
+                        onChange={(e) => setWorkingHoursPerDay(parseFloat(e.target.value) || 0)}
+                        min="0"
+                        max="24"
+                        step="0.5"
+                        className="input w-full pr-8"
+                      />
+                      <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-sm text-muted-foreground">
+                        h
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Horas estándar por día laboral
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium mb-2">
+                      Días por semana <span className="text-muted-foreground">(laborables)</span>
+                    </label>
+                    <select
+                      value={workingDaysPerWeek}
+                      onChange={(e) => setWorkingDaysPerWeek(parseInt(e.target.value) || 5)}
+                      className="input w-full"
+                    >
+                      <option value="5">5 días (Lunes - Viernes)</option>
+                      <option value="6">6 días (Lunes - Sábado)</option>
+                      <option value="7">7 días (Lunes - Domingo)</option>
+                      <option value="4">4 días (Lunes - Jueves)</option>
+                      <option value="3">3 días (Lunes - Miércoles)</option>
+                    </select>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Días laborables por semana
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium mb-2">
+                      Zona horaria <span className="text-muted-foreground">(empresa)</span>
+                    </label>
+                    <select
+                      value={timezone}
+                      onChange={(e) => setTimezone(e.target.value)}
+                      className="input w-full"
+                    >
+                      <option value="Europe/Madrid">Europe/Madrid (GMT+1/+2)</option>
+                      <option value="UTC">UTC (GMT+0)</option>
+                      <option value="America/New_York">America/New_York (GMT-5/-4)</option>
+                      <option value="America/Los_Angeles">America/Los_Angeles (GMT-8/-7)</option>
+                      <option value="Europe/London">Europe/London (GMT+0/+1)</option>
+                      <option value="Europe/Paris">Europe/Paris (GMT+1/+2)</option>
+                      <option value="Asia/Tokyo">Asia/Tokyo (GMT+9)</option>
+                      <option value="Australia/Sydney">Australia/Sydney (GMT+10/+11)</option>
+                    </select>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Zona horaria de la empresa
+                    </p>
+                  </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm font-medium mb-2">Hora de Inicio</label>
-                  <input
-                    type="time"
-                    value={workStartTime}
-                    onChange={(e) => setWorkStartTime(e.target.value)}
-                    className="input w-full"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Hora de Fin</label>
-                  <input
-                    type="time"
-                    value={workEndTime}
-                    onChange={(e) => setWorkEndTime(e.target.value)}
-                    className="input w-full"
-                  />
+              {/* Información adicional */}
+              <div className="card p-6 bg-blue-50 border-blue-200">
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
+                    <Clock className="w-4 h-4 text-blue-600" />
+                  </div>
+                  <div>
+                    <h4 className="font-medium text-blue-900 mb-2">Configuración de Horarios</h4>
+                    <div className="text-sm text-blue-800 space-y-1">
+                      <p>• <strong>Horas semanales:</strong> {workingHoursPerDay * workingDaysPerWeek} horas</p>
+                      <p>• <strong>Horas mensuales:</strong> {(workingHoursPerDay * workingDaysPerWeek * 4.33).toFixed(1)} horas (promedio)</p>
+                      <p>• <strong>Zona horaria:</strong> {timezone}</p>
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm font-medium mb-2">Inicio de Pausa</label>
-                  <input
-                    type="time"
-                    value={breakStartTime}
-                    onChange={(e) => setBreakStartTime(e.target.value)}
-                    className="input w-full"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Fin de Pausa</label>
-                  <input
-                    type="time"
-                    value={breakEndTime}
-                    onChange={(e) => setBreakEndTime(e.target.value)}
-                    className="input w-full"
-                  />
+              {/* Notas importantes */}
+              <div className="card p-4 bg-amber-50 border-amber-200">
+                <div className="flex items-start gap-3">
+                  <div className="w-6 h-6 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0">
+                    <AlertCircle className="w-3 h-3 text-amber-600" />
+                  </div>
+                  <div className="text-sm text-amber-800">
+                    <p className="font-medium mb-1">Nota importante:</p>
+                    <p>Esta configuración se utilizará como base para calcular las horas trabajadas, detectar tardanzas y gestionar las horas extra de los empleados.</p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -483,32 +496,6 @@ export default function CompanySettingsModal({ isOpen, onClose, company, onSetti
                   />
                   <span className="text-sm font-medium">Permitir horas extra</span>
                 </label>
-
-                {allowOvertime && (
-                  <div className="ml-6 space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium mb-2">Horas extra máximas por mes</label>
-                      <input
-                        type="number"
-                        value={maxOvertimeHours}
-                        onChange={(e) => setMaxOvertimeHours(parseInt(e.target.value) || 0)}
-                        min="0"
-                        max="168"
-                        className="input w-full"
-                      />
-                    </div>
-
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={autoApproveOvertime}
-                        onChange={(e) => setAutoApproveOvertime(e.target.checked)}
-                        className="w-4 h-4"
-                      />
-                      <span className="text-sm">Aprobar horas extra automáticamente</span>
-                    </label>
-                  </div>
-                )}
               </div>
             </div>
           )}
@@ -516,18 +503,6 @@ export default function CompanySettingsModal({ isOpen, onClose, company, onSetti
           {/* Requests Tab */}
           {activeTab === 'requests' && (
             <div className="space-y-6">
-              <div>
-                <label className="block text-sm font-medium mb-2">Días de vacaciones por defecto</label>
-                <input
-                  type="number"
-                  value={defaultVacationDays}
-                  onChange={(e) => setDefaultVacationDays(parseInt(e.target.value) || 0)}
-                  min="0"
-                  max="365"
-                  className="input w-full"
-                />
-              </div>
-
               <div className="space-y-4">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
@@ -539,62 +514,192 @@ export default function CompanySettingsModal({ isOpen, onClose, company, onSetti
                   <span className="text-sm font-medium">Aprobar solicitudes automáticamente</span>
                 </label>
 
-                <label className="flex items-center gap-2 cursor-pointer">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Días de vacaciones máximos</label>
                   <input
-                    type="checkbox"
-                    checked={requireApprovalForOvertime}
-                    onChange={(e) => setRequireApprovalForOvertime(e.target.checked)}
-                    className="w-4 h-4"
+                    type="number"
+                    value={maxVacationDays}
+                    onChange={(e) => setMaxVacationDays(parseInt(e.target.value) || 0)}
+                    min="0"
+                    max="365"
+                    className="input w-full"
                   />
-                  <span className="text-sm font-medium">Requerir aprobación para horas extra</span>
-                </label>
+                </div>
               </div>
             </div>
           )}
 
-          {/* Notifications Tab */}
-          {activeTab === 'notifications' && (
-            <div className="space-y-6">
-              <div className="space-y-4">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={emailNotifications}
-                    onChange={(e) => setEmailNotifications(e.target.checked)}
-                    className="w-4 h-4"
-                  />
-                  <span className="text-sm font-medium">Notificaciones por email</span>
-                </label>
+          {/* Alerts Tab */}
+          {activeTab === 'alerts' && (
+            <div className="space-y-8">
+              {/* Notificaciones de fichajes */}
+              <div className="card p-6">
+                <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
+                  <Clock className="w-5 h-5 text-blue-600" />
+                  Fichajes y Asistencia
+                </h3>
+                
+                <div className="space-y-4">
+                  <label className="flex items-center gap-3 cursor-pointer p-3 rounded-lg hover:bg-secondary/50 transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={notifyTimeClock}
+                      onChange={(e) => setNotifyTimeClock(e.target.checked)}
+                      className="w-4 h-4"
+                    />
+                    <div>
+                      <span className="text-sm font-medium">Fichajes de empleados</span>
+                      <p className="text-xs text-muted-foreground">Notificar cuando los empleados fichan entrada/salida</p>
+                    </div>
+                  </label>
 
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={pushNotifications}
-                    onChange={(e) => setPushNotifications(e.target.checked)}
-                    className="w-4 h-4"
-                  />
-                  <span className="text-sm font-medium">Notificaciones push</span>
-                </label>
+                  <label className="flex items-center gap-3 cursor-pointer p-3 rounded-lg hover:bg-secondary/50 transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={notifyLateArrivals}
+                      onChange={(e) => setNotifyLateArrivals(e.target.checked)}
+                      className="w-4 h-4"
+                    />
+                    <div>
+                      <span className="text-sm font-medium">Llegadas tardías</span>
+                      <p className="text-xs text-muted-foreground">Alertar cuando un empleado llega tarde</p>
+                    </div>
+                  </label>
 
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={notifyLateArrivals}
-                    onChange={(e) => setNotifyLateArrivals(e.target.checked)}
-                    className="w-4 h-4"
-                  />
-                  <span className="text-sm font-medium">Notificar llegadas tardías</span>
-                </label>
+                  <label className="flex items-center gap-3 cursor-pointer p-3 rounded-lg hover:bg-secondary/50 transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={notifyAbsences}
+                      onChange={(e) => setNotifyAbsences(e.target.checked)}
+                      className="w-4 h-4"
+                    />
+                    <div>
+                      <span className="text-sm font-medium">Ausencias no justificadas</span>
+                      <p className="text-xs text-muted-foreground">Notificar cuando un empleado no ficha</p>
+                    </div>
+                  </label>
 
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={notifyAbsences}
-                    onChange={(e) => setNotifyAbsences(e.target.checked)}
-                    className="w-4 h-4"
-                  />
-                  <span className="text-sm font-medium">Notificar ausencias</span>
-                </label>
+                  <label className="flex items-center gap-3 cursor-pointer p-3 rounded-lg hover:bg-secondary/50 transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={notifyOvertime}
+                      onChange={(e) => setNotifyOvertime(e.target.checked)}
+                      className="w-4 h-4"
+                    />
+                    <div>
+                      <span className="text-sm font-medium">Horas extra</span>
+                      <p className="text-xs text-muted-foreground">Alertar cuando se registran horas extra</p>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              {/* Notificaciones de solicitudes */}
+              <div className="card p-6">
+                <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
+                  <AlertCircle className="w-5 h-5 text-orange-600" />
+                  Solicitudes y Permisos
+                </h3>
+                
+                <div className="space-y-4">
+                  <label className="flex items-center gap-3 cursor-pointer p-3 rounded-lg hover:bg-secondary/50 transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={notifyRequests}
+                      onChange={(e) => setNotifyRequests(e.target.checked)}
+                      className="w-4 h-4"
+                    />
+                    <div>
+                      <span className="text-sm font-medium">Nuevas solicitudes</span>
+                      <p className="text-xs text-muted-foreground">Notificar cuando se crean solicitudes de vacaciones/permisos</p>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              {/* Notificaciones de empleados */}
+              <div className="card p-6">
+                <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
+                  <Users className="w-5 h-5 text-green-600" />
+                  Gestión de Empleados
+                </h3>
+                
+                <div className="space-y-4">
+                  <label className="flex items-center gap-3 cursor-pointer p-3 rounded-lg hover:bg-secondary/50 transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={notifyEmployees}
+                      onChange={(e) => setNotifyEmployees(e.target.checked)}
+                      className="w-4 h-4"
+                    />
+                    <div>
+                      <span className="text-sm font-medium">Cambios de empleados</span>
+                      <p className="text-xs text-muted-foreground">Notificar altas, bajas y cambios de estado</p>
+                    </div>
+                  </label>
+
+                  <label className="flex items-center gap-3 cursor-pointer p-3 rounded-lg hover:bg-secondary/50 transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={notifyInvitations}
+                      onChange={(e) => setNotifyInvitations(e.target.checked)}
+                      className="w-4 h-4"
+                    />
+                    <div>
+                      <span className="text-sm font-medium">Invitaciones</span>
+                      <p className="text-xs text-muted-foreground">Notificar envío y aceptación de invitaciones</p>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              {/* Notificaciones de documentos */}
+              <div className="card p-6">
+                <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
+                  <SettingsIcon className="w-5 h-5 text-purple-600" />
+                  Documentos y Sistema
+                </h3>
+                
+                <div className="space-y-4">
+                  <label className="flex items-center gap-3 cursor-pointer p-3 rounded-lg hover:bg-secondary/50 transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={notifyDocuments}
+                      onChange={(e) => setNotifyDocuments(e.target.checked)}
+                      className="w-4 h-4"
+                    />
+                    <div>
+                      <span className="text-sm font-medium">Documentos</span>
+                      <p className="text-xs text-muted-foreground">Notificar subida y actualización de documentos</p>
+                    </div>
+                  </label>
+
+                  <label className="flex items-center gap-3 cursor-pointer p-3 rounded-lg hover:bg-secondary/50 transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={notifySystemWarnings}
+                      onChange={(e) => setNotifySystemWarnings(e.target.checked)}
+                      className="w-4 h-4"
+                    />
+                    <div>
+                      <span className="text-sm font-medium">Advertencias del sistema</span>
+                      <p className="text-xs text-muted-foreground">Notificar errores y advertencias importantes</p>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              {/* Información adicional */}
+              <div className="card p-4 bg-blue-50 border-blue-200">
+                <div className="flex items-start gap-3">
+                  <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
+                    <Bell className="w-3 h-3 text-blue-600" />
+                  </div>
+                  <div className="text-sm text-blue-800">
+                    <p className="font-medium mb-1">Configuración de Alertas</p>
+                    <p>Estas configuraciones controlan qué notificaciones recibirás como administrador. Los empleados siempre recibirán notificaciones relevantes para ellos.</p>
+                  </div>
+                </div>
               </div>
             </div>
           )}

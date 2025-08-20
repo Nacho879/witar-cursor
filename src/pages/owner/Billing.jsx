@@ -59,15 +59,10 @@ export default function Billing() {
         // Cargar empleados activos
         const { data: employeesData } = await supabase
           .from('user_company_roles')
-          .select(`
-            *,
-            user_profiles (
-              full_name,
-              email
-            )
-          `)
+          .select('*')
           .eq('company_id', userRole.company_id)
-          .eq('is_active', true);
+          .eq('is_active', true)
+          .neq('role', 'owner'); // Excluir al owner del conteo
 
         if (employeesData) {
           setEmployees(employeesData);
@@ -79,7 +74,7 @@ export default function Billing() {
           .select('*')
           .eq('company_id', userRole.company_id)
           .eq('status', 'active')
-          .single();
+          .maybeSingle();
 
         if (subscriptionData) {
           setSubscription(subscriptionData);

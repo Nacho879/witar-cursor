@@ -42,18 +42,13 @@ export class BillingService {
   // Obtener datos de facturación de la empresa
   static async getBillingData(companyId) {
     try {
-      // Obtener empleados activos
+      // Obtener empleados activos (excluyendo al owner)
       const { data: employees, error: employeesError } = await supabase
         .from('user_company_roles')
-        .select(`
-          *,
-          user_profiles (
-            full_name,
-            email
-          )
-        `)
+        .select('*')
         .eq('company_id', companyId)
-        .eq('is_active', true);
+        .eq('is_active', true)
+        .neq('role', 'owner'); // Excluir al owner del conteo
 
       if (employeesError) throw employeesError;
 
@@ -63,9 +58,9 @@ export class BillingService {
         .select('*')
         .eq('company_id', companyId)
         .eq('status', 'active')
-        .single();
+        .maybeSingle();
 
-      if (subscriptionError && subscriptionError.code !== 'PGRST116') {
+      if (subscriptionError) {
         throw subscriptionError;
       }
 
@@ -137,9 +132,9 @@ export class BillingService {
         .eq('company_id', companyId)
         .order('created_at', { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
 
-      if (error && error.code !== 'PGRST116') {
+      if (error) {
         throw error;
       }
 

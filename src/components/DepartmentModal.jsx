@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { X, Building2, Users, AlertCircle, CheckCircle } from 'lucide-react';
+import { X, Building, Users, AlertCircle, CheckCircle } from 'lucide-react';
 
 export default function DepartmentModal({ isOpen, onClose, department = null, onDepartmentSaved }) {
   const [loading, setLoading] = React.useState(false);
@@ -62,23 +62,32 @@ export default function DepartmentModal({ isOpen, onClose, department = null, on
         .single();
 
       if (userRole) {
-        // Cargar managers y admins de la empresa
-        const { data, error } = await supabase
+        // Cargar SOLO managers de la empresa (no admins ni owners)
+        const { data: managersData, error } = await supabase
           .from('user_company_roles')
-          .select(`
-            id,
-            user_profiles (
-              full_name,
-              email
-            )
-          `)
+          .select('id, user_id')
           .eq('company_id', userRole.company_id)
-          .in('role', ['manager', 'admin', 'owner'])
-          .eq('is_active', true)
-          .order('user_profiles(full_name)');
+          .eq('role', 'manager') // Solo managers
+          .eq('is_active', true);
 
-        if (!error && data) {
-          setManagers(data);
+        if (!error && managersData) {
+          // Obtener los perfiles de usuario para cada manager
+          const managersWithProfiles = await Promise.all(
+            managersData.map(async (manager) => {
+              const { data: profile } = await supabase
+                .from('user_profiles')
+                .select('full_name')
+                .eq('user_id', manager.user_id)
+                .maybeSingle();
+              
+              return {
+                ...manager,
+                profile: profile || { full_name: `Manager ${manager.user_id.slice(0, 8)}` }
+              };
+            })
+          );
+
+          setManagers(managersWithProfiles);
         }
       }
     } catch (error) {
@@ -123,8 +132,12 @@ export default function DepartmentModal({ isOpen, onClose, department = null, on
       }
 
       let result;
+      let oldManagerId = null;
 
       if (isEditing) {
+        // Obtener el manager anterior antes de actualizar
+        oldManagerId = department.manager_id;
+        
         // Actualizar departamento existente
         const { data, error } = await supabase
           .from('departments')
@@ -158,6 +171,11 @@ export default function DepartmentModal({ isOpen, onClose, department = null, on
         result = data;
       }
 
+      // Actualizar supervisores de empleados del departamento
+      if (result.id) {
+        await updateDepartmentEmployeeSupervisors(result.id, oldManagerId, managerId);
+      }
+
       setMessage('¡Departamento guardado exitosamente!');
       
       // Notificar al componente padre
@@ -168,7 +186,6 @@ export default function DepartmentModal({ isOpen, onClose, department = null, on
       // Cerrar modal después de 2 segundos
       setTimeout(() => {
         onClose();
-        setMessage('');
       }, 2000);
 
     } catch (error) {
@@ -176,6 +193,33 @@ export default function DepartmentModal({ isOpen, onClose, department = null, on
       setMessage(`Error: ${error.message}`);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function updateDepartmentEmployeeSupervisors(departmentId, oldManagerId, newManagerId) {
+    try {
+      // Si hay un manager anterior, remover supervisión de empleados del departamento
+      if (oldManagerId && oldManagerId !== newManagerId) {
+        await supabase
+          .from('user_company_roles')
+          .update({ supervisor_id: null })
+          .eq('department_id', departmentId)
+          .eq('supervisor_id', oldManagerId)
+          .neq('role', 'manager'); // No cambiar supervisores de otros managers
+      }
+
+      // Si hay un nuevo manager, asignar supervisión a todos los empleados del departamento
+      if (newManagerId) {
+        await supabase
+          .from('user_company_roles')
+          .update({ supervisor_id: newManagerId })
+          .eq('department_id', departmentId)
+          .eq('supervisor_id', null) // Solo empleados sin supervisor
+          .neq('role', 'manager'); // No asignar supervisores a managers
+      }
+    } catch (error) {
+      console.error('Error updating employee supervisors:', error);
+      // No lanzar error para no interrumpir el guardado del departamento
     }
   }
 
@@ -188,7 +232,7 @@ export default function DepartmentModal({ isOpen, onClose, department = null, on
         <div className="flex items-center justify-between p-6 border-b border-border">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-              <Building2 className="w-5 h-5 text-blue-600" />
+              <Building className="w-5 h-5 text-blue-600" />
             </div>
             <div>
               <h2 className="text-xl font-semibold text-foreground">
@@ -254,7 +298,7 @@ export default function DepartmentModal({ isOpen, onClose, department = null, on
               <option value="">Sin manager asignado</option>
               {managers.map((manager) => (
                 <option key={manager.id} value={manager.id}>
-                  {manager.user_profiles?.full_name} ({manager.user_profiles?.email})
+                  {manager.profile?.full_name}
                 </option>
               ))}
             </select>
@@ -296,7 +340,7 @@ export default function DepartmentModal({ isOpen, onClose, department = null, on
               {loading ? (
                 <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
               ) : (
-                <Building2 className="w-4 h-4" />
+                <Building className="w-4 h-4" />
               )}
               {isEditing ? 'Actualizar' : 'Crear'}
             </button>

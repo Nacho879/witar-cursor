@@ -24,6 +24,26 @@ export class ReportsService {
 
       if (timeEntriesError) throw timeEntriesError;
 
+      // Obtener los perfiles de usuario por separado
+      const userIds = [...new Set(timeEntries.map(entry => entry.user_id))];
+      const { data: profiles, error: profilesError } = await supabase
+        .from('user_profiles')
+        .select('user_id, full_name')
+        .in('user_id', userIds);
+
+      if (profilesError) {
+        console.error('Error loading user profiles:', profilesError);
+      }
+
+      // Combinar los datos
+      const timeEntriesWithProfiles = timeEntries.map(entry => {
+        const profile = profiles?.find(p => p.user_id === entry.user_id);
+        return {
+          ...entry,
+          user_profiles: profile || null
+        };
+      });
+
       // Estadísticas de solicitudes
       const { data: requests, error: requestsError } = await supabase
         .from('requests')
@@ -41,11 +61,11 @@ export class ReportsService {
           byDepartment: await this.getEmployeesByDepartment(companyId)
         },
         timeEntries: {
-          total: timeEntries?.length || 0,
-          totalHours: this.calculateTotalHours(timeEntries),
-          averageHoursPerDay: this.calculateAverageHoursPerDay(timeEntries),
-          byEmployee: this.groupTimeEntriesByEmployee(timeEntries),
-          byDate: this.groupTimeEntriesByDate(timeEntries)
+          total: timeEntriesWithProfiles?.length || 0,
+          totalHours: this.calculateTotalHours(timeEntriesWithProfiles),
+          averageHoursPerDay: this.calculateAverageHoursPerDay(timeEntriesWithProfiles),
+          byEmployee: this.groupTimeEntriesByEmployee(timeEntriesWithProfiles),
+          byDate: this.groupTimeEntriesByDate(timeEntriesWithProfiles)
         },
         requests: {
           total: requests?.length || 0,
@@ -54,8 +74,8 @@ export class ReportsService {
           byEmployee: this.groupRequestsByEmployee(requests)
         },
         productivity: {
-          averageAttendance: this.calculateAverageAttendance(timeEntries, employees),
-          topPerformers: this.getTopPerformers(timeEntries, employees),
+          averageAttendance: this.calculateAverageAttendance(timeEntriesWithProfiles, employees),
+          topPerformers: this.getTopPerformers(timeEntriesWithProfiles, employees),
           departmentStats: await this.getDepartmentStats(companyId, startDate)
         }
       };
@@ -68,28 +88,20 @@ export class ReportsService {
   }
 
   // Obtener reporte de asistencia
-  static async getAttendanceReport(companyId, startDate, endDate, employeeId = null) {
+  static async getAttendanceReport(companyId, startDate, endDate, employeeId = null, filters = {}) {
     try {
       let query = supabase
         .from('time_entries')
-        .select(`
-          *,
-          user_company_roles!time_entries_user_id_fkey (
-            user_profiles (
-              full_name,
-              email
-            ),
-            departments (
-              name
-            )
-          )
-        `)
+        .select('*')
         .eq('company_id', companyId)
         .gte('created_at', startDate.toISOString())
         .lte('created_at', endDate.toISOString())
         .order('created_at', { ascending: true });
 
-      if (employeeId) {
+      // Aplicar filtros
+      if (filters && filters.selectedUsers && filters.selectedUsers.length > 0) {
+        query = query.in('user_id', filters.selectedUsers);
+      } else if (employeeId) {
         query = query.eq('user_id', employeeId);
       }
 
@@ -97,11 +109,68 @@ export class ReportsService {
 
       if (error) throw error;
 
+      // Obtener los perfiles de usuario por separado
+      const userIds = [...new Set(timeEntries.map(entry => entry.user_id))];
+      const { data: profiles, error: profilesError } = await supabase
+        .from('user_profiles')
+        .select('user_id, full_name')
+        .in('user_id', userIds);
+
+      if (profilesError) {
+        console.error('Error loading user profiles:', profilesError);
+      }
+
+      // Combinar los datos
+      const timeEntriesWithProfiles = timeEntries.map(entry => {
+        const profile = profiles?.find(p => p.user_id === entry.user_id);
+        return {
+          ...entry,
+          user_profiles: profile || null
+        };
+      });
+
+      // Filtrar por departamentos y roles si es necesario
+      let filteredEntries = timeEntriesWithProfiles;
+      
+      if (filters && ((filters.selectedDepartments && filters.selectedDepartments.length > 0) || 
+          (filters.selectedRoles && filters.selectedRoles.length > 0))) {
+        
+        // Obtener información de roles y departamentos
+        const { data: userRoles, error: rolesError } = await supabase
+          .from('user_company_roles')
+          .select('user_id, role, department_id')
+          .eq('company_id', companyId)
+          .eq('is_active', true);
+
+        if (!rolesError && userRoles) {
+          filteredEntries = timeEntriesWithProfiles.filter(entry => {
+            const userRole = userRoles.find(ur => ur.user_id === entry.user_id);
+            if (!userRole) return false;
+
+            // Filtrar por departamentos
+            if (filters.selectedDepartments && filters.selectedDepartments.length > 0) {
+              if (!userRole.department_id || !filters.selectedDepartments.includes(userRole.department_id)) {
+                return false;
+              }
+            }
+
+            // Filtrar por roles
+            if (filters.selectedRoles && filters.selectedRoles.length > 0) {
+              if (!filters.selectedRoles.includes(userRole.role)) {
+                return false;
+              }
+            }
+
+            return true;
+          });
+        }
+      }
+
       return {
-        timeEntries: timeEntries || [],
-        summary: this.generateAttendanceSummary(timeEntries),
-        dailyStats: this.generateDailyStats(timeEntries, startDate, endDate),
-        employeeStats: this.generateEmployeeStats(timeEntries)
+        timeEntries: filteredEntries || [],
+        summary: this.generateAttendanceSummary(filteredEntries),
+        dailyStats: this.generateDailyStats(filteredEntries, startDate, endDate),
+        employeeStats: this.generateEmployeeStats(filteredEntries)
       };
     } catch (error) {
       console.error('Error getting attendance report:', error);
@@ -110,26 +179,20 @@ export class ReportsService {
   }
 
   // Obtener reporte de solicitudes
-  static async getRequestsReport(companyId, startDate, endDate, status = null, type = null) {
+  static async getRequestsReport(companyId, startDate, endDate, status = null, type = null, filters = {}) {
     try {
       let query = supabase
         .from('requests')
-        .select(`
-          *,
-          user_company_roles!requests_user_id_fkey (
-            user_profiles (
-              full_name,
-              email
-            ),
-            departments (
-              name
-            )
-          )
-        `)
+        .select('*')
         .eq('company_id', companyId)
         .gte('created_at', startDate.toISOString())
         .lte('created_at', endDate.toISOString())
         .order('created_at', { ascending: false });
+
+      // Aplicar filtros de usuarios
+      if (filters && filters.selectedUsers && filters.selectedUsers.length > 0) {
+        query = query.in('user_id', filters.selectedUsers);
+      }
 
       if (status) {
         query = query.eq('status', status);
@@ -143,13 +206,49 @@ export class ReportsService {
 
       if (error) throw error;
 
+      // Filtrar por departamentos y roles si es necesario
+      let filteredRequests = requests;
+      
+      if (filters && ((filters.selectedDepartments && filters.selectedDepartments.length > 0) || 
+          (filters.selectedRoles && filters.selectedRoles.length > 0))) {
+        
+        // Obtener información de roles y departamentos
+        const { data: userRoles, error: rolesError } = await supabase
+          .from('user_company_roles')
+          .select('user_id, role, department_id')
+          .eq('company_id', companyId)
+          .eq('is_active', true);
+
+        if (!rolesError && userRoles) {
+          const filteredUserIds = userRoles.filter(ur => {
+            // Filtrar por departamentos
+            if (filters.selectedDepartments && filters.selectedDepartments.length > 0) {
+              if (!ur.department_id || !filters.selectedDepartments.includes(ur.department_id)) {
+                return false;
+              }
+            }
+
+            // Filtrar por roles
+            if (filters.selectedRoles && filters.selectedRoles.length > 0) {
+              if (!filters.selectedRoles.includes(ur.role)) {
+                return false;
+              }
+            }
+
+            return true;
+          }).map(ur => ur.user_id);
+
+          filteredRequests = requests.filter(req => filteredUserIds.includes(req.user_id));
+        }
+      }
+
       return {
-        requests: requests || [],
-        summary: this.generateRequestsSummary(requests),
-        byStatus: this.groupRequestsByStatus(requests),
-        byType: this.groupRequestsByType(requests),
-        byDepartment: this.groupRequestsByDepartment(requests),
-        approvalTime: this.calculateAverageApprovalTime(requests)
+        requests: filteredRequests || [],
+        summary: this.generateRequestsSummary(filteredRequests),
+        byStatus: this.groupRequestsByStatus(filteredRequests),
+        byType: this.groupRequestsByType(filteredRequests),
+        byDepartment: this.groupRequestsByDepartment(filteredRequests),
+        approvalTime: this.calculateAverageApprovalTime(filteredRequests)
       };
     } catch (error) {
       console.error('Error getting requests report:', error);
@@ -158,52 +257,104 @@ export class ReportsService {
   }
 
   // Obtener reporte de productividad
-  static async getProductivityReport(companyId, startDate, endDate) {
+  static async getProductivityReport(companyId, startDate, endDate, filters = {}) {
     try {
       // Obtener fichajes
-      const { data: timeEntries, error: timeEntriesError } = await supabase
+      let query = supabase
         .from('time_entries')
-        .select(`
-          *,
-          user_company_roles!time_entries_user_id_fkey (
-            user_profiles (
-              full_name,
-              email
-            ),
-            departments (
-              name
-            )
-          )
-        `)
+        .select('*')
         .eq('company_id', companyId)
         .gte('created_at', startDate.toISOString())
         .lte('created_at', endDate.toISOString());
 
+      // Aplicar filtros de usuarios
+      if (filters && filters.selectedUsers && filters.selectedUsers.length > 0) {
+        query = query.in('user_id', filters.selectedUsers);
+      }
+
+      const { data: timeEntries, error: timeEntriesError } = await query;
+
       if (timeEntriesError) throw timeEntriesError;
 
+      // Obtener los perfiles de usuario por separado
+      const userIds = [...new Set(timeEntries.map(entry => entry.user_id))];
+      const { data: profiles, error: profilesError } = await supabase
+        .from('user_profiles')
+        .select('user_id, full_name')
+        .in('user_id', userIds);
+
+      if (profilesError) {
+        console.error('Error loading user profiles:', profilesError);
+      }
+
+      // Combinar los datos
+      const timeEntriesWithProfiles = timeEntries.map(entry => {
+        const profile = profiles?.find(p => p.user_id === entry.user_id);
+        return {
+          ...entry,
+          user_profiles: profile || null
+        };
+      });
+
       // Obtener empleados
-      const { data: employees, error: employeesError } = await supabase
+      let employeesQuery = supabase
         .from('user_company_roles')
-        .select(`
-          *,
-          user_profiles (
-            full_name,
-            email
-          ),
-          departments (
-            name
-          )
-        `)
+        .select('*')
         .eq('company_id', companyId)
         .eq('is_active', true);
 
+      // Aplicar filtros de usuarios a empleados
+      if (filters && filters.selectedUsers && filters.selectedUsers.length > 0) {
+        employeesQuery = employeesQuery.in('user_id', filters.selectedUsers);
+      }
+
+      const { data: employees, error: employeesError } = await employeesQuery;
+
       if (employeesError) throw employeesError;
 
+      // Filtrar por departamentos y roles si es necesario
+      let filteredEmployees = employees;
+      let filteredEntries = timeEntriesWithProfiles;
+      
+      if (filters && ((filters.selectedDepartments && filters.selectedDepartments.length > 0) || 
+          (filters.selectedRoles && filters.selectedRoles.length > 0))) {
+        
+        // Obtener información de roles y departamentos
+        const { data: userRoles, error: rolesError } = await supabase
+          .from('user_company_roles')
+          .select('user_id, role, department_id')
+          .eq('company_id', companyId)
+          .eq('is_active', true);
+
+        if (!rolesError && userRoles) {
+          const filteredUserIds = userRoles.filter(ur => {
+            // Filtrar por departamentos
+            if (filters.selectedDepartments && filters.selectedDepartments.length > 0) {
+              if (!ur.department_id || !filters.selectedDepartments.includes(ur.department_id)) {
+                return false;
+              }
+            }
+
+            // Filtrar por roles
+            if (filters.selectedRoles && filters.selectedRoles.length > 0) {
+              if (!filters.selectedRoles.includes(ur.role)) {
+                return false;
+              }
+            }
+
+            return true;
+          }).map(ur => ur.user_id);
+
+          filteredEmployees = employees.filter(emp => filteredUserIds.includes(emp.user_id));
+          filteredEntries = timeEntriesWithProfiles.filter(entry => filteredUserIds.includes(entry.user_id));
+        }
+      }
+
       return {
-        productivity: this.calculateProductivityMetrics(timeEntries, employees),
-        topPerformers: this.getTopPerformers(timeEntries, employees),
-        departmentProductivity: this.calculateDepartmentProductivity(timeEntries),
-        trends: this.calculateProductivityTrends(timeEntries, startDate, endDate)
+        productivity: this.calculateProductivityMetrics(filteredEntries, filteredEmployees),
+        topPerformers: this.getTopPerformers(filteredEntries, filteredEmployees),
+        departmentProductivity: this.calculateDepartmentProductivity(filteredEntries),
+        trends: this.calculateProductivityTrends(filteredEntries, startDate, endDate)
       };
     } catch (error) {
       console.error('Error getting productivity report:', error);
@@ -216,17 +367,7 @@ export class ReportsService {
     try {
       let query = supabase
         .from('user_company_roles')
-        .select(`
-          *,
-          user_profiles (
-            full_name,
-            email
-          ),
-          departments (
-            name,
-            description
-          )
-        `)
+        .select('*')
         .eq('company_id', companyId)
         .eq('is_active', true);
 
@@ -248,6 +389,344 @@ export class ReportsService {
       };
     } catch (error) {
       console.error('Error getting department report:', error);
+      throw error;
+    }
+  }
+
+  // Obtener reporte de ubicación
+  static async getLocationReport(companyId, startDate, endDate, filters = {}) {
+    try {
+      // Obtener fichajes con información de ubicación
+      let query = supabase
+        .from('time_entries')
+        .select('*')
+        .eq('company_id', companyId)
+        .gte('created_at', startDate.toISOString())
+        .lte('created_at', endDate.toISOString());
+
+      // Aplicar filtros de usuarios
+      if (filters && filters.selectedUsers && filters.selectedUsers.length > 0) {
+        query = query.in('user_id', filters.selectedUsers);
+      }
+
+      const { data: timeEntries, error: timeEntriesError } = await query;
+
+      if (timeEntriesError) throw timeEntriesError;
+
+      // Obtener empleados activos
+      let employeesQuery = supabase
+        .from('user_company_roles')
+        .select('user_id, department_id')
+        .eq('company_id', companyId)
+        .eq('is_active', true)
+        .neq('role', 'owner');
+
+      // Aplicar filtros de usuarios a empleados
+      if (filters && filters.selectedUsers && filters.selectedUsers.length > 0) {
+        employeesQuery = employeesQuery.in('user_id', filters.selectedUsers);
+      }
+
+      const { data: employees, error: employeesError } = await employeesQuery;
+
+      if (employeesError) throw employeesError;
+
+      // Obtener perfiles de empleados por separado
+      const userIds = employees.map(emp => emp.user_id);
+      const { data: profiles, error: profilesError } = await supabase
+        .from('user_profiles')
+        .select('user_id, full_name, avatar_url')
+        .in('user_id', userIds);
+
+      if (profilesError) throw profilesError;
+
+      // Obtener departamentos por separado
+      const departmentIds = employees.map(emp => emp.department_id).filter(id => id);
+      const { data: departments, error: deptError } = await supabase
+        .from('departments')
+        .select('id, name')
+        .in('id', departmentIds);
+
+      if (deptError) {
+        console.error('Error loading departments:', deptError);
+      }
+
+      // Filtrar por departamentos y roles si es necesario
+      let filteredEmployees = employees;
+      
+      if (filters && ((filters.selectedDepartments && filters.selectedDepartments.length > 0) || 
+          (filters.selectedRoles && filters.selectedRoles.length > 0))) {
+        
+        // Obtener información completa de roles y departamentos
+        const { data: userRoles, error: rolesError } = await supabase
+          .from('user_company_roles')
+          .select('user_id, role, department_id')
+          .eq('company_id', companyId)
+          .eq('is_active', true);
+
+        if (!rolesError && userRoles) {
+          const filteredUserIds = userRoles.filter(ur => {
+            // Filtrar por departamentos
+            if (filters.selectedDepartments && filters.selectedDepartments.length > 0) {
+              if (!ur.department_id || !filters.selectedDepartments.includes(ur.department_id)) {
+                return false;
+              }
+            }
+
+            // Filtrar por roles
+            if (filters.selectedRoles && filters.selectedRoles.length > 0) {
+              if (!filters.selectedRoles.includes(ur.role)) {
+                return false;
+              }
+            }
+
+            return true;
+          }).map(ur => ur.user_id);
+
+          filteredEmployees = employees.filter(emp => filteredUserIds.includes(emp.user_id));
+        }
+      }
+
+      // Calcular estadísticas de ubicación
+      const withLocation = timeEntries.filter(entry => entry.location_lat && entry.location_lng).length;
+      const withoutLocation = timeEntries.filter(entry => !entry.location_lat || !entry.location_lng).length;
+      const totalEntries = timeEntries.length;
+      const complianceRate = totalEntries > 0 ? (withLocation / totalEntries) * 100 : 0;
+
+      // Calcular cumplimiento por empleado
+      const employeeCompliance = filteredEmployees.map(employee => {
+        const profile = profiles.find(p => p.user_id === employee.user_id);
+        const department = departments?.find(d => d.id === employee.department_id);
+        const employeeEntries = timeEntries.filter(entry => entry.user_id === employee.user_id);
+        const employeeWithLocation = employeeEntries.filter(entry => entry.location_lat && entry.location_lng).length;
+        const employeeWithoutLocation = employeeEntries.filter(entry => !entry.location_lat || !entry.location_lng).length;
+        const employeeTotal = employeeEntries.length;
+        const employeeComplianceRate = employeeTotal > 0 ? (employeeWithLocation / employeeTotal) * 100 : 0;
+
+        return {
+          userId: employee.user_id,
+          name: profile?.full_name || 'Empleado desconocido',
+          avatar_url: profile?.avatar_url || null,
+          department: department?.name || 'Sin departamento',
+          totalEntries: employeeTotal,
+          withLocation: employeeWithLocation,
+          withoutLocation: employeeWithoutLocation,
+          complianceRate: employeeComplianceRate,
+          timeEntries: employeeEntries.slice(0, 10) // Últimos 10 fichajes para el modal
+        };
+      });
+
+      return {
+        summary: {
+          totalWithLocation: withLocation,
+          totalWithoutLocation: withoutLocation,
+          totalEntries: totalEntries,
+          complianceRate: complianceRate,
+          activeEmployees: filteredEmployees.length
+        },
+        employeeCompliance: employeeCompliance.sort((a, b) => b.complianceRate - a.complianceRate)
+      };
+    } catch (error) {
+      console.error('Error getting location report:', error);
+      throw error;
+    }
+  }
+
+  // Obtener reporte detallado de ubicación para exportar
+  static async getDetailedLocationReport(companyId, startDate, endDate) {
+    try {
+      const { data: timeEntries, error } = await supabase
+        .from('time_entries')
+        .select(`
+          *,
+          user_profiles (
+            full_name
+          ),
+          departments (
+            name
+          )
+        `)
+        .eq('company_id', companyId)
+        .gte('created_at', startDate.toISOString())
+        .lte('created_at', endDate.toISOString())
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      return timeEntries.map(entry => ({
+        'Fecha': new Date(entry.created_at).toLocaleDateString('es-ES'),
+        'Hora': new Date(entry.created_at).toLocaleTimeString('es-ES'),
+        'Empleado': entry.user_profiles?.full_name || 'N/A',
+        'Departamento': entry.departments?.name || 'N/A',
+        'Tipo': entry.type || 'N/A',
+        'Ubicación': entry.location ? 'Sí' : 'No',
+        'Coordenadas': entry.location ? `${entry.latitude}, ${entry.longitude}` : 'N/A',
+        'Dirección': entry.location_address || 'N/A'
+      }));
+    } catch (error) {
+      console.error('Error getting detailed location report:', error);
+      throw error;
+    }
+  }
+
+  // Obtener reporte detallado de asistencia para exportar
+  static async getDetailedAttendanceReport(companyId, startDate, endDate) {
+    try {
+      const { data: timeEntries, error } = await supabase
+        .from('time_entries')
+        .select(`
+          *,
+          user_profiles (
+            full_name
+          ),
+          departments (
+            name
+          )
+        `)
+        .eq('company_id', companyId)
+        .gte('created_at', startDate.toISOString())
+        .lte('created_at', endDate.toISOString())
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      return timeEntries.map(entry => ({
+        'Fecha': new Date(entry.created_at).toLocaleDateString('es-ES'),
+        'Hora': new Date(entry.created_at).toLocaleTimeString('es-ES'),
+        'Empleado': entry.user_profiles?.full_name || 'N/A',
+        'Departamento': entry.departments?.name || 'N/A',
+        'Tipo': entry.type || 'N/A',
+        'Duración': entry.duration ? `${Math.round(entry.duration / 60)} min` : 'N/A',
+        'Ubicación': entry.location ? 'Sí' : 'No'
+      }));
+    } catch (error) {
+      console.error('Error getting detailed attendance report:', error);
+      throw error;
+    }
+  }
+
+  // Obtener reporte detallado de solicitudes para exportar
+  static async getDetailedRequestsReport(companyId, startDate, endDate) {
+    try {
+      const { data: requests, error } = await supabase
+        .from('requests')
+        .select(`
+          *,
+          user_profiles (
+            full_name
+          ),
+          departments (
+            name
+          )
+        `)
+        .eq('company_id', companyId)
+        .gte('created_at', startDate.toISOString())
+        .lte('created_at', endDate.toISOString())
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      return requests.map(request => ({
+        'Fecha': new Date(request.created_at).toLocaleDateString('es-ES'),
+        'Empleado': request.user_profiles?.full_name || 'N/A',
+        'Departamento': request.departments?.name || 'N/A',
+        'Tipo': request.type || 'N/A',
+        'Estado': request.status || 'N/A',
+        'Descripción': request.description || 'N/A',
+        'Fecha de Resolución': request.resolved_at ? new Date(request.resolved_at).toLocaleDateString('es-ES') : 'Pendiente'
+      }));
+    } catch (error) {
+      console.error('Error getting detailed requests report:', error);
+      throw error;
+    }
+  }
+
+  // Obtener reporte detallado de productividad para exportar
+  static async getDetailedProductivityReport(companyId, startDate, endDate) {
+    try {
+      const { data: timeEntries, error } = await supabase
+        .from('time_entries')
+        .select(`
+          *,
+          user_profiles (
+            full_name
+          ),
+          departments (
+            name
+          )
+        `)
+        .eq('company_id', companyId)
+        .gte('created_at', startDate.toISOString())
+        .lte('created_at', endDate.toISOString());
+
+      if (error) throw error;
+
+      // Agrupar por empleado
+      const employeeStats = {};
+      timeEntries.forEach(entry => {
+        const employeeId = entry.user_id;
+        if (!employeeStats[employeeId]) {
+          employeeStats[employeeId] = {
+            name: entry.user_profiles?.full_name || 'N/A',
+            department: entry.departments?.name || 'N/A',
+            totalHours: 0,
+            totalEntries: 0,
+            averageHoursPerDay: 0
+          };
+        }
+        employeeStats[employeeId].totalHours += entry.duration || 0;
+        employeeStats[employeeId].totalEntries += 1;
+      });
+
+      // Calcular promedios
+      Object.values(employeeStats).forEach(employee => {
+        employee.totalHours = Math.round(employee.totalHours / 60 * 100) / 100; // Convertir a horas
+        employee.averageHoursPerDay = employee.totalEntries > 0 ? 
+          Math.round((employee.totalHours / employee.totalEntries) * 100) / 100 : 0;
+      });
+
+      return Object.values(employeeStats).map(employee => ({
+        'Empleado': employee.name,
+        'Departamento': employee.department,
+        'Total Horas': `${employee.totalHours}h`,
+        'Total Fichajes': employee.totalEntries,
+        'Promedio por Día': `${employee.averageHoursPerDay}h`
+      }));
+    } catch (error) {
+      console.error('Error getting detailed productivity report:', error);
+      throw error;
+    }
+  }
+
+  // Obtener reporte detallado de departamentos para exportar
+  static async getDetailedDepartmentReport(companyId) {
+    try {
+      const { data: employees, error } = await supabase
+        .from('user_company_roles')
+        .select(`
+          *,
+          user_profiles (
+            full_name
+          ),
+          departments (
+            name
+          )
+        `)
+        .eq('company_id', companyId)
+        .eq('is_active', true)
+        .order('joined_at', { ascending: true });
+
+      if (error) throw error;
+
+      return employees.map(employee => ({
+        'Empleado': employee.user_profiles?.full_name || 'N/A',
+        'Departamento': employee.departments?.name || 'Sin departamento',
+        'Rol': employee.role || 'N/A',
+        'Fecha de Ingreso': new Date(employee.joined_at).toLocaleDateString('es-ES'),
+        'Estado': employee.is_active ? 'Activo' : 'Inactivo',
+        'Supervisor': employee.supervisor_id ? 'Sí' : 'No'
+      }));
+    } catch (error) {
+      console.error('Error getting detailed department report:', error);
       throw error;
     }
   }
@@ -446,19 +925,27 @@ export class ReportsService {
     const employeeHours = {};
     
     timeEntries.forEach(entry => {
-      const employeeName = entry.user_company_roles?.user_profiles?.full_name || 'Desconocido';
-      if (!employeeHours[employeeName]) {
-        employeeHours[employeeName] = 0;
+      // Usar el nombre real del usuario si está disponible, sino usar el ID
+      const employeeName = entry.user_profiles?.full_name || `Empleado ${entry.user_id}`;
+      const employeeAvatar = entry.user_profiles?.avatar_url || null;
+      const employeeId = entry.user_id;
+      
+      if (!employeeHours[employeeId]) {
+        employeeHours[employeeId] = {
+          id: employeeId,
+          name: employeeName,
+          avatar_url: employeeAvatar,
+          hours: 0
+        };
       }
       
       if (entry.clock_out && entry.clock_in) {
         const duration = new Date(entry.clock_out) - new Date(entry.clock_in);
-        employeeHours[employeeName] += duration / (1000 * 60 * 60);
+        employeeHours[employeeId].hours += duration / (1000 * 60 * 60);
       }
     });
     
-    return Object.entries(employeeHours)
-      .map(([name, hours]) => ({ name, hours }))
+    return Object.values(employeeHours)
       .sort((a, b) => b.hours - a.hours)
       .slice(0, 10);
   }
@@ -467,14 +954,7 @@ export class ReportsService {
     try {
       let query = supabase
         .from('departments')
-        .select(`
-          *,
-          user_company_roles (
-            user_profiles (
-              full_name
-            )
-          )
-        `)
+        .select('*')
         .eq('company_id', companyId)
         .eq('status', 'active');
 
@@ -489,7 +969,7 @@ export class ReportsService {
       return departments?.map(dept => ({
         id: dept.id,
         name: dept.name,
-        employeeCount: dept.user_company_roles?.length || 0,
+        employeeCount: 0, // Por ahora no contamos empleados por departamento
         description: dept.description
       })) || [];
     } catch (error) {
@@ -544,22 +1024,27 @@ export class ReportsService {
     const employeeStats = {};
     
     timeEntries.forEach(entry => {
-      const employeeName = entry.user_company_roles?.user_profiles?.full_name || 'Desconocido';
+      // Usar el nombre real del usuario si está disponible, sino usar el ID
+      const employeeName = entry.user_profiles?.full_name || `Empleado ${entry.user_id}`;
+      const employeeAvatar = entry.user_profiles?.avatar_url || null;
+      const employeeId = entry.user_id;
       
-      if (!employeeStats[employeeName]) {
-        employeeStats[employeeName] = {
+      if (!employeeStats[employeeId]) {
+        employeeStats[employeeId] = {
+          id: employeeId,
           name: employeeName,
+          avatar_url: employeeAvatar,
           entries: 0,
           totalHours: 0,
           averageHours: 0
         };
       }
       
-      employeeStats[employeeName].entries++;
+      employeeStats[employeeId].entries++;
       
       if (entry.clock_out && entry.clock_in) {
         const duration = new Date(entry.clock_out) - new Date(entry.clock_in);
-        employeeStats[employeeName].totalHours += duration / (1000 * 60 * 60);
+        employeeStats[employeeId].totalHours += duration / (1000 * 60 * 60);
       }
     });
 
@@ -624,7 +1109,7 @@ export class ReportsService {
     const deptStats = {};
     
     timeEntries.forEach(entry => {
-      const deptName = entry.user_company_roles?.departments?.name || 'Sin departamento';
+      const deptName = 'Sin departamento';
       
       if (!deptStats[deptName]) {
         deptStats[deptName] = {

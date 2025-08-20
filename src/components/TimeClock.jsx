@@ -11,6 +11,36 @@ import {
   AlertCircle
 } from 'lucide-react';
 
+// Función de utilidad fuera del componente
+function getStatusDisplay(currentStatus) {
+  switch (currentStatus) {
+    case 'out':
+      return {
+        text: 'Fuera de servicio',
+        color: 'text-red-600 bg-red-100',
+        icon: LogOut
+      };
+    case 'in':
+      return {
+        text: 'En servicio',
+        color: 'text-green-600 bg-green-100',
+        icon: LogIn
+      };
+    case 'break':
+      return {
+        text: 'En pausa',
+        color: 'text-yellow-600 bg-yellow-100',
+        icon: Coffee
+      };
+    default:
+      return {
+        text: 'Desconocido',
+        color: 'text-gray-600 bg-gray-100',
+        icon: Clock
+      };
+  }
+}
+
 export default function TimeClock({ onTimeEntry }) {
   const [loading, setLoading] = React.useState(false);
   const [currentStatus, setCurrentStatus] = React.useState('out'); // out, in, break
@@ -111,8 +141,8 @@ export default function TimeClock({ onTimeEntry }) {
         return;
       }
 
-      // Obtener ubicación (opcional)
-      let location = null;
+      // Obtener ubicación si está disponible
+      let locationData = {};
       if (navigator.geolocation) {
         try {
           const position = await new Promise((resolve, reject) => {
@@ -122,60 +152,36 @@ export default function TimeClock({ onTimeEntry }) {
             });
           });
           
-          location = {
-            lat: position.coords.latitude,
-            lng: position.coords.longitude
+          locationData = {
+            location_lat: position.coords.latitude,
+            location_lng: position.coords.longitude
           };
         } catch (error) {
-          console.log('Geolocalización no disponible:', error);
         }
       }
 
-      // Crear el fichaje
-      const { data: timeEntry, error } = await supabase
+      const { data, error } = await supabase
         .from('time_entries')
         .insert({
           user_id: user.id,
           company_id: companyId,
           entry_type: entryType,
           entry_time: new Date().toISOString(),
-          location_lat: location?.lat || null,
-          location_lng: location?.lng || null,
-          notes: ''
+          ...locationData
         })
         .select()
         .single();
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
 
-      // Actualizar estado local
-      setLastEntry(timeEntry);
+      setMessage('✅ Fichaje registrado exitosamente');
       
-      // Determinar nuevo estado
-      switch (entryType) {
-        case 'clock_in':
-          setCurrentStatus('in');
-          setMessage('¡Entrada registrada exitosamente!');
-          break;
-        case 'clock_out':
-          setCurrentStatus('out');
-          setMessage('¡Salida registrada exitosamente!');
-          break;
-        case 'break_start':
-          setCurrentStatus('break');
-          setMessage('¡Pausa iniciada!');
-          break;
-        case 'break_end':
-          setCurrentStatus('in');
-          setMessage('¡Pausa finalizada!');
-          break;
-      }
-
+      // Actualizar el estado
+      await loadCurrentStatus();
+      
       // Notificar al componente padre
       if (onTimeEntry) {
-        onTimeEntry(timeEntry);
+        onTimeEntry(data);
       }
 
       // Limpiar mensaje después de 3 segundos
@@ -185,43 +191,14 @@ export default function TimeClock({ onTimeEntry }) {
 
     } catch (error) {
       console.error('Error creating time entry:', error);
-      setMessage(`Error: ${error.message}`);
+      setMessage('Error al registrar el fichaje');
     } finally {
       setLoading(false);
     }
   }
 
-  function getStatusDisplay() {
-    switch (currentStatus) {
-      case 'out':
-        return {
-          text: 'Fuera de servicio',
-          color: 'text-red-600 bg-red-100',
-          icon: LogOut
-        };
-      case 'in':
-        return {
-          text: 'En servicio',
-          color: 'text-green-600 bg-green-100',
-          icon: LogIn
-        };
-      case 'break':
-        return {
-          text: 'En pausa',
-          color: 'text-yellow-600 bg-yellow-100',
-          icon: Coffee
-        };
-      default:
-        return {
-          text: 'Desconocido',
-          color: 'text-gray-600 bg-gray-100',
-          icon: Clock
-        };
-    }
-  }
-
   function getActionButton() {
-    const StatusIcon = getStatusDisplay().icon;
+    const statusInfo = getStatusDisplay(currentStatus);
 
     switch (currentStatus) {
       case 'out':
@@ -291,6 +268,9 @@ export default function TimeClock({ onTimeEntry }) {
     }
   }
 
+  const statusInfo = getStatusDisplay(currentStatus);
+  const StatusIcon = statusInfo.icon;
+
   return (
     <div className="card p-6">
       {/* Header */}
@@ -315,9 +295,9 @@ export default function TimeClock({ onTimeEntry }) {
 
       {/* Status */}
       <div className="text-center mb-6">
-        <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium ${getStatusDisplay().color}`}>
+        <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium ${statusInfo.color}`}>
           <StatusIcon className="w-4 h-4" />
-          {getStatusDisplay().text}
+          {statusInfo.text}
         </div>
       </div>
 

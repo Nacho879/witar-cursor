@@ -1,70 +1,164 @@
-import ThemeToggle from '@/components/common/ThemeToggle';
-import { Mail, BarChart3 } from 'lucide-react';
+import { 
+  Mail, 
+  BarChart3, 
+  Building, 
+  Users, 
+  Clock, 
+  FileText, 
+  Settings, 
+  CreditCard, 
+  Home,
+  Menu,
+  X
+} from 'lucide-react';
 import InvitationBadge from '@/components/InvitationBadge';
-import NotificationCenter from '@/components/NotificationCenter';
-import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabaseClient';
+import FloatingTimeClock from '@/components/FloatingTimeClock';
+import { InvitationProvider } from '@/contexts/InvitationContext';
+import React from 'react';
 
 export default function OwnerLayout({ children }){
-  const [companyId, setCompanyId] = useState(null);
+  const [sidebarOpen, setSidebarOpen] = React.useState(false);
 
-  useEffect(() => {
-    async function getCompanyId() {
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          const { data: userRole } = await supabase
-            .from('user_company_roles')
-            .select('company_id')
-            .eq('user_id', user.id)
-            .eq('is_active', true)
-            .single();
-          
-          if (userRole) {
-            setCompanyId(userRole.company_id);
-          }
-        }
-      } catch (error) {
-        console.error('Error getting company ID:', error);
-      }
-    }
-    
-    getCompanyId();
-  }, []);
   return (
-    <div className='min-h-screen grid grid-cols-[240px_1fr] bg-background text-foreground'>
-      <aside className='bg-card border-r border-border'>
-        <div className='p-4 font-semibold'>Witar — Owner</div>
-        <nav className='flex flex-col gap-2 p-2'>
-          <a className='px-3 py-2 rounded hover:bg-secondary' href='/owner'>Dashboard</a>
-          <a className='px-3 py-2 rounded hover:bg-secondary flex items-center gap-2' href='/owner/company'>
-            <Building2 className='w-4 h-4' />
-            Empresa
-          </a>
-          <a className='px-3 py-2 rounded hover:bg-secondary' href='/owner/employees'>Empleados</a>
-          <a className='px-3 py-2 rounded hover:bg-secondary flex items-center gap-2 justify-between' href='/owner/invitations'>
-            <div className='flex items-center gap-2'>
-              <Mail className='w-4 h-4' />
-              Invitaciones
+    <InvitationProvider>
+      <div className='min-h-screen bg-background text-foreground lg:grid lg:grid-cols-[256px_1fr]'>
+        {/* Mobile sidebar overlay */}
+        {sidebarOpen && (
+          <div 
+            className='fixed inset-0 bg-black/50 z-40 lg:hidden'
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
+
+        {/* Sidebar */}
+        <aside className={`
+          fixed top-0 left-0 z-50 h-full bg-card border-r border-border flex flex-col
+          transform transition-transform duration-300 ease-in-out
+          lg:relative lg:translate-x-0 lg:col-start-1
+          ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+          w-64
+        `}>
+          {/* Header with close button for mobile */}
+          <div className='flex items-center justify-between p-4 border-b border-border'>
+            <div className='font-semibold'>Witar — Owner</div>
+            <button
+              onClick={() => setSidebarOpen(false)}
+              className='lg:hidden p-1 rounded hover:bg-secondary'
+            >
+              <X className='w-5 h-5' />
+            </button>
+          </div>
+
+          {/* Navigation */}
+          <nav className='flex flex-col gap-2 p-2 flex-1 overflow-y-auto'>
+            <a 
+              className='px-3 py-2 rounded hover:bg-secondary flex items-center gap-2 transition-colors' 
+              href='/owner'
+              onClick={() => setSidebarOpen(false)}
+            >
+              <Home className='w-4 h-4' />
+              <span className='lg:block'>Dashboard</span>
+            </a>
+            <a 
+              className='px-3 py-2 rounded hover:bg-secondary flex items-center gap-2 transition-colors' 
+              href='/owner/company'
+              onClick={() => setSidebarOpen(false)}
+            >
+              <Building className='w-4 h-4' />
+              <span className='lg:block'>Empresa</span>
+            </a>
+            <a 
+              className='px-3 py-2 rounded hover:bg-secondary flex items-center gap-2 transition-colors' 
+              href='/owner/employees'
+              onClick={() => setSidebarOpen(false)}
+            >
+              <Users className='w-4 h-4' />
+              <span className='lg:block'>Empleados</span>
+            </a>
+            <a 
+              className='px-3 py-2 rounded hover:bg-secondary flex items-center gap-2 justify-between transition-colors' 
+              href='/owner/invitations'
+              onClick={() => setSidebarOpen(false)}
+            >
+              <div className='flex items-center gap-2'>
+                <Mail className='w-4 h-4' />
+                <span className='lg:block'>Invitaciones</span>
+              </div>
+              <InvitationBadge />
+            </a>
+            <a 
+              className='px-3 py-2 rounded hover:bg-secondary flex items-center gap-2 transition-colors' 
+              href='/owner/departments'
+              onClick={() => setSidebarOpen(false)}
+            >
+              <Building className='w-4 h-4' />
+              <span className='lg:block'>Departamentos</span>
+            </a>
+            <a 
+              className='px-3 py-2 rounded hover:bg-secondary flex items-center gap-2 transition-colors' 
+              href='/owner/time-entries'
+              onClick={() => setSidebarOpen(false)}
+            >
+              <Clock className='w-4 h-4' />
+              <span className='lg:block'>Fichajes</span>
+            </a>
+            <a 
+              className='px-3 py-2 rounded hover:bg-secondary flex items-center gap-2 transition-colors' 
+              href='/owner/requests'
+              onClick={() => setSidebarOpen(false)}
+            >
+              <FileText className='w-4 h-4' />
+              <span className='lg:block'>Solicitudes</span>
+            </a>
+            <a 
+              className='px-3 py-2 rounded hover:bg-secondary flex items-center gap-2 transition-colors' 
+              href='/owner/settings'
+              onClick={() => setSidebarOpen(false)}
+            >
+              <Settings className='w-4 h-4' />
+              <span className='lg:block'>Configuración</span>
+            </a>
+            <a 
+              className='px-3 py-2 rounded hover:bg-secondary flex items-center gap-2 transition-colors' 
+              href='/owner/billing'
+              onClick={() => setSidebarOpen(false)}
+            >
+              <CreditCard className='w-4 h-4' />
+              <span className='lg:block'>Facturación</span>
+            </a>
+            <a 
+              className='px-3 py-2 rounded hover:bg-secondary flex items-center gap-2 transition-colors' 
+              href='/owner/reports'
+              onClick={() => setSidebarOpen(false)}
+            >
+              <BarChart3 className='w-4 h-4' />
+              <span className='lg:block'>Reportes</span>
+            </a>
+          </nav>
+        </aside>
+
+        {/* Main content */}
+        <div className='lg:col-start-2'>
+          {/* Mobile header - solo visible en móvil cuando sidebar está cerrada */}
+          {!sidebarOpen && (
+            <div className='lg:hidden flex items-center justify-between p-4 border-b border-border bg-card'>
+              <button
+                onClick={() => setSidebarOpen(true)}
+                className='p-2 rounded hover:bg-secondary'
+              >
+                <Menu className='w-5 h-5' />
+              </button>
+              <div className='font-semibold'>Witar — Owner</div>
             </div>
-            <InvitationBadge companyId={companyId} />
-          </a>
-          <a className='px-3 py-2 rounded hover:bg-secondary' href='/owner/departments'>Departamentos</a>
-          <a className='px-3 py-2 rounded hover:bg-secondary' href='/owner/time-entries'>Fichajes</a>
-          <a className='px-3 py-2 rounded hover:bg-secondary' href='/owner/requests'>Solicitudes</a>
-          <a className='px-3 py-2 rounded hover:bg-secondary' href='/owner/settings'>Configuración</a>
-          <a className='px-3 py-2 rounded hover:bg-secondary' href='/owner/billing'>Facturación</a>
-          <a className='px-3 py-2 rounded hover:bg-secondary flex items-center gap-2' href='/owner/reports'>
-            <BarChart3 className='w-4 h-4' />
-            Reportes
-          </a>
-        </nav>
-        <div className='p-3 flex items-center justify-between'>
-          <NotificationCenter />
-          <ThemeToggle/>
+          )}
+
+          {/* Main content area */}
+          <main className='p-4 lg:pt-2 lg:px-6 lg:pb-6'>{children}</main>
+          
+          {/* Floating Time Clock */}
+          <FloatingTimeClock />
         </div>
-      </aside>
-      <main className='p-6'>{children}</main>
-    </div>
+      </div>
+    </InvitationProvider>
   );
 }

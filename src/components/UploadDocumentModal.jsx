@@ -8,7 +8,7 @@ export default function UploadDocumentModal({ isOpen, onClose, onDocumentUploade
   const [description, setDescription] = React.useState('');
   const [category, setCategory] = React.useState('general');
   const [departmentId, setDepartmentId] = React.useState('');
-  const [visibility, setVisibility] = React.useState('company');
+
   const [file, setFile] = React.useState(null);
   const [companyId, setCompanyId] = React.useState(null);
   const [departments, setDepartments] = React.useState([]);
@@ -179,13 +179,10 @@ export default function UploadDocumentModal({ isOpen, onClose, onDocumentUploade
           title: title.trim(),
           description: description.trim() || null,
           category: category,
-          department_id: departmentId || null,
-          visibility: visibility,
-          file_name: file.name,
-          file_path: filePath,
           file_url: publicUrl,
           file_size: file.size,
-          file_type: file.type
+          file_type: file.type,
+          user_id: departmentId || null // Usar departmentId como user_id si está disponible
         })
         .select()
         .single();
@@ -201,7 +198,6 @@ export default function UploadDocumentModal({ isOpen, onClose, onDocumentUploade
       setDescription('');
       setCategory('general');
       setDepartmentId('');
-      setVisibility('company');
       setFile(null);
       
       // Notificar al componente padre
@@ -362,35 +358,6 @@ export default function UploadDocumentModal({ isOpen, onClose, onDocumentUploade
                   </option>
                 ))}
               </select>
-            </div>
-          </div>
-
-          {/* Visibility */}
-          <div>
-            <label className="block text-sm font-medium mb-2">Visibilidad</label>
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  value="company"
-                  checked={visibility === 'company'}
-                  onChange={(e) => setVisibility(e.target.value)}
-                  className="w-4 h-4"
-                />
-                <Users className="w-4 h-4 text-muted-foreground" />
-                <span className="text-sm">Toda la empresa</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  value="department"
-                  checked={visibility === 'department'}
-                  onChange={(e) => setVisibility(e.target.value)}
-                  className="w-4 h-4"
-                />
-                <Folder className="w-4 h-4 text-muted-foreground" />
-                <span className="text-sm">Solo departamento</span>
-              </label>
             </div>
           </div>
 
