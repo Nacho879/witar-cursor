@@ -61,7 +61,7 @@ const RequestDetailsModal = ({ isOpen, onClose, request, getRequestTypeInfo, for
               {request.user_company_roles?.user_profiles?.full_name || 'Sin nombre'}
             </p>
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              {request.user_company_roles?.user_profiles?.email || 'Sin email'}
+              Email no disponible
             </p>
           </div>
 

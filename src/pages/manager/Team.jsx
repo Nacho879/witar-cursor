@@ -332,12 +332,10 @@ export default function Team() {
     if (searchTerm) {
       const searchLower = searchTerm.toLowerCase();
       const name = member.user_profiles?.full_name?.toLowerCase() || '';
-      const email = member.user_profiles?.email?.toLowerCase() || '';
       const position = member.user_profiles?.position?.toLowerCase() || '';
       const department = member.departments?.name?.toLowerCase() || '';
       
       return name.includes(searchLower) || 
-             email.includes(searchLower) || 
              position.includes(searchLower) || 
              department.includes(searchLower);
     }
@@ -621,7 +619,7 @@ export default function Team() {
                     <div className="flex items-center gap-2 text-sm">
                       <Mail className="w-4 h-4 text-muted-foreground" />
                       <span className="text-muted-foreground truncate">
-                        {member.user_profiles?.email}
+                        Email no disponible
                       </span>
                     </div>
                     

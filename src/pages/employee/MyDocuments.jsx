@@ -124,7 +124,7 @@ export default function MyDocuments() {
               return {
                 ...doc,
                 user_company_roles: {
-                  user_profiles: uploader || { full_name: 'Usuario sin perfil', email: 'No disponible' }
+                  user_profiles: uploader || { full_name: 'Usuario sin perfil' }
                 }
               };
             });
@@ -136,7 +136,7 @@ export default function MyDocuments() {
             const documentsWithoutProfiles = documents.map(doc => ({
               ...doc,
               user_company_roles: {
-                user_profiles: { full_name: 'Usuario sin perfil', email: 'No disponible' }
+                user_profiles: { full_name: 'Usuario sin perfil' }
               }
             }));
             setDocuments(documentsWithoutProfiles);

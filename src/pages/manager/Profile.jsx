@@ -435,7 +435,6 @@ export default function ManagerProfile() {
   const filteredMembers = teamMembers.filter(member => {
     const matchesSearch = searchTerm === '' || 
       member.user_profiles?.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      member.user_profiles?.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       member.user_profiles?.position?.toLowerCase().includes(searchTerm.toLowerCase());
     
     const matchesStatus = statusFilter === 'all' || 

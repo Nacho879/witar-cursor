@@ -569,12 +569,10 @@ export default function Requests() {
     if (searchTerm) {
       const searchLower = searchTerm.toLowerCase();
       const employeeName = request.user_company_roles?.user_profiles?.full_name?.toLowerCase() || '';
-      const employeeEmail = request.user_company_roles?.user_profiles?.email?.toLowerCase() || '';
       const reason = request.reason?.toLowerCase() || '';
       const description = request.description?.toLowerCase() || '';
       
       const matchesSearch = employeeName.includes(searchLower) || 
-                           employeeEmail.includes(searchLower) ||
                            reason.includes(searchLower) || 
                            description.includes(searchLower);
       
