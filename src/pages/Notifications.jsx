@@ -51,7 +51,7 @@ export default function Notifications() {
       const { data: { user } } = await supabase.auth.getUser();
       
       if (user && companyId) {
-        const query = supabase
+        let query = supabase
           .from('notifications')
           .select('*')
           .eq('company_id', companyId)
@@ -100,7 +100,7 @@ export default function Notifications() {
       setNotifications(prev => 
         prev.map(n => 
           n.id === notificationId 
-            ? { ...n, read_at: new Date().toISOString() }
+            ? { ...n, read: true }
             : n
         )
       );
@@ -116,7 +116,7 @@ export default function Notifications() {
       if (user) {
         await NotificationService.markAllAsRead(user.id);
         setNotifications(prev => 
-          prev.map(n => ({ ...n, read_at: new Date().toISOString() }))
+          prev.map(n => ({ ...n, read: true }))
         );
         setStats(prev => ({ ...prev, unread: 0, read: prev.total }));
       }
@@ -316,7 +316,7 @@ export default function Notifications() {
               <div
                 key={notification.id}
                 className={`bg-card p-6 rounded-lg border border-border transition-all hover:shadow-md ${
-                  notification.read_at ? '' : 'ring-2 ring-primary/20'
+                  notification.read ? '' : 'ring-2 ring-primary/20'
                 } ${getNotificationColor(notification.type)}`}
               >
                 <div className="flex items-start gap-4">
@@ -350,7 +350,7 @@ export default function Notifications() {
                       </div>
                       
                       <div className="flex items-center gap-2 ml-4">
-                        {!notification.read_at && (
+                        {!notification.read && (
                           <button
                             onClick={() => markAsRead(notification.id)}
                             className="p-2 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"
