@@ -31,29 +31,39 @@ export default function RegisterOwner() {
     setLoading(true);
 
     try {
+      // Determinar la URL de redirección basada en el entorno
+      const redirectUrl = 'https://witar-cursor.vercel.app/login';
+
+      
+
       // 1. Crear el usuario en Supabase Auth
       const { data: { user }, error: authError } = await supabase.auth.signUp({
         email,
         password,
         options: { 
           data: { full_name: fullName },
-          emailRedirectTo: `${window.location.origin}/login`
+          emailRedirectTo: redirectUrl
         }
       });
 
       if (authError) {
-        setMsg(authError.message);
+        console.error('Error en auth.signUp:', authError);
+        setMsg(`Error al crear usuario: ${authError.message}`);
         setLoading(false);
         return;
       }
 
       if (!user) {
+        console.error('No se creó el usuario');
         setMsg('Error al crear la cuenta');
         setLoading(false);
         return;
       }
 
+      
+
       // 2. Crear la empresa
+      
       const { data: company, error: companyError } = await supabase
         .from('companies')
         .insert({
@@ -66,12 +76,16 @@ export default function RegisterOwner() {
         .single();
 
       if (companyError) {
+        console.error('Error creando empresa:', companyError);
         setMsg(`Error al crear la empresa: ${companyError.message}`);
         setLoading(false);
         return;
       }
 
+      
+
       // 3. Crear el perfil del usuario
+      
       const { error: profileError } = await supabase
         .from('user_profiles')
         .insert({
@@ -81,9 +95,13 @@ export default function RegisterOwner() {
 
       if (profileError) {
         console.error('Error creating user profile:', profileError);
+        // No fallamos aquí, continuamos
+      } else {
+
       }
 
       // 4. Asignar rol de owner al usuario
+      
       const { error: roleError } = await supabase
         .from('user_company_roles')
         .insert({
@@ -94,10 +112,12 @@ export default function RegisterOwner() {
         });
 
       if (roleError) {
+        console.error('Error asignando rol:', roleError);
         setMsg(`Error al asignar rol: ${roleError.message}`);
         setLoading(false);
         return;
       }
+
 
       // 5. Crear configuración por defecto para la empresa
       const { error: settingsError } = await supabase
@@ -115,19 +135,21 @@ export default function RegisterOwner() {
 
       if (settingsError) {
         console.error('Error creating company settings:', settingsError);
+        // No fallamos aquí, continuamos
+      } else {
       }
 
       setMsg('¡Cuenta creada exitosamente! Revisa tu email para confirmar la cuenta y luego inicia sesión.');
       setLoading(false);
       
-      // Redirigir al login después de 3 segundos
+      // Redirigir a la página de bienvenida con el email
       setTimeout(() => {
-        navigate('/login');
-      }, 3000);
+        navigate(`/welcome?email=${encodeURIComponent(email)}`);
+      }, 1000);
 
     } catch (error) {
       console.error('Registration error:', error);
-      setMsg('Error inesperado al crear la cuenta');
+      setMsg(`Error inesperado al crear la cuenta: ${error.message}`);
       setLoading(false);
     }
   }

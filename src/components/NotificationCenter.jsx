@@ -3,16 +3,18 @@ import { supabase } from '@/lib/supabaseClient';
 import { 
   Bell, 
   X, 
-  Check, 
+  CheckCircle, 
+  AlertCircle, 
   Clock, 
   User, 
-  AlertTriangle, 
-  Info,
-  Mail,
-  Calendar,
-  FileText,
-  Users,
-  Building2
+  Mail, 
+  FileText, 
+  Calendar, 
+  Users, 
+  Settings, 
+  DollarSign, 
+  Building,
+  Edit
 } from 'lucide-react';
 
 export default function NotificationCenter() {
@@ -22,8 +24,24 @@ export default function NotificationCenter() {
   const [loading, setLoading] = React.useState(false);
 
   React.useEffect(() => {
-    loadNotifications();
-    setupRealtimeSubscription();
+    let channel = null;
+    
+    async function initialize() {
+      try {
+        await loadNotifications();
+        channel = setupRealtimeSubscription();
+      } catch (error) {
+        console.error('Error initializing notification center:', error);
+      }
+    }
+    
+    initialize();
+    
+    return () => {
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
+    };
   }, []);
 
   async function loadNotifications() {
@@ -42,15 +60,7 @@ export default function NotificationCenter() {
       if (userRole) {
         const { data, error } = await supabase
           .from('notifications')
-          .select(`
-            *,
-            user_company_roles!notifications_sender_id_fkey (
-              user_profiles (
-                full_name,
-                email
-              )
-            )
-          `)
+          .select('*')
           .eq('company_id', userRole.company_id)
           .or(`recipient_id.eq.${user.id},recipient_id.is.null`)
           .order('created_at', { ascending: false })
@@ -69,29 +79,31 @@ export default function NotificationCenter() {
   }
 
   function setupRealtimeSubscription() {
-    const { data: { user } } = supabase.auth.getUser();
-    if (!user) return;
+    // Obtener el usuario de forma asíncrona
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return;
 
-    const channel = supabase
-      .channel('notifications')
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'notifications',
-          filter: `recipient_id=eq.${user.id}`
-        },
-        (payload) => {
-          setNotifications(prev => [payload.new, ...prev]);
-          setUnreadCount(prev => prev + 1);
-        }
-      )
-      .subscribe();
+      const channel = supabase
+        .channel('notifications')
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'notifications',
+            filter: `recipient_id=eq.${user.id}`
+          },
+          (payload) => {
+            setNotifications(prev => [payload.new, ...prev]);
+            setUnreadCount(prev => prev + 1);
+          }
+        )
+        .subscribe();
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    });
   }
 
   async function markAsRead(notificationId) {
@@ -138,26 +150,30 @@ export default function NotificationCenter() {
     }
   }
 
-  function getNotificationIcon(type) {
+  const getNotificationIcon = (type) => {
     switch (type) {
       case 'time_clock':
         return <Clock className="w-4 h-4 text-blue-600" />;
       case 'request':
-        return <Calendar className="w-4 h-4 text-purple-600" />;
+      case 'request_approved':
+      case 'request_rejected':
+        return <Calendar className="w-4 h-4 text-green-600" />;
+      case 'time_edit_request':
+        return <Edit className="w-4 h-4 text-orange-600" />;
       case 'employee':
-        return <User className="w-4 h-4 text-green-600" />;
+        return <User className="w-4 h-4 text-purple-600" />;
       case 'document':
         return <FileText className="w-4 h-4 text-orange-600" />;
       case 'invitation':
-        return <Users className="w-4 h-4 text-indigo-600" />;
+        return <Mail className="w-4 h-4 text-indigo-600" />;
       case 'company':
-        return <Building2 className="w-4 h-4 text-gray-600" />;
+        return <Building className="w-4 h-4 text-gray-600" />;
       case 'warning':
-        return <AlertTriangle className="w-4 h-4 text-red-600" />;
+        return <AlertCircle className="w-4 h-4 text-red-600" />;
       default:
-        return <Info className="w-4 h-4 text-gray-600" />;
+        return <Bell className="w-4 h-4 text-gray-600" />;
     }
-  }
+  };
 
   function getNotificationColor(type) {
     switch (type) {
@@ -165,6 +181,12 @@ export default function NotificationCenter() {
         return 'border-l-blue-500 bg-blue-50';
       case 'request':
         return 'border-l-purple-500 bg-purple-50';
+      case 'request_approved':
+        return 'border-l-green-500 bg-green-50';
+      case 'request_rejected':
+        return 'border-l-red-500 bg-red-50';
+      case 'time_edit_request':
+        return 'border-l-orange-500 bg-orange-50';
       case 'employee':
         return 'border-l-green-500 bg-green-50';
       case 'document':
@@ -276,7 +298,7 @@ export default function NotificationCenter() {
                           </span>
                           {notification.sender_id && (
                             <span className="text-xs text-muted-foreground">
-                              {notification.user_company_roles?.user_profiles?.full_name}
+                              Sistema
                             </span>
                           )}
                         </div>

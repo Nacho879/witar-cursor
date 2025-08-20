@@ -1,6 +1,22 @@
 import * as React from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { Users, Plus, Search, Mail, User, MoreHorizontal, Edit, Trash2, Eye } from 'lucide-react';
+import { 
+  Users, 
+  Plus, 
+  Search, 
+  Mail, 
+  User, 
+  MoreHorizontal, 
+  Edit, 
+  Trash2, 
+  Eye,
+  Phone,
+  Calendar,
+  Activity,
+  MapPin,
+  ToggleLeft,
+  ToggleRight
+} from 'lucide-react';
 import InviteUserModal from '@/components/InviteUserModal';
 import EmployeeProfileModal from '@/components/EmployeeProfileModal';
 
@@ -13,6 +29,14 @@ export default function Employees() {
   const [companyId, setCompanyId] = React.useState(null);
   const [selectedEmployee, setSelectedEmployee] = React.useState(null);
   const [showActionsMenu, setShowActionsMenu] = React.useState(null);
+  const [companySettings, setCompanySettings] = React.useState(null);
+  const [employeeLocationSettings, setEmployeeLocationSettings] = React.useState({});
+  const [stats, setStats] = React.useState({
+    totalEmployees: 0,
+    activeEmployees: 0,
+    managers: 0,
+    employees: 0
+  });
 
   React.useEffect(() => {
     loadData();
@@ -34,7 +58,9 @@ export default function Employees() {
           setCompanyId(userRole.company_id);
           await Promise.all([
             loadEmployees(userRole.company_id),
-            loadDepartments(userRole.company_id)
+            loadDepartments(userRole.company_id),
+            loadCompanySettings(userRole.company_id),
+            loadEmployeeLocationSettings(userRole.company_id)
           ]);
         }
       }
@@ -47,34 +73,74 @@ export default function Employees() {
 
   async function loadEmployees(companyId) {
     try {
-      const { data, error } = await supabase
+      // Obtener los roles de usuario (excluyendo el owner)
+      const { data: rolesData, error: rolesError } = await supabase
         .from('user_company_roles')
         .select(`
           id,
+          user_id,
           role,
           is_active,
           joined_at,
-          user_profiles (
-            full_name,
-            email,
-            avatar_url,
-            phone,
-            position
-          ),
           departments (
             name
-          ),
-          user_company_roles!user_company_roles_supervisor_id_fkey (
-            user_profiles (
-              full_name
-            )
           )
         `)
         .eq('company_id', companyId)
+        .neq('role', 'owner') // Excluir al owner
         .order('joined_at', { ascending: false });
 
-      if (!error && data) {
-        setEmployees(data);
+      if (rolesError) {
+        console.error('Error loading user roles:', rolesError);
+        return;
+      }
+
+      if (rolesData) {
+        // Obtener todos los emails de una vez usando la función Edge
+        const userIds = rolesData.map(role => role.user_id);
+        
+        let emailsData = {};
+        try {
+          const { data: emailsResponse, error: emailsError } = await supabase.functions.invoke('get-user-emails', {
+            body: { userIds }
+          });
+
+          if (!emailsError && emailsResponse && emailsResponse.success) {
+            // Convertir el array de emails a un objeto con user_id como clave
+            emailsResponse.emails.forEach(item => {
+              emailsData[item.user_id] = item.email;
+            });
+          }
+        } catch (error) {
+          console.error('Error getting emails:', error);
+        }
+
+        // Para cada rol, obtener el perfil del usuario
+        const employeesWithUserData = await Promise.all(
+          rolesData.map(async (role) => {
+            // Obtener perfil del usuario
+            const { data: profile, error: profileError } = await supabase
+              .from('user_profiles')
+              .select('*')
+              .eq('user_id', role.user_id)
+              .maybeSingle();
+
+            if (profileError) {
+              console.error('Error loading profile for user:', role.user_id, profileError);
+            }
+
+            // Obtener email del objeto de emails
+            const email = emailsData[role.user_id] || 'Email no disponible';
+
+            return {
+              ...role,
+              profile: profile || {},
+              email: email
+            };
+          })
+        );
+
+        setEmployees(employeesWithUserData);
       }
     } catch (error) {
       console.error('Error loading employees:', error);
@@ -98,6 +164,97 @@ export default function Employees() {
     }
   }
 
+  async function loadCompanySettings(companyId) {
+    try {
+      const { data: settings, error } = await supabase
+        .from('company_settings')
+        .select('require_location')
+        .eq('company_id', companyId)
+        .single();
+
+      if (!error && settings) {
+        setCompanySettings(settings);
+      }
+    } catch (error) {
+      console.error('Error loading company settings:', error);
+    }
+  }
+
+  async function loadEmployeeLocationSettings(companyId) {
+    try {
+      const { data: settings, error } = await supabase
+        .from('user_location_settings')
+        .select('user_id, require_location')
+        .eq('company_id', companyId);
+
+      if (!error && settings) {
+        const settingsMap = {};
+        settings.forEach(setting => {
+          settingsMap[setting.user_id] = setting.require_location;
+        });
+        setEmployeeLocationSettings(settingsMap);
+      }
+    } catch (error) {
+      console.error('Error loading employee location settings:', error);
+    }
+  }
+
+  async function toggleLocationRequirement() {
+    try {
+      if (!companyId) return;
+
+      const newValue = !companySettings?.require_location;
+      
+      const { error } = await supabase
+        .from('company_settings')
+        .upsert({
+          company_id: companyId,
+          require_location: newValue
+        });
+
+      if (!error) {
+        setCompanySettings(prev => ({ ...prev, require_location: newValue }));
+      }
+    } catch (error) {
+      console.error('Error toggling location requirement:', error);
+    }
+  }
+
+  async function toggleEmployeeLocationRequirement(userId) {
+    try {
+      if (!companyId) return;
+
+      const currentValue = employeeLocationSettings[userId] || false;
+      const newValue = !currentValue;
+      
+      const { error } = await supabase
+        .from('user_location_settings')
+        .upsert({
+          company_id: companyId,
+          user_id: userId,
+          require_location: newValue
+        });
+
+      if (!error) {
+        setEmployeeLocationSettings(prev => ({
+          ...prev,
+          [userId]: newValue
+        }));
+      }
+    } catch (error) {
+      console.error('Error toggling employee location requirement:', error);
+    }
+  }
+
+  function formatDate(dateString) {
+    return new Date(dateString).toLocaleDateString('es-ES', {
+      weekday: 'short',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+  }
+
   async function toggleEmployeeStatus(employeeId, currentStatus) {
     try {
       const { error } = await supabase
@@ -111,6 +268,41 @@ export default function Employees() {
       }
     } catch (error) {
       console.error('Error toggling employee status:', error);
+    }
+  }
+
+  async function deleteEmployee(employee) {
+    if (!confirm(`¿Estás seguro de que quieres eliminar a ${employee.profile?.full_name || 'este empleado'}? Esta acción no se puede deshacer.`)) {
+      return;
+    }
+
+    try {
+
+      // Llamar a la función de Supabase para eliminar completamente el empleado
+      const { data, error } = await supabase.functions.invoke('delete-employee', {
+        body: { 
+          employeeId: employee.id,
+          companyId: companyId
+        }
+      });
+
+
+      if (error) {
+        console.error('Error calling delete function:', error);
+        alert(`Error al eliminar el empleado: ${error.message}`);
+        return;
+      }
+
+      if (data && data.success) {
+        alert('Empleado eliminado exitosamente');
+        await loadEmployees(companyId);
+        setShowActionsMenu(null);
+      } else {
+        alert(`Error al eliminar el empleado: ${data?.error || 'Error desconocido'}`);
+      }
+    } catch (error) {
+      console.error('Error deleting employee:', error);
+      alert('Error al eliminar el empleado');
     }
   }
 
@@ -140,34 +332,32 @@ export default function Employees() {
       : 'bg-red-100 text-red-800';
   }
 
-  function formatDate(dateString) {
-    return new Date(dateString).toLocaleDateString('es-ES', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
-  }
+  const filteredEmployees = employees.filter(employee =>
+    employee.profile?.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    employee.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    employee.role?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    employee.departments?.name?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
-  const filteredEmployees = employees.filter(employee => {
-    const searchLower = searchTerm.toLowerCase();
-    const name = employee.user_profiles?.full_name?.toLowerCase() || '';
-    const email = employee.user_profiles?.email?.toLowerCase() || '';
-    const role = getRoleDisplayName(employee.role).toLowerCase();
-    const department = employee.departments?.name?.toLowerCase() || '';
-    
-    return name.includes(searchLower) || 
-           email.includes(searchLower) || 
-           role.includes(searchLower) || 
-           department.includes(searchLower);
-  });
+  // Calcular estadísticas
+  React.useEffect(() => {
+    if (employees.length > 0) {
+      setStats({
+        totalEmployees: employees.length,
+        activeEmployees: employees.filter(e => e.is_active).length,
+        managers: employees.filter(e => e.role === 'manager').length,
+        employees: employees.filter(e => e.role === 'employee').length
+      });
+    }
+  }, [employees]);
 
   if (loading) {
     return (
       <div className="space-y-6">
         <div className="animate-pulse">
           <div className="h-8 bg-gray-200 rounded w-1/4 mb-4"></div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {[1, 2, 3, 4, 5, 6].map(i => (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {[1, 2, 3, 4].map(i => (
               <div key={i} className="card p-6">
                 <div className="h-4 bg-gray-200 rounded w-1/2 mb-4"></div>
                 <div className="h-8 bg-gray-200 rounded w-1/3"></div>
@@ -180,241 +370,279 @@ export default function Employees() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 lg:space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Empleados</h1>
+          <h1 className="text-2xl lg:text-3xl font-bold text-foreground">Empleados</h1>
           <p className="text-muted-foreground mt-1">
-            Gestiona el equipo de tu empresa
+            Gestiona los empleados de tu empresa
           </p>
         </div>
         <button
           onClick={() => setShowInviteModal(true)}
-          className="btn btn-primary flex items-center gap-2"
+          className="btn btn-primary flex items-center gap-2 w-full sm:w-auto"
         >
           <Plus className="w-4 h-4" />
-          Invitar Empleado
+          <span className="hidden sm:inline">Invitar Empleado</span>
+          <span className="sm:hidden">Invitar</span>
         </button>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="card p-6">
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
+        <div className="card p-4 lg:p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Total</p>
-              <p className="text-3xl font-bold text-foreground">{employees.length}</p>
+              <p className="text-sm font-medium text-muted-foreground">Total Empleados</p>
+              <p className="text-2xl lg:text-3xl font-bold text-foreground">{stats.totalEmployees}</p>
             </div>
-            <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-              <Users className="w-6 h-6 text-blue-600" />
+            <div className="w-10 h-10 lg:w-12 lg:h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+              <Users className="w-5 h-5 lg:w-6 lg:h-6 text-blue-600" />
             </div>
           </div>
         </div>
 
-        <div className="card p-6">
+        <div className="card p-4 lg:p-6">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-muted-foreground">Activos</p>
-              <p className="text-3xl font-bold text-foreground">
-                {employees.filter(e => e.is_active).length}
-              </p>
+              <p className="text-2xl lg:text-3xl font-bold text-foreground">{stats.activeEmployees}</p>
             </div>
-            <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
-              <User className="w-6 h-6 text-green-600" />
+            <div className="w-10 h-10 lg:w-12 lg:h-12 bg-green-100 rounded-lg flex items-center justify-center">
+              <User className="w-5 h-5 lg:w-6 lg:h-6 text-green-600" />
             </div>
           </div>
         </div>
 
-        <div className="card p-6">
+        <div className="card p-4 lg:p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Managers</p>
-              <p className="text-3xl font-bold text-foreground">
-                {employees.filter(e => e.role === 'manager' && e.is_active).length}
-              </p>
+              <p className="text-sm font-medium text-muted-foreground">Inactivos</p>
+              <p className="text-2xl lg:text-3xl font-bold text-foreground">{stats.totalEmployees - stats.activeEmployees}</p>
             </div>
-            <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
-              <Users className="w-6 h-6 text-purple-600" />
+            <div className="w-10 h-10 lg:w-12 lg:h-12 bg-yellow-100 rounded-lg flex items-center justify-center">
+              <User className="w-5 h-5 lg:w-6 lg:h-6 text-yellow-600" />
             </div>
           </div>
         </div>
 
-        <div className="card p-6">
+        <div className="card p-4 lg:p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Departamentos</p>
-              <p className="text-3xl font-bold text-foreground">{departments.length}</p>
+              <p className="text-sm font-medium text-muted-foreground">Administradores</p>
+              <p className="text-2xl lg:text-3xl font-bold text-foreground">{stats.managers}</p>
             </div>
-            <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
-              <Users className="w-6 h-6 text-orange-600" />
+            <div className="w-10 h-10 lg:w-12 lg:h-12 bg-purple-100 rounded-lg flex items-center justify-center">
+              <User className="w-5 h-5 lg:w-6 lg:h-6 text-purple-600" />
             </div>
           </div>
         </div>
       </div>
 
       {/* Search and Filters */}
-      <div className="card p-6">
-        <div className="flex flex-col md:flex-row gap-4">
-          <div className="flex-1">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <input
-                type="text"
-                placeholder="Buscar empleados..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="input pl-10 w-full"
-              />
+      <div className="card p-4 lg:p-6">
+        <div className="flex items-center gap-4">
+          <div className="flex-1 relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+            <input
+              type="text"
+              placeholder="Buscar empleados..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="input pl-10 w-full"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Employees Cards */}
+      <div className="card">
+        <div className="p-4 lg:p-6 border-b border-border">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold text-foreground">Empleados</h3>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">Ubicación:</span>
+              <button
+                onClick={toggleLocationRequirement}
+                className={`flex items-center gap-2 px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
+                  companySettings?.require_location
+                    ? 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400'
+                    : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
+                }`}
+              >
+                {companySettings?.require_location ? (
+                  <>
+                    <ToggleRight className="w-4 h-4" />
+                    Activada
+                  </>
+                ) : (
+                  <>
+                    <ToggleLeft className="w-4 h-4" />
+                    Desactivada
+                  </>
+                )}
+              </button>
             </div>
           </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setSearchTerm('')}
-              className="btn btn-ghost"
-            >
-              Limpiar
-            </button>
-          </div>
         </div>
-      </div>
+        <div className="p-4 lg:p-6">
+          {filteredEmployees.length === 0 ? (
+            <div className="text-center py-8">
+              <Users className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground">
+                {searchTerm ? 'No hay empleados que coincidan con la búsqueda' : 'No hay empleados registrados'}
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredEmployees.map((employee) => (
+                <div key={employee.id} className="card p-6 hover:shadow-lg transition-shadow">
+                  <div className="flex items-start gap-4 mb-4">
+                    <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center flex-shrink-0">
+                      {employee.profile?.avatar_url ? (
+                        <img 
+                          src={employee.profile.avatar_url} 
+                          alt={employee.profile.full_name}
+                          className="w-12 h-12 rounded-full object-cover"
+                        />
+                      ) : (
+                        <span className="text-lg font-medium text-primary">
+                          {employee.profile?.full_name?.charAt(0) || 'U'}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-semibold text-foreground truncate">
+                        {employee.profile?.full_name || 'Sin nombre'}
+                      </h4>
+                      {employee.profile?.position && (
+                        <p className="text-sm text-muted-foreground">
+                          {employee.profile.position}
+                        </p>
+                      )}
+                      <p className="text-xs text-muted-foreground">
+                        {employee.departments?.name || 'Sin departamento'}
+                      </p>
+                    </div>
+                  </div>
 
-      {/* Employees List */}
-      <div className="card overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="table w-full">
-            <thead>
-              <tr>
-                <th className="th">Empleado</th>
-                <th className="th">Rol</th>
-                <th className="th">Departamento</th>
-                <th className="th">Supervisor</th>
-                <th className="th">Estado</th>
-                <th className="th">Fecha de Ingreso</th>
-                <th className="th">Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredEmployees.length === 0 ? (
-                <tr>
-                  <td colSpan="7" className="td text-center text-muted-foreground py-8">
-                    <Users className="w-12 h-12 mx-auto mb-4 text-muted-foreground/50" />
-                    <p>No hay empleados {searchTerm ? 'que coincidan con la búsqueda' : ''}</p>
-                  </td>
-                </tr>
-              ) : (
-                filteredEmployees.map((employee) => (
-                  <tr key={employee.id}>
-                    <td className="td">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center flex-shrink-0">
-                          {employee.user_profiles?.avatar_url ? (
-                            <img 
-                              src={employee.user_profiles.avatar_url} 
-                              alt={employee.user_profiles.full_name}
-                              className="w-10 h-10 rounded-full object-cover"
-                            />
-                          ) : (
-                            <span className="text-sm font-medium text-primary">
-                              {employee.user_profiles?.full_name?.charAt(0) || 'U'}
-                            </span>
-                          )}
-                        </div>
-                        <div>
-                          <p className="font-medium text-foreground">
-                            {employee.user_profiles?.full_name}
-                          </p>
-                          <p className="text-sm text-muted-foreground">
-                            {employee.user_profiles?.email}
-                          </p>
-                          {employee.user_profiles?.position && (
-                            <p className="text-xs text-muted-foreground">
-                              {employee.user_profiles.position}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="td">
-                      <span className={`badge ${getRoleColor(employee.role)}`}>
-                        {getRoleDisplayName(employee.role)}
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 text-sm">
+                      <Mail className="w-4 h-4 text-muted-foreground" />
+                      <span className="text-muted-foreground truncate">
+                        {employee.email}
                       </span>
-                    </td>
-                    <td className="td">
-                      {employee.departments?.name || 'Sin departamento'}
-                    </td>
-                    <td className="td">
-                      {employee.user_company_roles?.user_profiles?.full_name || 'Sin supervisor'}
-                    </td>
-                    <td className="td">
-                      <span className={`badge ${getStatusColor(employee.is_active)}`}>
+                    </div>
+                    
+                    {employee.profile?.phone && (
+                      <div className="flex items-center gap-2 text-sm">
+                        <Phone className="w-4 h-4 text-muted-foreground" />
+                        <span className="text-muted-foreground">
+                          {employee.profile.phone}
+                        </span>
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-2 text-sm">
+                      <Calendar className="w-4 h-4 text-muted-foreground" />
+                      <span className="text-muted-foreground">
+                        Ingreso: {formatDate(employee.joined_at)}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2 text-sm">
+                      <Activity className="w-4 h-4 text-muted-foreground" />
+                      <span className={`text-sm font-medium ${
+                        employee.is_active ? 'text-green-600' : 'text-red-600'
+                      }`}>
                         {employee.is_active ? 'Activo' : 'Inactivo'}
                       </span>
-                    </td>
-                    <td className="td">
-                      <span className="text-sm text-muted-foreground">
-                        {formatDate(employee.joined_at)}
+                    </div>
+
+                    <div className="flex items-center gap-2 text-sm">
+                      <User className="w-4 h-4 text-muted-foreground" />
+                      <span className="text-muted-foreground capitalize">
+                        {employee.role}
                       </span>
-                    </td>
-                    <td className="td">
-                      <div className="relative">
-                        <button
-                          onClick={() => setShowActionsMenu(showActionsMenu === employee.id ? null : employee.id)}
-                          className="btn btn-ghost btn-sm"
-                        >
-                          <MoreHorizontal className="w-4 h-4" />
-                        </button>
-                        
-                        {showActionsMenu === employee.id && (
-                          <div className="absolute right-0 top-full mt-1 bg-background border border-border rounded-lg shadow-lg z-10 min-w-[150px]">
-                            <button
-                              onClick={() => {
-                                setSelectedEmployee(employee);
-                                setShowActionsMenu(null);
-                              }}
-                              className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-secondary transition-colors"
-                            >
-                              <Eye className="w-4 h-4" />
-                              Ver Perfil
-                            </button>
-                            <button
-                              onClick={() => {
-                                setSelectedEmployee(employee);
-                                setShowActionsMenu(null);
-                              }}
-                              className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-secondary transition-colors"
-                            >
-                              <Edit className="w-4 h-4" />
-                              Editar
-                            </button>
-                            <button
-                              onClick={() => toggleEmployeeStatus(employee.id, employee.is_active)}
-                              className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-secondary transition-colors text-destructive"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                              {employee.is_active ? 'Desactivar' : 'Activar'}
-                            </button>
-                          </div>
-                        )}
+                    </div>
+
+                    <div className="flex items-center justify-between text-sm">
+                      <div className="flex items-center gap-2">
+                        <MapPin className="w-4 h-4 text-muted-foreground" />
+                        <span className="text-muted-foreground">Ubicación:</span>
                       </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                      <button
+                        onClick={() => toggleEmployeeLocationRequirement(employee.user_id)}
+                        className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-colors ${
+                          employeeLocationSettings[employee.user_id]
+                            ? 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400'
+                            : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
+                        }`}
+                      >
+                        {employeeLocationSettings[employee.user_id] ? (
+                          <>
+                            <ToggleRight className="w-3 h-3" />
+                            ON
+                          </>
+                        ) : (
+                          <>
+                            <ToggleLeft className="w-3 h-3" />
+                            OFF
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 pt-4 border-t border-border">
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setSelectedEmployee(employee)}
+                        className="btn btn-ghost btn-sm flex-1 flex items-center gap-2"
+                      >
+                        <Eye className="w-4 h-4" />
+                        Ver Perfil
+                      </button>
+                      <button
+                        onClick={() => toggleEmployeeStatus(employee.id, employee.is_active)}
+                        className={`btn btn-sm flex items-center gap-2 ${
+                          employee.is_active 
+                            ? 'btn-outline btn-error' 
+                            : 'btn-outline btn-success'
+                        }`}
+                      >
+                        {employee.is_active ? (
+                          <>
+                            <User className="w-4 h-4" />
+                            Desactivar
+                          </>
+                        ) : (
+                          <>
+                            <User className="w-4 h-4" />
+                            Activar
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Invite Modal */}
+      {/* Modals */}
       <InviteUserModal
         isOpen={showInviteModal}
         onClose={() => setShowInviteModal(false)}
-        companyId={companyId}
-        departments={departments}
+        onInviteSent={() => {
+          setShowInviteModal(false);
+          loadEmployees(companyId);
+        }}
       />
 
-      {/* Employee Profile Modal */}
       <EmployeeProfileModal
         isOpen={!!selectedEmployee}
         onClose={() => setSelectedEmployee(null)}

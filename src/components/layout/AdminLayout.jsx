@@ -1,243 +1,212 @@
-import * as React from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { supabase } from '@/lib/supabaseClient';
 import { 
-  LayoutDashboard, 
+  Mail, 
+  BarChart3, 
+  Building, 
   Users, 
   Clock, 
   FileText, 
-  Settings, 
-  Building2,
-  LogOut,
-  Bell,
+  Home,
+  Menu,
+  X,
   User,
-  BarChart3,
-  FolderOpen,
-  Mail
+  Download
 } from 'lucide-react';
+import InvitationBadge from '@/components/InvitationBadge';
 import FloatingTimeClock from '@/components/FloatingTimeClock';
+import { InvitationProvider } from '@/contexts/InvitationContext';
+import * as React from 'react';
 
-export default function AdminLayout({ children }) {
-  const location = useLocation();
-  const navigate = useNavigate();
-  const [user, setUser] = React.useState(null);
-  const [company, setCompany] = React.useState(null);
-
-  React.useEffect(() => {
-    loadUserData();
-  }, []);
-
-  async function loadUserData() {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        setUser(user);
-        
-        const { data: userRole } = await supabase
-          .from('user_company_roles')
-          .select(`
-            companies (
-              id,
-              name,
-              slug
-            )
-          `)
-          .eq('user_id', user.id)
-          .eq('is_active', true)
-          .single();
-
-        if (userRole?.companies) {
-          setCompany(userRole.companies);
-        }
-      }
-    } catch (error) {
-      console.error('Error loading user data:', error);
-    }
-  }
-
-  async function handleSignOut() {
-    try {
-      await supabase.auth.signOut();
-      navigate('/login');
-    } catch (error) {
-      console.error('Error signing out:', error);
-    }
-  }
-
-  const menuItems = [
-    {
-      path: '/admin',
-      icon: LayoutDashboard,
-      label: 'Dashboard',
-      section: 'Mi Perfil'
-    },
-    {
-      path: '/admin/my-time-entries',
-      icon: Clock,
-      label: 'Mis Fichajes',
-      section: 'Mi Perfil'
-    },
-    {
-      path: '/admin/my-requests',
-      icon: FileText,
-      label: 'Mis Solicitudes',
-      section: 'Mi Perfil'
-    },
-    {
-      path: '/admin/my-documents',
-      icon: FolderOpen,
-      label: 'Mis Documentos',
-      section: 'Mi Perfil'
-    },
-    {
-      path: '/admin/company',
-      icon: Building2,
-      label: 'Empresa',
-      section: 'Empresa'
-    },
-    {
-      path: '/admin/departments',
-      icon: Users,
-      label: 'Departamentos',
-      section: 'Empresa'
-    },
-    {
-      path: '/admin/invitations',
-      icon: Mail,
-      label: 'Invitaciones',
-      section: 'Empresa'
-    },
-    {
-      path: '/admin/reports',
-      icon: BarChart3,
-      label: 'Reportes',
-      section: 'Empresa'
-    },
-    {
-      path: '/admin/employees',
-      icon: Users,
-      label: 'Empleados',
-      section: 'Equipo'
-    },
-    {
-      path: '/admin/requests',
-      icon: FileText,
-      label: 'Solicitudes',
-      section: 'Equipo'
-    },
-    {
-      path: '/admin/time-entries',
-      icon: Clock,
-      label: 'Control Horario',
-      section: 'Equipo'
-    },
-    {
-      path: '/admin/documents',
-      icon: FolderOpen,
-      label: 'Documentos',
-      section: 'Equipo'
-    },
-    {
-      path: '/admin/settings',
-      icon: Settings,
-      label: 'Configuración',
-      section: 'Empresa'
-    }
-  ];
-
-  const sections = ['Mi Perfil', 'Empresa', 'Equipo'];
+export default function AdminLayout({ children }){
+  const [sidebarOpen, setSidebarOpen] = React.useState(false);
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Sidebar */}
-      <div className="fixed inset-y-0 left-0 z-50 w-64 bg-card border-r border-border">
-        <div className="flex flex-col h-full">
-          {/* Header */}
-          <div className="p-6 border-b border-border">
-            <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                <Building2 className="w-5 h-5 text-primary-foreground" />
-              </div>
-              <div>
-                <h1 className="font-bold text-lg text-foreground">Witar</h1>
-                <p className="text-sm text-muted-foreground">Administrador</p>
-              </div>
-            </div>
-            {company && (
-              <p className="text-xs text-muted-foreground mt-2">
-                {company.name}
-              </p>
-            )}
+    <InvitationProvider>
+      <div className='min-h-screen bg-background text-foreground lg:grid lg:grid-cols-[256px_1fr]'>
+        {/* Mobile sidebar overlay */}
+        {sidebarOpen && (
+          <div 
+            className='fixed inset-0 bg-black/50 z-40 lg:hidden'
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
+
+        {/* Sidebar */}
+        <aside className={`
+          fixed top-0 left-0 z-50 h-full bg-card border-r border-border flex flex-col
+          transform transition-transform duration-300 ease-in-out
+          lg:relative lg:translate-x-0 lg:col-start-1
+          ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+          w-64
+        `}>
+          {/* Header with close button for mobile */}
+          <div className='flex items-center justify-between p-4 border-b border-border'>
+            <div className='font-semibold'>Witar — Admin</div>
+            <button
+              onClick={() => setSidebarOpen(false)}
+              className='lg:hidden p-1 rounded hover:bg-secondary'
+            >
+              <X className='w-5 h-5' />
+            </button>
           </div>
 
           {/* Navigation */}
-          <nav className="flex-1 overflow-y-auto p-4">
-            {sections.map((section) => (
-              <div key={section} className="mb-6">
-                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-                  {section}
-                </h3>
-                <ul className="space-y-1">
-                  {menuItems
-                    .filter(item => item.section === section)
-                    .map((item) => {
-                      const Icon = item.icon;
-                      const isActive = location.pathname === item.path;
-                      
-                      return (
-                        <li key={item.path}>
-                          <Link
-                            to={item.path}
-                            className={`flex items-center space-x-3 px-3 py-2 rounded-lg text-sm transition-colors ${
-                              isActive
-                                ? 'bg-primary text-primary-foreground'
-                                : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
-                            }`}
-                          >
-                            <Icon className="w-4 h-4" />
-                            <span>{item.label}</span>
-                          </Link>
-                        </li>
-                      );
-                    })}
-                </ul>
-              </div>
-            ))}
-          </nav>
-
-          {/* Footer */}
-          <div className="p-4 border-t border-border">
-            <div className="flex items-center space-x-3 mb-3">
-              <div className="w-8 h-8 bg-secondary rounded-full flex items-center justify-center">
-                <User className="w-4 h-4 text-muted-foreground" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-foreground truncate">
-                  {user?.email}
-                </p>
-                <p className="text-xs text-muted-foreground">Administrador</p>
+          <nav className='flex flex-col gap-2 p-2 flex-1 overflow-y-auto'>
+            <a 
+              className='px-3 py-2 rounded hover:bg-secondary flex items-center gap-2 transition-colors' 
+              href='/admin'
+              onClick={() => setSidebarOpen(false)}
+            >
+              <Home className='w-4 h-4' />
+              <span className='lg:block'>Dashboard</span>
+            </a>
+            
+            {/* Separador - Mi Perfil */}
+            <div className='px-3 py-2'>
+              <div className='text-xs font-medium text-muted-foreground uppercase tracking-wider'>
+                Mi Perfil
               </div>
             </div>
-            <button
-              onClick={handleSignOut}
-              className="w-full flex items-center space-x-2 px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-secondary rounded-lg transition-colors"
+            
+            <a 
+              className='px-3 py-2 rounded hover:bg-secondary flex items-center gap-2 transition-colors' 
+              href='/admin/profile'
+              onClick={() => setSidebarOpen(false)}
             >
-              <LogOut className="w-4 h-4" />
-              <span>Cerrar Sesión</span>
-            </button>
-          </div>
+              <User className='w-4 h-4' />
+              <span className='lg:block'>Mi Perfil</span>
+            </a>
+            <a 
+              className='px-3 py-2 rounded hover:bg-secondary flex items-center gap-2 transition-colors' 
+              href='/admin/my-time-entries'
+              onClick={() => setSidebarOpen(false)}
+            >
+              <Clock className='w-4 h-4' />
+              <span className='lg:block'>Mis Fichajes</span>
+            </a>
+            <a 
+              className='px-3 py-2 rounded hover:bg-secondary flex items-center gap-2 transition-colors' 
+              href='/admin/my-requests'
+              onClick={() => setSidebarOpen(false)}
+            >
+              <FileText className='w-4 h-4' />
+              <span className='lg:block'>Mis Solicitudes</span>
+            </a>
+            <a 
+              className='px-3 py-2 rounded hover:bg-secondary flex items-center gap-2 transition-colors' 
+              href='/admin/my-documents'
+              onClick={() => setSidebarOpen(false)}
+            >
+              <Download className='w-4 h-4' />
+              <span className='lg:block'>Mis Documentos</span>
+            </a>
+            
+            {/* Separador - Empresa */}
+            <div className='px-3 py-2'>
+              <div className='text-xs font-medium text-muted-foreground uppercase tracking-wider'>
+                Empresa
+              </div>
+            </div>
+            
+            <a 
+              className='px-3 py-2 rounded hover:bg-secondary flex items-center gap-2 transition-colors' 
+              href='/admin/company'
+              onClick={() => setSidebarOpen(false)}
+            >
+              <Building className='w-4 h-4' />
+              <span className='lg:block'>Información de la Empresa</span>
+            </a>
+            <a 
+              className='px-3 py-2 rounded hover:bg-secondary flex items-center gap-2 transition-colors' 
+              href='/admin/departments'
+              onClick={() => setSidebarOpen(false)}
+            >
+              <Building className='w-4 h-4' />
+              <span className='lg:block'>Departamentos</span>
+            </a>
+            <a 
+              className='px-3 py-2 rounded hover:bg-secondary flex items-center gap-2 justify-between transition-colors' 
+              href='/admin/invitations'
+              onClick={() => setSidebarOpen(false)}
+            >
+              <div className='flex items-center gap-2'>
+                <Mail className='w-4 h-4' />
+                <span className='lg:block'>Invitaciones</span>
+              </div>
+              <InvitationBadge />
+            </a>
+            <a 
+              className='px-3 py-2 rounded hover:bg-secondary flex items-center gap-2 transition-colors' 
+              href='/admin/reports'
+              onClick={() => setSidebarOpen(false)}
+            >
+              <BarChart3 className='w-4 h-4' />
+              <span className='lg:block'>Reportes</span>
+            </a>
+            
+            {/* Separador - Equipo */}
+            <div className='px-3 py-2'>
+              <div className='text-xs font-medium text-muted-foreground uppercase tracking-wider'>
+                Equipo
+              </div>
+            </div>
+            
+            <a 
+              className='px-3 py-2 rounded hover:bg-secondary flex items-center gap-2 transition-colors' 
+              href='/admin/employees'
+              onClick={() => setSidebarOpen(false)}
+            >
+              <Users className='w-4 h-4' />
+              <span className='lg:block'>Empleados</span>
+            </a>
+            <a 
+              className='px-3 py-2 rounded hover:bg-secondary flex items-center gap-2 transition-colors' 
+              href='/admin/time-entries'
+              onClick={() => setSidebarOpen(false)}
+            >
+              <Clock className='w-4 h-4' />
+              <span className='lg:block'>Fichajes</span>
+            </a>
+            <a 
+              className='px-3 py-2 rounded hover:bg-secondary flex items-center gap-2 transition-colors' 
+              href='/admin/requests'
+              onClick={() => setSidebarOpen(false)}
+            >
+              <FileText className='w-4 h-4' />
+              <span className='lg:block'>Solicitudes</span>
+            </a>
+            <a 
+              className='px-3 py-2 rounded hover:bg-secondary flex items-center gap-2 transition-colors' 
+              href='/admin/my-documents'
+              onClick={() => setSidebarOpen(false)}
+            >
+              <Download className='w-4 h-4' />
+              <span className='lg:block'>Documentos</span>
+            </a>
+          </nav>
+        </aside>
+
+        {/* Main content */}
+        <div className='lg:col-start-2'>
+          {/* Mobile header - solo visible en móvil cuando sidebar está cerrada */}
+          {!sidebarOpen && (
+            <div className='lg:hidden flex items-center justify-between p-4 border-b border-border bg-card'>
+              <button
+                onClick={() => setSidebarOpen(true)}
+                className='p-2 rounded hover:bg-secondary'
+              >
+                <Menu className='w-5 h-5' />
+              </button>
+              <div className='font-semibold'>Witar — Admin</div>
+            </div>
+          )}
+
+          {/* Main content area */}
+          <main className='p-4 lg:pt-2 lg:px-6 lg:pb-6'>{children}</main>
+          
+          {/* Floating Time Clock */}
+          <FloatingTimeClock />
         </div>
       </div>
-
-      {/* Main Content */}
-      <div className="ml-64">
-        <main className="p-6">
-          {children}
-        </main>
-      </div>
-
-      {/* Floating Time Clock */}
-      <FloatingTimeClock />
-    </div>
+    </InvitationProvider>
   );
 } 

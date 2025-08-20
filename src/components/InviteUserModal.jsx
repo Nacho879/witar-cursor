@@ -1,8 +1,11 @@
 import * as React from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { X, Mail, User, Building2, Users, Send } from 'lucide-react';
+import { BillingService } from '@/lib/billingService';
+import { X, Mail, User, Building, Users, Send, AlertTriangle } from 'lucide-react';
 
 export default function InviteUserModal({ isOpen, onClose, companyId, departments = [] }) {
+  const [firstName, setFirstName] = React.useState('');
+  const [lastName, setLastName] = React.useState('');
   const [email, setEmail] = React.useState('');
   const [role, setRole] = React.useState('employee');
   const [departmentId, setDepartmentId] = React.useState('');
@@ -23,17 +26,29 @@ export default function InviteUserModal({ isOpen, onClose, companyId, department
         .from('user_company_roles')
         .select(`
           id,
-          user_id,
-          user_profiles (
-            full_name
-          )
+          user_id
         `)
         .eq('company_id', companyId)
         .eq('role', 'manager')
         .eq('is_active', true);
 
       if (!error && data) {
-        setManagers(data);
+        // Obtener perfiles de managers por separado
+        const managersWithProfiles = await Promise.all(
+          data.map(async (manager) => {
+            const { data: profile, error } = await supabase
+              .from('user_profiles')
+              .select('full_name')
+              .eq('user_id', manager.user_id)
+              .maybeSingle();
+            
+            return {
+              ...manager,
+              profile: profile || { full_name: 'Usuario sin perfil' }
+            };
+          })
+        );
+        setManagers(managersWithProfiles);
       }
     } catch (error) {
       console.error('Error loading managers:', error);
@@ -46,6 +61,13 @@ export default function InviteUserModal({ isOpen, onClose, companyId, department
     setMessage('');
 
     try {
+      // Verificar límite del plan antes de enviar invitación
+      const canAddEmployee = await BillingService.canAddEmployee(companyId);
+      if (!canAddEmployee) {
+        setMessage('Error: Has alcanzado el límite de 25 empleados de tu plan. Contacta con ventas para un plan personalizado.');
+        return;
+      }
+
       // Generar token único
       const token = crypto.randomUUID();
 
@@ -59,6 +81,8 @@ export default function InviteUserModal({ isOpen, onClose, companyId, department
         .insert({
           company_id: companyId,
           invited_by: (await supabase.auth.getUser()).data.user.id,
+          first_name: firstName.trim(),
+          last_name: lastName.trim(),
           email: email.toLowerCase().trim(),
           role: role,
           department_id: departmentId || null,
@@ -74,23 +98,42 @@ export default function InviteUserModal({ isOpen, onClose, companyId, department
         throw error;
       }
 
-      // Aquí podrías enviar el email con el enlace de invitación
-      // Por ahora, solo mostraremos el enlace
-      const invitationUrl = `${window.location.origin}/accept-invitation?token=${token}`;
-      
-      setMessage(`Invitación enviada exitosamente. Enlace: ${invitationUrl}`);
-      
-      // Limpiar formulario
-      setEmail('');
-      setRole('employee');
-      setDepartmentId('');
-      setSupervisorId('');
-      
-      // Cerrar modal después de 3 segundos
-      setTimeout(() => {
-        onClose();
-        setMessage('');
-      }, 3000);
+      // Enviar email con credenciales temporales
+      const { data: emailData, error: emailError } = await supabase.functions.invoke('send-invitation-email', {
+        body: { invitationId: data.id }
+      });
+
+      if (emailError) {
+        console.error('Error calling function:', emailError);
+        throw new Error(`Error en la función: ${emailError.message}`);
+      }
+
+      if (emailData && emailData.success) {
+        setMessage(`✅ Invitación enviada exitosamente a ${emailData.email}. 
+        
+Credenciales temporales:
+Email: ${emailData.email}
+Contraseña: ${emailData.tempPassword}
+
+El usuario puede acceder en: ${emailData.invitationUrl}`);
+        
+        // Limpiar formulario
+        setFirstName('');
+        setLastName('');
+        setEmail('');
+        setRole('employee');
+        setDepartmentId('');
+        setSupervisorId('');
+        
+        // Cerrar modal después de 5 segundos
+        setTimeout(() => {
+          onClose();
+          setMessage('');
+        }, 5000);
+      } else {
+        const errorMsg = emailData?.error || 'Error desconocido al enviar la invitación';
+        setMessage(`Error: ${errorMsg}`);
+      }
 
     } catch (error) {
       console.error('Error sending invitation:', error);
@@ -121,6 +164,32 @@ export default function InviteUserModal({ isOpen, onClose, companyId, department
 
         {/* Form */}
         <form onSubmit={sendInvitation} className="p-6 space-y-4">
+          {/* Nombre y Apellido */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium mb-2">Nombre</label>
+              <input
+                type="text"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                className="input w-full"
+                placeholder="Juan"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-2">Apellido</label>
+              <input
+                type="text"
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                className="input w-full"
+                placeholder="Pérez"
+                required
+              />
+            </div>
+          </div>
+
           {/* Email */}
           <div>
             <label className="block text-sm font-medium mb-2">Email</label>
@@ -180,7 +249,7 @@ export default function InviteUserModal({ isOpen, onClose, companyId, department
                 <option value="">Sin supervisor</option>
                 {managers.map((manager) => (
                   <option key={manager.id} value={manager.id}>
-                    {manager.user_profiles.full_name}
+                    {manager.profile.full_name}
                   </option>
                 ))}
               </select>

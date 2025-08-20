@@ -9,8 +9,15 @@ import {
   LogOut,
   Coffee,
   MapPin,
-  Search
+  Search,
+  Edit,
+  ChevronDown
 } from 'lucide-react';
+import TimeEntryEditRequestModal from '@/components/TimeEntryEditRequestModal';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, addDays, subDays } from 'date-fns';
+import { es } from 'date-fns/locale';
 
 export default function MyTimeEntries() {
   const [timeEntries, setTimeEntries] = React.useState([]);
@@ -22,35 +29,280 @@ export default function MyTimeEntries() {
     totalDays: 0,
     averageHours: 0
   });
+  const [editModalOpen, setEditModalOpen] = React.useState(false);
+  const [selectedTimeEntry, setSelectedTimeEntry] = React.useState(null);
+  const [filterType, setFilterType] = React.useState('day'); // 'day', 'week', 'month', 'custom'
+  const [customStartDate, setCustomStartDate] = React.useState('');
+  const [customEndDate, setCustomEndDate] = React.useState('');
+  const [exportLoading, setExportLoading] = React.useState(false);
+  const [userProfile, setUserProfile] = React.useState(null);
+  const [companyInfo, setCompanyInfo] = React.useState(null);
+  const [managerInfo, setManagerInfo] = React.useState(null);
 
   React.useEffect(() => {
     loadTimeEntries();
-  }, [selectedDate]);
+    loadUserAndCompanyInfo();
+    
+    // Configurar suscripción en tiempo real para time_entries
+    const setupRealtimeSubscription = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          return null;
+        }
 
-  async function loadTimeEntries() {
+
+        
+        const timeEntriesSubscription = supabase
+          .channel('time_entries_changes_my_entries')
+          .on('postgres_changes', 
+            { 
+              event: '*', 
+              schema: 'public', 
+              table: 'time_entries',
+              filter: `user_id=eq.${user.id}`
+            }, 
+            (payload) => {
+              
+              loadTimeEntries();
+            }
+          )
+          .subscribe((status) => {
+          });
+
+        return timeEntriesSubscription;
+      } catch (error) {
+        console.error('❌ Error configurando suscripción:', error);
+        return null;
+      }
+    };
+
+    let subscription = null;
+    setupRealtimeSubscription().then(sub => {
+      subscription = sub;
+    });
+
+    // Intervalo de actualización periódica como respaldo (cada 30 segundos)
+    const interval = setInterval(() => {
+      loadTimeEntries();
+    }, 30000);
+
+    return () => {
+      if (subscription) {
+        supabase.removeChannel(subscription);
+      }
+      clearInterval(interval);
+    };
+  }, [selectedDate, filterType, customStartDate, customEndDate]);
+
+  async function loadUserAndCompanyInfo() {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const startDate = new Date(selectedDate);
-      startDate.setHours(0, 0, 0, 0);
-      const endDate = new Date(selectedDate);
-      endDate.setHours(23, 59, 59, 999);
+      // Cargar perfil del usuario
+      const { data: profile } = await supabase
+        .from('user_profiles')
+        .select('*')
+        .eq('user_id', user.id)
+        .single();
+
+      if (profile) {
+        setUserProfile(profile);
+      }
+
+      // Cargar información del rol del usuario en la empresa
+      const { data: userRole } = await supabase
+        .from('user_company_roles')
+        .select(`
+          *,
+          companies (
+            id,
+            name,
+            description,
+            address,
+            phone,
+            email,
+            website,
+            logo_url
+          ),
+          departments (
+            id,
+            name,
+            description
+          )
+        `)
+        .eq('user_id', user.id)
+        .eq('is_active', true)
+        .single();
+
+      if (userRole) {
+        setCompanyInfo(userRole.companies);
+
+        // Cargar información del manager
+        await loadManagerInfo(userRole);
+      }
+    } catch (error) {
+      console.error('Error loading user and company info:', error);
+    }
+  }
+
+  async function loadManagerInfo(userRole) {
+    try {
+      let managerId = null;
+      
+      if (userRole.department_id) {
+        const { data: department } = await supabase
+          .from('departments')
+          .select('manager_id')
+          .eq('id', userRole.department_id)
+          .maybeSingle();
+        
+        if (department && department.manager_id) {
+          managerId = department.manager_id;
+        }
+      }
+      
+      if (!managerId && userRole.supervisor_id) {
+        const { data: managerRole } = await supabase
+          .from('user_company_roles')
+          .select('user_id')
+          .eq('id', userRole.supervisor_id)
+          .eq('is_active', true)
+          .maybeSingle();
+
+        if (managerRole) {
+          managerId = managerRole.user_id;
+        }
+      }
+
+      if (managerId) {
+        const { data: managerUserRole } = await supabase
+          .from('user_company_roles')
+          .select('user_id')
+          .eq('id', managerId)
+          .eq('is_active', true)
+          .maybeSingle();
+
+        if (managerUserRole && managerUserRole.user_id) {
+          const { data: managerProfile } = await supabase
+            .from('user_profiles')
+            .select('full_name, avatar_url')
+            .eq('user_id', managerUserRole.user_id)
+            .maybeSingle();
+
+          if (managerProfile) {
+            try {
+              const { data: emails } = await supabase.functions.invoke('get-user-emails', {
+                body: { userIds: [managerUserRole.user_id] }
+              });
+
+              const managerEmail = emails?.emails && emails.emails.length > 0 ? emails.emails[0].email : null;
+
+              setManagerInfo({
+                ...managerProfile,
+                role_id: managerUserRole.user_id,
+                email: managerEmail
+              });
+            } catch (emailError) {
+              setManagerInfo({
+                ...managerProfile,
+                role_id: managerUserRole.user_id
+              });
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error loading manager info:', error);
+    }
+  }
+
+  function getDateRange() {
+    const baseDate = new Date(selectedDate);
+    
+    switch (filterType) {
+      case 'day':
+        const dayStart = new Date(baseDate);
+        dayStart.setHours(0, 0, 0, 0);
+        const dayEnd = new Date(baseDate);
+        dayEnd.setHours(23, 59, 59, 999);
+        return {
+          start: dayStart,
+          end: dayEnd
+        };
+      case 'week':
+        const weekStart = startOfWeek(baseDate, { weekStartsOn: 1, locale: es });
+        const weekEnd = endOfWeek(baseDate, { weekStartsOn: 1, locale: es });
+        return {
+          start: new Date(weekStart.setHours(0, 0, 0, 0)),
+          end: new Date(weekEnd.setHours(23, 59, 59, 999))
+        };
+      case 'month':
+        const monthStart = startOfMonth(baseDate);
+        const monthEnd = endOfMonth(baseDate);
+        return {
+          start: new Date(monthStart.setHours(0, 0, 0, 0)),
+          end: new Date(monthEnd.setHours(23, 59, 59, 999))
+        };
+      case 'custom':
+        if (customStartDate && customEndDate) {
+          const customStart = new Date(customStartDate + 'T00:00:00');
+          const customEnd = new Date(customEndDate + 'T23:59:59');
+          return {
+            start: customStart,
+            end: customEnd
+          };
+        }
+        // Fallback a día si no hay fechas personalizadas
+        const fallbackStart = new Date(baseDate);
+        fallbackStart.setHours(0, 0, 0, 0);
+        const fallbackEnd = new Date(baseDate);
+        fallbackEnd.setHours(23, 59, 59, 999);
+        return {
+          start: fallbackStart,
+          end: fallbackEnd
+        };
+      default:
+        const defaultStart = new Date(baseDate);
+        defaultStart.setHours(0, 0, 0, 0);
+        const defaultEnd = new Date(baseDate);
+        defaultEnd.setHours(23, 59, 59, 999);
+        return {
+          start: defaultStart,
+          end: defaultEnd
+        };
+    }
+  }
+
+  async function loadTimeEntries() {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        return;
+      }
+
+      const dateRange = getDateRange();
 
       const { data, error } = await supabase
         .from('time_entries')
         .select('*')
         .eq('user_id', user.id)
-        .gte('entry_time', startDate.toISOString())
-        .lte('entry_time', endDate.toISOString())
+        .gte('entry_time', dateRange.start.toISOString())
+        .lte('entry_time', dateRange.end.toISOString())
         .order('entry_time', { ascending: true });
 
-      if (!error && data) {
+      if (error) {
+        console.error('❌ Error cargando fichajes:', error);
+        return;
+      }
+
+      if (data) {
         setTimeEntries(data);
         calculateStats(data);
       }
     } catch (error) {
-      console.error('Error loading time entries:', error);
+      console.error('❌ Error en loadTimeEntries:', error);
     } finally {
       setLoading(false);
     }
@@ -62,9 +314,10 @@ export default function MyTimeEntries() {
       return;
     }
 
-    // Calcular horas trabajadas
     let totalMinutes = 0;
     let clockInTime = null;
+    let breakStartTime = null;
+    let totalBreakMinutes = 0;
 
     for (let i = 0; i < entries.length; i++) {
       const entry = entries[i];
@@ -76,8 +329,18 @@ export default function MyTimeEntries() {
         const diffMinutes = (clockOutTime - clockInTime) / (1000 * 60);
         totalMinutes += diffMinutes;
         clockInTime = null;
+      } else if (entry.entry_type === 'break_start') {
+        breakStartTime = new Date(entry.entry_time);
+      } else if (entry.entry_type === 'break_end' && breakStartTime) {
+        const breakEndTime = new Date(entry.entry_time);
+        const breakMinutes = (breakEndTime - breakStartTime) / (1000 * 60);
+        totalBreakMinutes += breakMinutes;
+        breakStartTime = null;
       }
     }
+
+    // Restar tiempo de pausas
+    totalMinutes -= totalBreakMinutes;
 
     const totalHours = Math.round((totalMinutes / 60) * 100) / 100;
     const totalDays = new Set(entries.map(e => e.entry_time.split('T')[0])).size;
@@ -96,6 +359,20 @@ export default function MyTimeEntries() {
     }
   }
 
+  function handleEditRequest(timeEntry) {
+    setSelectedTimeEntry(timeEntry);
+    setEditModalOpen(true);
+  }
+
+  function handleEditModalClose() {
+    setEditModalOpen(false);
+    setSelectedTimeEntry(null);
+  }
+
+  function handleEditRequestSubmitted() {
+    loadTimeEntries();
+  }
+
   function formatTime(dateString) {
     return new Date(dateString).toLocaleTimeString('es-ES', {
       hour: '2-digit',
@@ -110,6 +387,331 @@ export default function MyTimeEntries() {
       month: 'short',
       day: 'numeric'
     });
+  }
+
+  function formatDateForPDF(dateString) {
+    return new Date(dateString).toLocaleDateString('es-ES', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  }
+
+  function getFilterDisplayText() {
+    const dateRange = getDateRange();
+    switch (filterType) {
+      case 'day':
+        return formatDateForPDF(selectedDate);
+      case 'week':
+        return `Semana del ${formatDateForPDF(dateRange.start)} al ${formatDateForPDF(dateRange.end)}`;
+      case 'month':
+        return `Mes de ${format(dateRange.start, 'MMMM yyyy', { locale: es })}`;
+      case 'custom':
+        return `Del ${formatDateForPDF(customStartDate)} al ${formatDateForPDF(customEndDate)}`;
+      default:
+        return formatDateForPDF(selectedDate);
+    }
+  }
+
+  async function exportToPDF() {
+    setExportLoading(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user || !userProfile || !companyInfo) {
+        alert('Error: No se pudo cargar la información necesaria para el PDF');
+        return;
+      }
+
+      const doc = new jsPDF();
+      const pageWidth = doc.internal.pageSize.width;
+      const pageHeight = doc.internal.pageSize.height;
+      const margin = 20;
+      let yPosition = 20;
+
+      // Configurar fuentes y colores
+      const primaryColor = [59, 130, 246]; // Blue
+      const secondaryColor = [107, 114, 128]; // Gray
+      const accentColor = [34, 197, 94]; // Green
+      const dangerColor = [239, 68, 68]; // Red
+
+      // ===== HEADER CON LOGO Y TÍTULO =====
+      doc.setFillColor(...primaryColor);
+      doc.rect(0, 0, pageWidth, 40, 'F');
+      
+      // Título principal
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(24);
+      doc.setFont('helvetica', 'bold');
+      doc.text('REPORTE DE FICHAJES', pageWidth / 2, 25, { align: 'center' });
+      
+      // Fecha de generación
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Generado: ${formatDateForPDF(new Date())}`, pageWidth - margin, 15, { align: 'right' });
+      
+      yPosition = 50;
+
+      // ===== INFORMACIÓN DEL PERÍODO =====
+      doc.setFillColor(248, 250, 252);
+      doc.rect(margin, yPosition, pageWidth - 2 * margin, 15, 'F');
+      doc.setTextColor(...primaryColor);
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.text('PERÍODO ANALIZADO', margin + 5, yPosition + 10);
+      
+      yPosition += 20;
+      doc.setTextColor(0, 0, 0);
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Período: ${getFilterDisplayText()}`, margin, yPosition);
+      yPosition += 8;
+      doc.text(`Total de registros: ${timeEntries.length}`, margin, yPosition);
+      yPosition += 15;
+
+      // ===== INFORMACIÓN DE LA EMPRESA =====
+      doc.setFillColor(248, 250, 252);
+      doc.rect(margin, yPosition, pageWidth - 2 * margin, 15, 'F');
+      doc.setTextColor(...primaryColor);
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.text('INFORMACIÓN DE LA EMPRESA', margin + 5, yPosition + 10);
+      
+      yPosition += 20;
+      doc.setTextColor(0, 0, 0);
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'bold');
+      doc.text(`${companyInfo.name}`, margin, yPosition);
+      yPosition += 6;
+      
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      if (companyInfo.address) {
+        doc.text(`Dirección: ${companyInfo.address}`, margin, yPosition);
+        yPosition += 5;
+      }
+      if (companyInfo.phone) {
+        doc.text(`Teléfono: ${companyInfo.phone}`, margin, yPosition);
+        yPosition += 5;
+      }
+      if (companyInfo.email) {
+        doc.text(`Email: ${companyInfo.email}`, margin, yPosition);
+        yPosition += 5;
+      }
+      if (companyInfo.website) {
+        doc.text(`Website: ${companyInfo.website}`, margin, yPosition);
+        yPosition += 5;
+      }
+      yPosition += 10;
+
+      // ===== INFORMACIÓN DEL EMPLEADO =====
+      doc.setFillColor(248, 250, 252);
+      doc.rect(margin, yPosition, pageWidth - 2 * margin, 15, 'F');
+      doc.setTextColor(...primaryColor);
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.text('INFORMACIÓN DEL EMPLEADO', margin + 5, yPosition + 10);
+      
+      yPosition += 20;
+      doc.setTextColor(0, 0, 0);
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'bold');
+      doc.text(`${userProfile.full_name}`, margin, yPosition);
+      yPosition += 6;
+      
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Email: ${user.email}`, margin, yPosition);
+      yPosition += 5;
+      if (userProfile.position) {
+        doc.text(`Cargo: ${userProfile.position}`, margin, yPosition);
+        yPosition += 5;
+      }
+      if (userProfile.phone) {
+        doc.text(`Teléfono: ${userProfile.phone}`, margin, yPosition);
+        yPosition += 5;
+      }
+      yPosition += 10;
+
+      // ===== ESTADÍSTICAS DEL PERÍODO =====
+      doc.setFillColor(248, 250, 252);
+      doc.rect(margin, yPosition, pageWidth - 2 * margin, 15, 'F');
+      doc.setTextColor(...primaryColor);
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.text('ESTADÍSTICAS DEL PERÍODO', margin + 5, yPosition + 10);
+      
+      yPosition += 20;
+      
+      // Crear tabla de estadísticas
+      const statsData = [
+        ['Métrica', 'Valor'],
+        ['Horas totales trabajadas', `${stats.totalHours} horas`],
+        ['Días trabajados', `${stats.totalDays} días`],
+        ['Promedio diario', `${stats.averageHours} horas`],
+        ['Total de fichajes', `${timeEntries.length} registros`]
+      ];
+
+      autoTable(doc, {
+        startY: yPosition,
+        head: [['Métrica', 'Valor']],
+        body: statsData.slice(1), // Excluir el header ya que se define arriba
+        margin: { left: margin, right: margin },
+        styles: {
+          fontSize: 10,
+          cellPadding: 4
+        },
+        headStyles: {
+          fillColor: primaryColor,
+          textColor: 255,
+          fontStyle: 'bold'
+        },
+        bodyStyles: {
+          textColor: 0
+        },
+        alternateRowStyles: {
+          fillColor: [248, 250, 252]
+        }
+      });
+
+      yPosition = doc.lastAutoTable.finalY + 15;
+
+      // ===== DETALLE DE FICHAJES =====
+      if (timeEntries.length > 0) {
+        // Verificar si necesitamos una nueva página
+        if (yPosition > pageHeight - 100) {
+          doc.addPage();
+          yPosition = 20;
+        }
+
+        doc.setFillColor(248, 250, 252);
+        doc.rect(margin, yPosition, pageWidth - 2 * margin, 15, 'F');
+        doc.setTextColor(...primaryColor);
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.text('DETALLE DE FICHAJES', margin + 5, yPosition + 10);
+        
+        yPosition += 20;
+
+        // Agrupar fichajes por día para mejor organización
+        const entriesByDay = {};
+        timeEntries.forEach(entry => {
+          const dayKey = entry.entry_time.split('T')[0];
+          if (!entriesByDay[dayKey]) {
+            entriesByDay[dayKey] = [];
+          }
+          entriesByDay[dayKey].push(entry);
+        });
+
+        const sortedDays = Object.keys(entriesByDay).sort();
+
+        sortedDays.forEach(dayKey => {
+          const dayEntries = entriesByDay[dayKey];
+          const dayDate = new Date(dayKey);
+          
+          // Verificar si necesitamos una nueva página
+          if (yPosition > pageHeight - 80) {
+            doc.addPage();
+            yPosition = 20;
+          }
+
+          // Header del día
+          doc.setFillColor(240, 249, 255);
+          doc.rect(margin, yPosition, pageWidth - 2 * margin, 12, 'F');
+          doc.setTextColor(...primaryColor);
+          doc.setFontSize(12);
+          doc.setFont('helvetica', 'bold');
+          doc.text(`${dayDate.toLocaleDateString('es-ES', { 
+            weekday: 'long', 
+            year: 'numeric', 
+            month: 'long', 
+            day: 'numeric' 
+          })}`, margin + 5, yPosition + 8);
+          
+          yPosition += 15;
+
+          // Tabla de fichajes del día
+          const dayTableData = dayEntries.map(entry => {
+            const entryInfo = getEntryTypeDisplay(entry.entry_type);
+            const entryTime = new Date(entry.entry_time);
+            
+            return [
+              entryTime.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
+              entryInfo.text,
+              entry.notes || '-',
+              entry.location_lat ? 'Sí' : 'No'
+            ];
+          });
+
+          autoTable(doc, {
+            startY: yPosition,
+            head: [['Hora', 'Tipo', 'Notas', 'Ubicación']],
+            body: dayTableData,
+            margin: { left: margin, right: margin },
+            styles: {
+              fontSize: 9,
+              cellPadding: 3
+            },
+            headStyles: {
+              fillColor: secondaryColor,
+              textColor: 255,
+              fontStyle: 'bold'
+            },
+            bodyStyles: {
+              textColor: 0
+            },
+            alternateRowStyles: {
+              fillColor: [248, 250, 252]
+            }
+          });
+
+          yPosition = doc.lastAutoTable.finalY + 10;
+        });
+      }
+
+      // ===== PIE DE PÁGINA =====
+      const totalPages = doc.internal.getNumberOfPages();
+      
+      for (let i = 1; i <= totalPages; i++) {
+        doc.setPage(i);
+        
+        // Línea separadora
+        doc.setDrawColor(...secondaryColor);
+        doc.setLineWidth(0.5);
+        doc.line(margin, pageHeight - 30, pageWidth - margin, pageHeight - 30);
+        
+        // Información del pie de página
+        doc.setTextColor(...secondaryColor);
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`Página ${i} de ${totalPages}`, margin, pageHeight - 20);
+        doc.text(`Reporte generado por Witar - Sistema de Control de Asistencia`, pageWidth / 2, pageHeight - 20, { align: 'center' });
+        doc.text(`Total de registros: ${timeEntries.length} | Período: ${getFilterDisplayText()}`, pageWidth - margin, pageHeight - 20, { align: 'right' });
+      }
+
+      // Guardar el PDF
+      const fileName = `Reporte_Fichajes_${userProfile.full_name.replace(/\s+/g, '_')}_${format(new Date(), 'yyyy-MM-dd_HH-mm')}.pdf`;
+      doc.save(fileName);
+
+    } catch (error) {
+      console.error('Error exporting PDF:', error);
+      alert('Error al generar el PDF. Por favor, inténtalo de nuevo.');
+    } finally {
+      setExportLoading(false);
+    }
+  }
+
+  function handleFilterTypeChange(newFilterType) {
+    setFilterType(newFilterType);
+    
+    // Inicializar fechas personalizadas si es necesario
+    if (newFilterType === 'custom') {
+      const today = new Date();
+      const lastWeek = new Date(today);
+      lastWeek.setDate(today.getDate() - 7);
+      
+      setCustomStartDate(lastWeek.toISOString().split('T')[0]);
+      setCustomEndDate(today.toISOString().split('T')[0]);
+    }
   }
 
   const filteredEntries = timeEntries.filter(entry => {
@@ -145,8 +747,41 @@ export default function MyTimeEntries() {
         <div>
           <h1 className="text-3xl font-bold text-foreground">Mis Fichajes</h1>
           <p className="text-muted-foreground mt-1">
-            Historial de entradas, salidas y pausas
+            Gestiona y visualiza tu historial de fichajes
           </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              loadTimeEntries();
+            }}
+            className="btn btn-secondary"
+            title="Recargar datos"
+          >
+            🔄 Recargar
+          </button>
+          <button
+            onClick={async () => {
+              const { data: { user } } = await supabase.auth.getUser();
+              if (user) {
+                const { data, error } = await supabase
+                  .from('time_entries')
+                  .select('id, entry_type, entry_time')
+                  .eq('user_id', user.id)
+                  .order('entry_time', { ascending: false })
+                  .limit(10);
+                
+                if (error) {
+                  console.error('❌ Error verificando fichajes:', error);
+                } else {
+                }
+              }
+            }}
+            className="btn btn-outline"
+            title="Verificar base de datos"
+          >
+            🔍 Verificar BD
+          </button>
         </div>
       </div>
 
@@ -164,7 +799,9 @@ export default function MyTimeEntries() {
           </div>
           <div className="mt-4">
             <span className="text-sm text-blue-600">
-              Hoy
+              {filterType === 'day' ? 'Hoy' : 
+               filterType === 'week' ? 'Esta semana' :
+               filterType === 'month' ? 'Este mes' : 'Período personalizado'}
             </span>
           </div>
         </div>
@@ -189,7 +826,7 @@ export default function MyTimeEntries() {
         <div className="card p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Fichajes Hoy</p>
+              <p className="text-sm font-medium text-muted-foreground">Fichajes</p>
               <p className="text-3xl font-bold text-foreground">{timeEntries.length}</p>
             </div>
             <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
@@ -206,16 +843,55 @@ export default function MyTimeEntries() {
 
       {/* Filters */}
       <div className="card p-6">
-        <div className="flex flex-col md:flex-row gap-4">
+        <div className="flex flex-col lg:flex-row gap-4">
+          {/* Tipo de filtro */}
           <div className="flex-1">
-            <label className="block text-sm font-medium mb-2">Fecha</label>
+            <label className="block text-sm font-medium mb-2">Tipo de Filtro</label>
+            <select
+              value={filterType}
+              onChange={(e) => handleFilterTypeChange(e.target.value)}
+              className="input"
+            >
+              <option value="day">Día</option>
+              <option value="week">Semana</option>
+              <option value="month">Mes</option>
+              <option value="custom">Personalizado</option>
+            </select>
+          </div>
+
+          {/* Fecha base */}
+          <div className="flex-1">
+            <label className="block text-sm font-medium mb-2">
+              {filterType === 'custom' ? 'Fecha de inicio' : 'Fecha'}
+            </label>
             <input
               type="date"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
+              value={filterType === 'custom' ? customStartDate : selectedDate}
+              onChange={(e) => {
+                if (filterType === 'custom') {
+                  setCustomStartDate(e.target.value);
+                } else {
+                  setSelectedDate(e.target.value);
+                }
+              }}
               className="input"
             />
           </div>
+
+          {/* Fecha final para personalizado */}
+          {filterType === 'custom' && (
+            <div className="flex-1">
+              <label className="block text-sm font-medium mb-2">Fecha final</label>
+              <input
+                type="date"
+                value={customEndDate}
+                onChange={(e) => setCustomEndDate(e.target.value)}
+                className="input"
+              />
+            </div>
+          )}
+
+          {/* Buscar */}
           <div className="flex-1">
             <label className="block text-sm font-medium mb-2">Buscar</label>
             <div className="relative">
@@ -229,34 +905,37 @@ export default function MyTimeEntries() {
               />
             </div>
           </div>
-          <div className="flex items-end">
+
+          {/* Botones */}
+          <div className="flex items-end gap-2">
             <button
               onClick={loadTimeEntries}
               className="btn btn-primary"
             >
               Actualizar
             </button>
+            <button
+              onClick={exportToPDF}
+              disabled={exportLoading || timeEntries.length === 0}
+              className="btn btn-secondary flex items-center gap-2"
+            >
+              <Download className="w-4 h-4" />
+              {exportLoading ? 'Generando...' : 'Exportar PDF'}
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Time Entries List */}
+      {/* Time Entries Calendar View */}
       <div className="card">
         <div className="p-6 border-b border-border">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-semibold text-foreground">
-              Fichajes del {formatDate(selectedDate)}
+              Fichajes - {getFilterDisplayText()}
             </h3>
-            <button
-              onClick={() => {
-                // Función para exportar (implementar después)
-                alert('Función de exportación próximamente');
-              }}
-              className="btn btn-ghost btn-sm flex items-center gap-2"
-            >
-              <Download className="w-4 h-4" />
-              Exportar
-            </button>
+            <div className="text-sm text-muted-foreground">
+              {timeEntries.length} registros
+            </div>
           </div>
         </div>
         <div className="p-6">
@@ -264,53 +943,203 @@ export default function MyTimeEntries() {
             <div className="text-center py-8">
               <Clock className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
               <p className="text-muted-foreground">
-                No hay fichajes registrados para esta fecha
+                No hay fichajes registrados para este período
               </p>
             </div>
           ) : (
-            <div className="space-y-4">
-              {filteredEntries.map((entry) => {
-                const entryInfo = getEntryTypeDisplay(entry.entry_type);
-                const EntryIcon = entryInfo.icon;
-                
-                return (
-                  <div key={entry.id} className="flex items-center gap-4 p-4 rounded-lg hover:bg-secondary transition-colors">
-                    <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center flex-shrink-0">
-                      <EntryIcon className="w-5 h-5 text-primary" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="font-medium text-foreground">{entryInfo.text}</p>
-                          <p className="text-sm text-muted-foreground">
-                            {formatTime(entry.entry_time)}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${entryInfo.color}`}>
-                            {entryInfo.text}
-                          </span>
-                          {entry.location_lat && (
-                            <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                              <MapPin className="w-3 h-3" />
-                              Ubicación
+            <div className="space-y-6">
+              {/* Vista de calendario por días */}
+              {(() => {
+                // Agrupar fichajes por día
+                const entriesByDay = {};
+                filteredEntries.forEach(entry => {
+                  const dayKey = entry.entry_time.split('T')[0];
+                  if (!entriesByDay[dayKey]) {
+                    entriesByDay[dayKey] = [];
+                  }
+                  entriesByDay[dayKey].push(entry);
+                });
+
+                // Ordenar días
+                const sortedDays = Object.keys(entriesByDay).sort();
+
+                return sortedDays.map(dayKey => {
+                  const dayEntries = entriesByDay[dayKey];
+                  const dayDate = new Date(dayKey);
+                  const isToday = dayKey === new Date().toISOString().split('T')[0];
+                  
+                  // Calcular estadísticas del día
+                  let dayHours = 0;
+                  let dayMinutes = 0;
+                  let clockInTime = null;
+                  let breakStartTime = null;
+                  let totalBreakMinutes = 0;
+
+                  for (let i = 0; i < dayEntries.length; i++) {
+                    const entry = dayEntries[i];
+                    
+                    if (entry.entry_type === 'clock_in') {
+                      clockInTime = new Date(entry.entry_time);
+                    } else if (entry.entry_type === 'clock_out' && clockInTime) {
+                      const clockOutTime = new Date(entry.entry_time);
+                      const diffMinutes = (clockOutTime - clockInTime) / (1000 * 60);
+                      dayMinutes += diffMinutes;
+                      clockInTime = null;
+                    } else if (entry.entry_type === 'break_start') {
+                      breakStartTime = new Date(entry.entry_time);
+                    } else if (entry.entry_type === 'break_end' && breakStartTime) {
+                      const breakEndTime = new Date(entry.entry_time);
+                      const breakMinutes = (breakEndTime - breakStartTime) / (1000 * 60);
+                      totalBreakMinutes += breakMinutes;
+                      breakStartTime = null;
+                    }
+                  }
+
+                  // Restar tiempo de pausas
+                  dayMinutes -= totalBreakMinutes;
+                  dayHours = Math.round((dayMinutes / 60) * 100) / 100;
+
+                  return (
+                    <div key={dayKey} className={`border rounded-xl overflow-hidden ${isToday ? 'border-blue-300 bg-blue-50/50' : 'border-gray-200'}`}>
+                      {/* Header del día */}
+                      <div className={`px-4 py-3 ${isToday ? 'bg-blue-100' : 'bg-gray-50'} border-b border-gray-200`}>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isToday ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700'}`}>
+                              <span className="text-sm font-semibold">
+                                {dayDate.getDate()}
+                              </span>
                             </div>
+                            <div>
+                              <h4 className={`font-semibold ${isToday ? 'text-blue-900' : 'text-gray-900'}`}>
+                                {dayDate.toLocaleDateString('es-ES', { 
+                                  weekday: 'long', 
+                                  year: 'numeric', 
+                                  month: 'long', 
+                                  day: 'numeric' 
+                                })}
+                              </h4>
+                              <p className={`text-sm ${isToday ? 'text-blue-700' : 'text-gray-600'}`}>
+                                {dayEntries.length} fichajes • {dayHours}h trabajadas
+                              </p>
+                            </div>
+                          </div>
+                          {isToday && (
+                            <span className="px-2 py-1 bg-blue-500 text-white text-xs font-medium rounded-full">
+                              Hoy
+                            </span>
                           )}
                         </div>
                       </div>
-                      {entry.notes && (
-                        <p className="text-sm text-muted-foreground mt-1">
-                          {entry.notes}
-                        </p>
-                      )}
+
+                      {/* Timeline de fichajes */}
+                      <div className="p-4">
+                        <div className="space-y-3">
+                          {dayEntries.map((entry, index) => {
+                            const entryInfo = getEntryTypeDisplay(entry.entry_type);
+                            const EntryIcon = entryInfo.icon;
+                            const entryTime = new Date(entry.entry_time);
+                            
+                            return (
+                              <div key={entry.id} className="flex items-start gap-4 relative">
+                                {/* Línea de tiempo */}
+                                <div className="flex flex-col items-center">
+                                  <div className={`w-3 h-3 rounded-full ${entryInfo.color.replace('text-', '').replace('bg-', 'bg-')} border-2 border-white shadow-sm`}></div>
+                                  {index < dayEntries.length - 1 && (
+                                    <div className="w-0.5 h-8 bg-gray-200 mt-1"></div>
+                                  )}
+                                </div>
+
+                                {/* Contenido del fichaje */}
+                                <div className="flex-1 min-w-0">
+                                  <div className={`p-3 rounded-lg border ${entryInfo.color.replace('text-', '').replace('bg-', 'bg-')} bg-opacity-10 border-opacity-20`}>
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex items-center gap-3">
+                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${entryInfo.color.replace('text-', '').replace('bg-', 'bg-')} bg-opacity-20`}>
+                                          <EntryIcon className="w-4 h-4" />
+                                        </div>
+                                        <div>
+                                          <p className="font-medium text-gray-900">
+                                            {entryInfo.text}
+                                          </p>
+                                          <p className="text-sm text-gray-600">
+                                            {entryTime.toLocaleTimeString('es-ES', {
+                                              hour: '2-digit',
+                                              minute: '2-digit'
+                                            })}
+                                          </p>
+                                        </div>
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        {entry.location_lat && (
+                                          <div className="flex items-center gap-1 text-xs text-gray-500">
+                                            <MapPin className="w-3 h-3" />
+                                            <span>Ubicación</span>
+                                          </div>
+                                        )}
+                                        <button
+                                          onClick={() => handleEditRequest(entry)}
+                                          className="flex items-center gap-1 px-2 py-1 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors"
+                                          title="Solicitar edición"
+                                        >
+                                          <Edit className="w-3 h-3" />
+                                          Editar
+                                        </button>
+                                      </div>
+                                    </div>
+                                    {entry.notes && (
+                                      <p className="text-sm text-gray-600 mt-2 pl-11">
+                                        💬 {entry.notes}
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {/* Resumen del día */}
+                        <div className="mt-4 pt-4 border-t border-gray-200">
+                          <div className="flex items-center justify-between text-sm">
+                            <div className="flex items-center gap-4">
+                              <div className="flex items-center gap-2">
+                                <Clock className="w-4 h-4 text-gray-500" />
+                                <span className="text-gray-600">Total trabajado:</span>
+                                <span className="font-semibold text-gray-900">{dayHours}h</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Calendar className="w-4 h-4 text-gray-500" />
+                                <span className="text-gray-600">Fichajes:</span>
+                                <span className="font-semibold text-gray-900">{dayEntries.length}</span>
+                              </div>
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {dayDate.toLocaleDateString('es-ES', { 
+                                weekday: 'short', 
+                                month: 'short', 
+                                day: 'numeric' 
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                });
+              })()}
             </div>
           )}
         </div>
       </div>
+
+      {/* Edit Request Modal */}
+      <TimeEntryEditRequestModal
+        isOpen={editModalOpen}
+        onClose={handleEditModalClose}
+        timeEntry={selectedTimeEntry}
+        onRequestSubmitted={handleEditRequestSubmitted}
+      />
     </div>
   );
 }

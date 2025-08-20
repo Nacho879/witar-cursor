@@ -41,3 +41,7 @@ coverage/
 # Supabase
 .supabase/ 
 .vercel
+setup-env.js
+supabase-env.txt
+supabase-variables.txt
+setup-stripe.js

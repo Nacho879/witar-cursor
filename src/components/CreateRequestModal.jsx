@@ -153,12 +153,8 @@ export default function CreateRequestModal({ isOpen, onClose, onRequestCreated }
           request_type: requestType,
           start_date: startDate,
           end_date: requestType === 'permission' ? startDate : endDate,
-          start_time: requestType === 'permission' ? startTime : null,
-          end_time: requestType === 'permission' ? endTime : null,
           reason: reason.trim(),
-          description: description.trim() || null,
-          duration_hours,
-          duration_days,
+          notes: description.trim() || null, // Usar notes en lugar de description
           status: 'pending'
         })
         .select()
@@ -199,8 +195,8 @@ export default function CreateRequestModal({ isOpen, onClose, onRequestCreated }
   const TypeIcon = typeInfo.icon;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-      <div className="bg-background rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[70]">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-border">
           <div className="flex items-center gap-3">

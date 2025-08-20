@@ -176,6 +176,17 @@ CREATE POLICY "Only admins can update time entries" ON time_entries
         )
     );
 
+CREATE POLICY "Managers, admins and owners can delete time entries" ON time_entries
+    FOR DELETE USING (
+        EXISTS (
+            SELECT 1 FROM user_company_roles 
+            WHERE user_id = auth.uid() 
+            AND company_id = time_entries.company_id 
+            AND role IN ('owner', 'admin', 'manager') 
+            AND is_active = true
+        )
+    );
+
 -- Políticas para requests
 CREATE POLICY "Users can view their own requests" ON requests
     FOR SELECT USING (user_id = auth.uid());
@@ -213,6 +224,20 @@ CREATE POLICY "Users can view their own documents" ON documents
 
 CREATE POLICY "Users can create their own documents" ON documents
     FOR INSERT WITH CHECK (user_id = auth.uid());
+
+CREATE POLICY "Managers can create documents for their employees" ON documents
+    FOR INSERT WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM user_company_roles ucr1
+            JOIN user_company_roles ucr2 ON ucr1.company_id = ucr2.company_id
+            WHERE ucr1.user_id = auth.uid() 
+            AND ucr2.user_id = documents.user_id
+            AND ucr1.role IN ('owner', 'admin', 'manager')
+            AND ucr1.is_active = true
+            AND ucr2.is_active = true
+            AND ucr1.company_id = documents.company_id
+        )
+    );
 
 CREATE POLICY "Managers can view public employee documents" ON documents
     FOR SELECT USING (

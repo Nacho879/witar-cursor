@@ -10,8 +10,14 @@ import {
   Activity,
   AlertTriangle,
   UserCheck,
-  UserX
+  UserX,
+  Play,
+  Pause,
+  Square,
+  Bell
 } from 'lucide-react';
+import NotificationCenter from '@/components/NotificationCenter';
+import ThemeToggle from '@/components/common/ThemeToggle';
 
 export default function ManagerDashboard() {
   const [stats, setStats] = React.useState({
@@ -24,10 +30,211 @@ export default function ManagerDashboard() {
   const [recentRequests, setRecentRequests] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
   const [managerId, setManagerId] = React.useState(null);
+  const [sendingNotifications, setSendingNotifications] = React.useState({});
 
   React.useEffect(() => {
     loadDashboardData();
   }, []);
+
+  // Función para enviar notificación de recordatorio de fichaje
+  async function sendClockInReminder(employeeUserId, employeeName) {
+    try {
+      setSendingNotifications(prev => ({ ...prev, [employeeUserId]: true }));
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Obtener el company_id del manager
+      const { data: userRole } = await supabase
+        .from('user_company_roles')
+        .select('company_id')
+        .eq('user_id', user.id)
+        .eq('is_active', true)
+        .single();
+
+      if (!userRole) return;
+
+      // Crear la notificación
+      const { error } = await supabase
+        .from('notifications')
+        .insert({
+          recipient_id: employeeUserId,
+          sender_id: user.id,
+          type: 'clock_in_reminder',
+          title: '⏰ Recordatorio de Fichaje',
+          message: `Hola ${employeeName}, recuerda fichar tu entrada cuando llegues al trabajo.`,
+          data: {
+            reminder_type: 'clock_in',
+            employee_name: employeeName
+          }
+        });
+
+      if (error) {
+        console.error('Error sending notification:', error);
+        alert('Error al enviar la notificación');
+      } else {
+        alert(`Notificación enviada a ${employeeName}`);
+      }
+    } catch (error) {
+      console.error('Error sending clock-in reminder:', error);
+      alert('Error al enviar la notificación');
+    } finally {
+      setSendingNotifications(prev => ({ ...prev, [employeeUserId]: false }));
+    }
+  }
+
+  // Función para obtener el estado actual de un empleado
+  async function getEmployeeCurrentStatus(userId, companyId) {
+    try {
+      const today = new Date();
+      const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59);
+
+      // Obtener fichajes de hoy
+      const { data: timeEntries } = await supabase
+        .from('time_entries')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('company_id', companyId)
+        .gte('created_at', startOfDay.toISOString())
+        .lte('created_at', endOfDay.toISOString())
+        .order('created_at', { ascending: true });
+
+      if (!timeEntries || timeEntries.length === 0) {
+        return {
+          status: 'offline',
+          lastActivity: null,
+          currentSession: null,
+          totalWorkTime: 0,
+          totalBreakTime: 0
+        };
+      }
+
+      // Analizar el estado actual
+      let status = 'offline';
+      let currentSession = null;
+      let totalWorkTime = 0;
+      let totalBreakTime = 0;
+
+      // Buscar la última actividad
+      const lastEntry = timeEntries[timeEntries.length - 1];
+      const now = new Date();
+      const lastActivityTime = new Date(lastEntry.created_at);
+
+      // Determinar estado basado en la última entrada
+      if (lastEntry.entry_type === 'clock_in') {
+        status = 'working';
+        currentSession = {
+          start: lastActivityTime,
+          type: 'work'
+        };
+      } else if (lastEntry.entry_type === 'break_start') {
+        status = 'break';
+        currentSession = {
+          start: lastActivityTime,
+          type: 'break'
+        };
+      } else if (lastEntry.entry_type === 'clock_out') {
+        status = 'offline';
+      }
+
+      // Calcular tiempos totales
+      let workStart = null;
+      let breakStart = null;
+
+      for (const entry of timeEntries) {
+        const entryTime = new Date(entry.created_at);
+
+        if (entry.entry_type === 'clock_in') {
+          workStart = entryTime;
+        } else if (entry.entry_type === 'clock_out' && workStart) {
+          totalWorkTime += (entryTime - workStart) / (1000 * 60 * 60); // Convertir a horas
+          workStart = null;
+        } else if (entry.entry_type === 'break_start') {
+          breakStart = entryTime;
+        } else if (entry.entry_type === 'break_end' && breakStart) {
+          totalBreakTime += (entryTime - breakStart) / (1000 * 60 * 60); // Convertir a horas
+          breakStart = null;
+        }
+      }
+
+      // Si hay una sesión activa, calcular el tiempo hasta ahora
+      if (currentSession) {
+        const sessionDuration = (now - currentSession.start) / (1000 * 60 * 60);
+        if (currentSession.type === 'work') {
+          totalWorkTime += sessionDuration;
+        } else if (currentSession.type === 'break') {
+          totalBreakTime += sessionDuration;
+        }
+      }
+
+      return {
+        status,
+        lastActivity: lastActivityTime,
+        currentSession,
+        totalWorkTime: Math.round(totalWorkTime * 100) / 100,
+        totalBreakTime: Math.round(totalBreakTime * 100) / 100
+      };
+    } catch (error) {
+      console.error('Error getting employee status:', error);
+      return {
+        status: 'offline',
+        lastActivity: null,
+        currentSession: null,
+        totalWorkTime: 0,
+        totalBreakTime: 0
+      };
+    }
+  }
+
+  // Función para obtener el icono del estado
+  function getStatusIcon(status) {
+    switch (status) {
+      case 'working':
+        return Play;
+      case 'break':
+        return Pause;
+      case 'offline':
+        return Square;
+      default:
+        return Square;
+    }
+  }
+
+  // Función para obtener el color del estado
+  function getStatusColor(status) {
+    switch (status) {
+      case 'working':
+        return 'text-green-600 bg-green-100 dark:bg-green-900/20';
+      case 'break':
+        return 'text-yellow-600 bg-yellow-100 dark:bg-yellow-900/20';
+      case 'offline':
+        return 'text-gray-600 bg-gray-100 dark:bg-gray-900/20';
+      default:
+        return 'text-gray-600 bg-gray-100 dark:bg-gray-900/20';
+    }
+  }
+
+  // Función para obtener el texto del estado
+  function getStatusText(status) {
+    switch (status) {
+      case 'working':
+        return 'Trabajando';
+      case 'break':
+        return 'En pausa';
+      case 'offline':
+        return 'Desconectado';
+      default:
+        return 'Desconectado';
+    }
+  }
+
+  // Función para calcular el progreso de la jornada (asumiendo 8 horas)
+  function calculateWorkProgress(totalWorkTime) {
+    const workdayHours = 8;
+    const progress = Math.min((totalWorkTime / workdayHours) * 100, 100);
+    return Math.round(progress);
+  }
 
   async function loadDashboardData() {
     try {
@@ -59,34 +266,77 @@ export default function ManagerDashboard() {
 
   async function loadTeamStats(companyId, managerId) {
     try {
-      // Miembros del equipo
-      const { count: teamMembers } = await supabase
+      // Primero, obtener el departamento del manager
+      const { data: managerDepartment } = await supabase
         .from('user_company_roles')
-        .select('*', { count: 'exact', head: true })
-        .eq('company_id', companyId)
-        .eq('supervisor_id', managerId)
-        .eq('is_active', true);
+        .select('department_id')
+        .eq('id', managerId)
+        .single();
+
+      let teamUserIds = [];
+
+      if (managerDepartment?.department_id) {
+        // Obtener IDs de todos los empleados del departamento
+        const { data: departmentMembers, error: deptError } = await supabase
+          .from('user_company_roles')
+          .select('user_id')
+          .eq('company_id', companyId)
+          .eq('department_id', managerDepartment.department_id)
+          .eq('is_active', true)
+          .neq('role', 'manager');
+
+        if (!deptError && departmentMembers) {
+          teamUserIds = departmentMembers.map(member => member.user_id);
+        }
+      } else {
+        // Si no tiene departamento, obtener empleados con supervisor_id
+        const { data: supervisedMembers, error: supError } = await supabase
+          .from('user_company_roles')
+          .select('user_id')
+          .eq('company_id', companyId)
+          .eq('supervisor_id', managerId)
+          .eq('is_active', true);
+
+        if (!supError && supervisedMembers) {
+          teamUserIds = supervisedMembers.map(member => member.user_id);
+        }
+      }
+
+      // Miembros del equipo
+      const teamMembers = teamUserIds.length;
 
       // Presentes hoy (simulado)
-      const presentToday = Math.floor(Math.random() * (teamMembers || 0)) + 1;
+      const presentToday = Math.floor(Math.random() * teamMembers) + 1;
 
       // Solicitudes pendientes del equipo
-      const { count: pendingRequests } = await supabase
-        .from('requests')
-        .select('*', { count: 'exact', head: true })
-        .eq('company_id', companyId)
-        .in('user_id', 
-          await getTeamUserIds(companyId, managerId)
-        )
-        .eq('status', 'pending');
+      let pendingRequests = 0;
+      if (teamUserIds.length > 0) {
+        // Contar solicitudes normales pendientes
+        const { count: normalRequests } = await supabase
+          .from('requests')
+          .select('*', { count: 'exact', head: true })
+          .eq('company_id', companyId)
+          .in('user_id', teamUserIds)
+          .eq('status', 'pending');
+        
+        // Contar solicitudes de edición de fichajes pendientes
+        const { count: timeEditRequests } = await supabase
+          .from('time_entry_edit_requests')
+          .select('*', { count: 'exact', head: true })
+          .eq('company_id', companyId)
+          .in('user_id', teamUserIds)
+          .eq('status', 'pending');
+        
+        pendingRequests = (normalRequests || 0) + (timeEditRequests || 0);
+      }
 
       // Horas del equipo (simulado)
       const teamHours = Math.floor(Math.random() * 100) + 50;
 
       setStats({
-        teamMembers: teamMembers || 0,
+        teamMembers,
         presentToday,
-        pendingRequests: pendingRequests || 0,
+        pendingRequests,
         teamHours
       });
     } catch (error) {
@@ -112,27 +362,110 @@ export default function ManagerDashboard() {
 
   async function loadTeamMembers(companyId, managerId) {
     try {
-      const { data, error } = await supabase
+      // Primero, obtener el departamento del manager
+      const { data: managerDepartment } = await supabase
         .from('user_company_roles')
-        .select(`
-          id,
-          role,
-          joined_at,
-          user_profiles (
-            full_name,
-            avatar_url
-          ),
-          departments (
-            name
-          )
-        `)
-        .eq('company_id', companyId)
-        .eq('supervisor_id', managerId)
-        .eq('is_active', true)
-        .order('joined_at', { ascending: false });
+        .select('department_id')
+        .eq('id', managerId)
+        .single();
 
-      if (!error && data) {
-        setTeamMembers(data);
+      let teamUserIds = [];
+
+      if (managerDepartment?.department_id) {
+        // Obtener IDs de todos los empleados del departamento
+        const { data: departmentMembers, error: deptError } = await supabase
+          .from('user_company_roles')
+          .select('user_id')
+          .eq('company_id', companyId)
+          .eq('department_id', managerDepartment.department_id)
+          .eq('is_active', true)
+          .neq('role', 'manager');
+
+        if (!deptError && departmentMembers) {
+          teamUserIds = departmentMembers.map(member => member.user_id);
+        }
+      } else {
+        // Si no tiene departamento, obtener empleados con supervisor_id
+        const { data: supervisedMembers, error: supError } = await supabase
+          .from('user_company_roles')
+          .select('user_id')
+          .eq('company_id', companyId)
+          .eq('supervisor_id', managerId)
+          .eq('is_active', true);
+
+        if (!supError && supervisedMembers) {
+          teamUserIds = supervisedMembers.map(member => member.user_id);
+        }
+      }
+
+      if (teamUserIds.length > 0) {
+        // Obtener los roles de usuario
+        const { data: roles, error: rolesError } = await supabase
+          .from('user_company_roles')
+          .select(`
+            id,
+            user_id,
+            role,
+            joined_at,
+            departments (
+              name
+            )
+          `)
+          .in('user_id', teamUserIds)
+          .eq('company_id', companyId)
+          .eq('is_active', true)
+          .order('joined_at', { ascending: false });
+
+        if (!rolesError && roles) {
+          // Obtener los perfiles de usuario por separado
+          const { data: profiles, error: profilesError } = await supabase
+            .from('user_profiles')
+            .select('user_id, full_name, avatar_url')
+            .in('user_id', teamUserIds);
+
+          if (!profilesError && profiles) {
+            // Combinar los datos y obtener el estado actual de cada empleado
+            const membersWithProfilesAndStatus = await Promise.all(
+              roles.map(async (role) => {
+                const profile = profiles.find(p => p.user_id === role.user_id);
+                const status = await getEmployeeCurrentStatus(role.user_id, companyId);
+                
+                return {
+                  ...role,
+                  user_profiles: profile || { full_name: 'Usuario sin perfil', avatar_url: null },
+                  status: status.status,
+                  total_work_time: status.totalWorkTime,
+                  total_break_time: status.totalBreakTime,
+                  last_activity: status.lastActivity,
+                  current_session: status.currentSession
+                };
+              })
+            );
+
+            setTeamMembers(membersWithProfilesAndStatus);
+          } else {
+            // Si no hay perfiles, solo obtener el estado
+            const membersWithStatus = await Promise.all(
+              roles.map(async (role) => {
+                const status = await getEmployeeCurrentStatus(role.user_id, companyId);
+                
+                return {
+                  ...role,
+                  user_profiles: { full_name: 'Usuario sin perfil', avatar_url: null },
+                  status: status.status,
+                  total_work_time: status.totalWorkTime,
+                  total_break_time: status.totalBreakTime,
+                  last_activity: status.lastActivity,
+                  current_session: status.currentSession
+                };
+              })
+            );
+
+            setTeamMembers(membersWithStatus);
+          }
+        }
+      } else {
+        setTeamMembers([]);
       }
     } catch (error) {
       console.error('Error loading team members:', error);
@@ -141,23 +474,106 @@ export default function ManagerDashboard() {
 
   async function loadRecentRequests(companyId, managerId) {
     try {
-      const teamUserIds = await getTeamUserIds(companyId, managerId);
-      
-      const { data, error } = await supabase
-        .from('requests')
-        .select(`
-          *,
-          user_profiles (
-            full_name
-          )
-        `)
-        .eq('company_id', companyId)
-        .in('user_id', teamUserIds)
-        .order('created_at', { ascending: false })
-        .limit(5);
+      // Primero, obtener el departamento del manager
+      const { data: managerDepartment } = await supabase
+        .from('user_company_roles')
+        .select('department_id')
+        .eq('id', managerId)
+        .single();
 
-      if (!error && data) {
-        setRecentRequests(data);
+      let teamUserIds = [];
+
+      if (managerDepartment?.department_id) {
+        // Obtener IDs de todos los empleados del departamento
+        const { data: departmentMembers, error: deptError } = await supabase
+          .from('user_company_roles')
+          .select('user_id')
+          .eq('company_id', companyId)
+          .eq('department_id', managerDepartment.department_id)
+          .eq('is_active', true)
+          .neq('role', 'manager');
+
+        if (!deptError && departmentMembers) {
+          teamUserIds = departmentMembers.map(member => member.user_id);
+        }
+      } else {
+        // Si no tiene departamento, obtener empleados con supervisor_id
+        const { data: supervisedMembers, error: supError } = await supabase
+          .from('user_company_roles')
+          .select('user_id')
+          .eq('company_id', companyId)
+          .eq('supervisor_id', managerId)
+          .eq('is_active', true);
+
+        if (!supError && supervisedMembers) {
+          teamUserIds = supervisedMembers.map(member => member.user_id);
+        }
+      }
+
+      if (teamUserIds.length > 0) {
+        // Cargar solicitudes normales del equipo
+        const { data: normalRequests, error } = await supabase
+          .from('requests')
+          .select('*')
+          .eq('company_id', companyId)
+          .in('user_id', teamUserIds)
+          .order('created_at', { ascending: false })
+          .limit(5);
+
+        // Cargar solicitudes de edición de fichajes del equipo
+        const { data: timeEditRequests, error: timeEditError } = await supabase
+          .from('time_entry_edit_requests')
+          .select('*')
+          .eq('company_id', companyId)
+          .in('user_id', teamUserIds)
+          .order('created_at', { ascending: false })
+          .limit(5);
+
+        if (!error && !timeEditError) {
+          // Obtener los perfiles de usuario por separado
+          const { data: profiles, error: profilesError } = await supabase
+            .from('user_profiles')
+            .select('user_id, full_name')
+            .in('user_id', teamUserIds);
+
+          if (!profilesError && profiles) {
+            // Combinar y procesar las solicitudes
+            const allRequests = [];
+
+            // Agregar solicitudes normales
+            if (normalRequests) {
+              normalRequests.forEach(request => {
+                const profile = profiles.find(p => p.user_id === request.user_id);
+                allRequests.push({
+                  ...request,
+                  request_type: 'normal',
+                  original_request_type: request.request_type,
+                  user_profiles: profile || { full_name: 'Usuario sin perfil' }
+                });
+              });
+            }
+
+            // Agregar solicitudes de edición de fichajes
+            if (timeEditRequests) {
+              timeEditRequests.forEach(request => {
+                const profile = profiles.find(p => p.user_id === request.user_id);
+                allRequests.push({
+                  ...request,
+                  request_type: 'time_edit',
+                  user_profiles: profile || { full_name: 'Usuario sin perfil' }
+                });
+              });
+            }
+
+            // Ordenar por fecha de creación y limitar a 5
+            allRequests.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+            setRecentRequests(allRequests.slice(0, 5));
+          } else {
+            setRecentRequests([]);
+          }
+        }
+      } else {
+        setRecentRequests([]);
       }
     } catch (error) {
       console.error('Error loading recent requests:', error);
@@ -220,6 +636,10 @@ export default function ManagerDashboard() {
           <p className="text-muted-foreground mt-1">
             Gestión y supervisión de tu equipo
           </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <NotificationCenter />
+          <ThemeToggle/>
         </div>
       </div>
 
@@ -309,34 +729,81 @@ export default function ManagerDashboard() {
               </div>
             ) : (
               <div className="space-y-4">
-                {teamMembers.map((member) => (
-                  <div key={member.id} className="flex items-center gap-3 p-3 rounded-lg hover:bg-secondary transition-colors">
-                    <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center flex-shrink-0">
-                      {member.user_profiles?.avatar_url ? (
-                        <img 
-                          src={member.user_profiles.avatar_url} 
-                          alt={member.user_profiles.full_name}
-                          className="w-10 h-10 rounded-full object-cover"
-                        />
-                      ) : (
-                        <span className="text-sm font-medium text-primary">
-                          {member.user_profiles?.full_name?.charAt(0) || 'U'}
-                        </span>
-                      )}
+                {teamMembers.map((member) => {
+                  const StatusIcon = getStatusIcon(member.status);
+                  const color = getStatusColor(member.status);
+                  const progress = calculateWorkProgress(member.total_work_time);
+
+                  return (
+                    <div key={member.id} className="flex items-center gap-3 p-3 rounded-lg hover:bg-secondary transition-colors">
+                      <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center flex-shrink-0">
+                        {member.user_profiles?.avatar_url ? (
+                          <img 
+                            src={member.user_profiles.avatar_url} 
+                            alt={member.user_profiles.full_name}
+                            className="w-10 h-10 rounded-full object-cover"
+                          />
+                        ) : (
+                          <span className="text-sm font-medium text-primary">
+                            {member.user_profiles?.full_name?.charAt(0) || 'U'}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-foreground">{member.user_profiles?.full_name}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {member.departments?.name || 'Sin departamento'}
+                        </p>
+                        <div className="flex items-center gap-2 mt-2">
+                          <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${color}`}>
+                            <StatusIcon className="w-3 h-3" />
+                            {getStatusText(member.status)}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            ({member.total_work_time}h)
+                          </span>
+                        </div>
+                        {/* Barra de progreso de la jornada */}
+                        <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mt-2">
+                          <div 
+                            className={`h-2 rounded-full transition-all duration-300 ${
+                              member.status === 'working' ? 'bg-green-500' : 
+                              member.status === 'break' ? 'bg-yellow-500' : 'bg-gray-400'
+                            }`} 
+                            style={{ width: `${progress}%` }}
+                          ></div>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {progress}% de la jornada completada
+                        </p>
+                      </div>
+                      <div className="flex-shrink-0">
+                        <button
+                          onClick={() => sendClockInReminder(member.user_id, member.user_profiles?.full_name)}
+                          disabled={sendingNotifications[member.user_id]}
+                          className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium transition-all duration-200 ${
+                            sendingNotifications[member.user_id]
+                              ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                              : 'bg-blue-100 hover:bg-blue-200 text-blue-700 hover:text-blue-800 cursor-pointer'
+                          }`}
+                          title="Enviar recordatorio de fichaje"
+                        >
+                          {sendingNotifications[member.user_id] ? (
+                            <>
+                              <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin"></div>
+                              Enviando...
+                            </>
+                          ) : (
+                            <>
+                              <Bell className="w-3 h-3" />
+                              Recordar
+                            </>
+                          )}
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-foreground">{member.user_profiles?.full_name}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {member.departments?.name || 'Sin departamento'}
-                      </p>
-                    </div>
-                    <div className="flex-shrink-0">
-                      <span className="badge">
-                        {member.role}
-                      </span>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

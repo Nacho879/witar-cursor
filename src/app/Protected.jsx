@@ -76,7 +76,7 @@ export default function Protected({ roles, children }) {
             navigate('/owner');
             break;
           case 'admin':
-            navigate('/owner'); // Los admins usan el mismo layout que owners
+            navigate('/admin'); // Los admins van a su propio panel
             break;
           case 'manager':
             navigate('/manager');

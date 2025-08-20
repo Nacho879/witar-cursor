@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabaseClient';
 
 export default function Login() {
@@ -8,6 +8,8 @@ export default function Login() {
   const [msg, setMsg] = React.useState('');
   const [loading, setLoading] = React.useState(false);
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const invitationToken = searchParams.get('invitation');
 
   async function onLogin(e) {
     e.preventDefault();
@@ -27,6 +29,12 @@ export default function Login() {
       }
 
       if (data.session) {
+        // Verificar si es un usuario temporal y redirigir al cambio de contraseña PRIMERO
+        if (data.session.user.user_metadata?.temp_user) {
+          navigate('/change-password');
+          return;
+        }
+
         // Obtener el rol del usuario para redirigir correctamente
         const { data: userRole, error: roleError } = await supabase
           .from('user_company_roles')
@@ -50,8 +58,10 @@ export default function Login() {
         // Redirigir según el rol
         switch (userRole.role) {
           case 'owner':
-          case 'admin':
             navigate('/owner');
+            break;
+          case 'admin':
+            navigate('/admin'); // Los admins van a su propio panel
             break;
           case 'manager':
             navigate('/manager');
@@ -62,6 +72,23 @@ export default function Login() {
           default:
             setMsg('Rol de usuario no válido');
             setLoading(false);
+        }
+
+        // Si hay un token de invitación, procesarlo después del login
+        if (invitationToken) {
+          try {
+            const { data, error } = await supabase.functions.invoke('accept-employee-invitation', {
+              body: { token: invitationToken }
+            });
+
+            if (error) {
+              console.error('Error accepting invitation:', error);
+            } else if (data.success) {
+              // La invitación se procesó correctamente, el usuario ya está en la empresa
+            }
+          } catch (error) {
+            console.error('Error processing invitation:', error);
+          }
         }
       }
     } catch (error) {

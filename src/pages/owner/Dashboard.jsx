@@ -9,11 +9,13 @@ import {
   AlertCircle,
   Plus,
   Mail,
-  Building2,
+  Building,
   CheckCircle,
   XCircle,
   Activity
 } from 'lucide-react';
+import NotificationCenter from '@/components/NotificationCenter';
+import ThemeToggle from '@/components/common/ThemeToggle';
 
 export default function OwnerDashboard() {
   const [stats, setStats] = React.useState({
@@ -22,7 +24,8 @@ export default function OwnerDashboard() {
     pendingInvitations: 0,
     pendingRequests: 0,
     todayTimeEntries: 0,
-    thisWeekHours: 0
+    thisWeekHours: 0,
+    totalDepartments: 0
   });
   const [recentActivity, setRecentActivity] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
@@ -115,8 +118,35 @@ export default function OwnerDashboard() {
         .eq('company_id', companyId)
         .gte('entry_time', today.toISOString());
 
-      // Horas de esta semana (simulado)
-      const thisWeekHours = Math.floor(Math.random() * 200) + 150; // Simulado por ahora
+      // Horas de esta semana (datos reales)
+      const weekStart = new Date();
+      weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+      weekStart.setHours(0, 0, 0, 0);
+      
+      const { data: weekTimeEntries } = await supabase
+        .from('time_entries')
+        .select('*')
+        .eq('company_id', companyId)
+        .gte('entry_time', weekStart.toISOString());
+
+      // Calcular horas totales de la semana
+      let thisWeekHours = 0;
+      if (weekTimeEntries) {
+        thisWeekHours = weekTimeEntries.reduce((total, entry) => {
+          if (entry.clock_out && entry.clock_in) {
+            const duration = new Date(entry.clock_out) - new Date(entry.clock_in);
+            return total + (duration / (1000 * 60 * 60)); // Convertir a horas
+          }
+          return total;
+        }, 0);
+      }
+
+      // Total departamentos
+      const { count: totalDepartments } = await supabase
+        .from('departments')
+        .select('*', { count: 'exact', head: true })
+        .eq('company_id', companyId)
+        .eq('status', 'active');
 
       setStats({
         totalEmployees: totalEmployees || 0,
@@ -124,7 +154,8 @@ export default function OwnerDashboard() {
         pendingInvitations: pendingInvitations || 0,
         pendingRequests: pendingRequests || 0,
         todayTimeEntries: todayTimeEntries || 0,
-        thisWeekHours
+        thisWeekHours,
+        totalDepartments: totalDepartments || 0
       });
     } catch (error) {
       console.error('Error loading stats:', error);
@@ -139,12 +170,7 @@ export default function OwnerDashboard() {
       // Invitaciones recientes
       const { data: recentInvitations } = await supabase
         .from('invitations')
-        .select(`
-          *,
-          user_profiles!invitations_invited_by_fkey (
-            full_name
-          )
-        `)
+        .select('*')
         .eq('company_id', companyId)
         .order('created_at', { ascending: false })
         .limit(3);
@@ -166,12 +192,7 @@ export default function OwnerDashboard() {
       // Solicitudes recientes
       const { data: recentRequests } = await supabase
         .from('requests')
-        .select(`
-          *,
-          user_profiles (
-            full_name
-          )
-        `)
+        .select('*')
         .eq('company_id', companyId)
         .order('created_at', { ascending: false })
         .limit(3);
@@ -181,7 +202,7 @@ export default function OwnerDashboard() {
           activities.push({
             id: req.id,
             type: 'request',
-            title: `Solicitud de ${req.user_profiles?.full_name || 'Empleado'}`,
+            title: `Solicitud de empleado`,
             description: `${req.request_type} - ${req.status}`,
             status: req.status,
             timestamp: req.created_at,
@@ -248,7 +269,9 @@ export default function OwnerDashboard() {
             Bienvenido de vuelta, {companyInfo?.name}
           </p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex items-center gap-3">
+          <NotificationCenter />
+          <ThemeToggle/>
           <button
             onClick={() => window.location.href = '/owner/employees'}
             className="btn btn-primary flex items-center gap-2"
@@ -350,10 +373,10 @@ export default function OwnerDashboard() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-muted-foreground">Departamentos</p>
-              <p className="text-3xl font-bold text-foreground">3</p>
+              <p className="text-3xl font-bold text-foreground">{stats.totalDepartments}</p>
             </div>
             <div className="w-12 h-12 bg-indigo-100 rounded-lg flex items-center justify-center">
-              <Building2 className="w-6 h-6 text-indigo-600" />
+              <Building className="w-6 h-6 text-indigo-600" />
             </div>
           </div>
           <div className="mt-4">

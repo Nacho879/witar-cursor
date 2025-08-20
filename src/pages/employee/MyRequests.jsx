@@ -38,23 +38,74 @@ export default function MyRequests() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { data, error } = await supabase
+      // Cargar solicitudes normales del usuario
+      const { data: normalRequests, error: normalError } = await supabase
         .from('requests')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      // Cargar solicitudes de edición de fichajes del usuario
+      const { data: timeEditRequests, error: timeEditError } = await supabase
+        .from('time_entry_edit_requests')
         .select(`
           *,
-          user_company_roles!requests_user_id_fkey (
-            user_profiles (
-              full_name
-            )
+          time_entries (
+            id,
+            entry_type,
+            entry_time,
+            notes
           )
         `)
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
-      if (!error && data) {
-        setRequests(data);
-        calculateStats(data);
+      if (normalError) {
+        console.error('Error loading normal requests:', normalError);
       }
+
+      if (timeEditError) {
+        console.error('Error loading time edit requests:', timeEditError);
+      }
+
+      // Obtener el perfil del usuario por separado
+      const { data: profile, error: profileError } = await supabase
+        .from('user_profiles')
+        .select('full_name')
+        .eq('user_id', user.id)
+        .single();
+
+      let allRequests = [];
+
+      // Procesar solicitudes normales
+      if (normalRequests) {
+        const normalRequestsWithProfile = normalRequests.map(request => ({
+          ...request,
+          request_type: 'normal', // Marcar como solicitud normal
+          user_company_roles: {
+            user_profiles: profile || { full_name: 'Usuario' }
+          }
+        }));
+        allRequests.push(...normalRequestsWithProfile);
+      }
+
+      // Procesar solicitudes de edición de fichajes
+      if (timeEditRequests) {
+        const timeEditRequestsWithProfile = timeEditRequests.map(request => ({
+          ...request,
+          request_type: 'time_edit', // Marcar como solicitud de edición de fichaje
+          user_company_roles: {
+            user_profiles: profile || { full_name: 'Usuario' }
+          }
+        }));
+        allRequests.push(...timeEditRequestsWithProfile);
+      }
+
+      // Ordenar todas las solicitudes por fecha de creación (más recientes primero)
+      allRequests.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+      setRequests(allRequests);
+      calculateStats(allRequests);
     } catch (error) {
       console.error('Error loading requests:', error);
     } finally {
@@ -71,18 +122,35 @@ export default function MyRequests() {
     setStats({ total, pending, approved, rejected });
   }
 
-  function getRequestTypeInfo(type) {
-    switch (type) {
-      case 'vacation':
-        return { label: 'Vacaciones', icon: Calendar, color: 'text-blue-600 bg-blue-100' };
-      case 'permission':
-        return { label: 'Permiso', icon: Clock, color: 'text-green-600 bg-green-100' };
-      case 'sick_leave':
-        return { label: 'Baja Médica', icon: AlertCircle, color: 'text-red-600 bg-red-100' };
-      case 'other':
-        return { label: 'Otro', icon: FileText, color: 'text-purple-600 bg-purple-100' };
-      default:
-        return { label: type, icon: FileText, color: 'text-gray-600 bg-gray-100' };
+  function getRequestTypeInfo(type, requestType = 'normal') {
+    if (requestType === 'time_edit') {
+      // Solicitudes de edición de fichajes
+      switch (type) {
+        case 'edit_time':
+          return { label: 'Editar Fecha/Hora', icon: Clock, color: 'text-orange-600 bg-orange-100' };
+        case 'edit_type':
+          return { label: 'Editar Tipo', icon: Clock, color: 'text-purple-600 bg-purple-100' };
+        case 'delete_entry':
+          return { label: 'Eliminar Fichaje', icon: XCircle, color: 'text-red-600 bg-red-100' };
+        case 'add_entry':
+          return { label: 'Agregar Fichaje', icon: Plus, color: 'text-green-600 bg-green-100' };
+        default:
+          return { label: 'Edición de Fichaje', icon: Clock, color: 'text-gray-600 bg-gray-100' };
+      }
+    } else {
+      // Solicitudes normales
+      switch (type) {
+        case 'vacation':
+          return { label: 'Vacaciones', icon: Calendar, color: 'text-blue-600 bg-blue-100' };
+        case 'permission':
+          return { label: 'Permiso', icon: Clock, color: 'text-green-600 bg-green-100' };
+        case 'sick_leave':
+          return { label: 'Baja Médica', icon: AlertCircle, color: 'text-red-600 bg-red-100' };
+        case 'other':
+          return { label: 'Otro', icon: FileText, color: 'text-purple-600 bg-purple-100' };
+        default:
+          return { label: type, icon: FileText, color: 'text-gray-600 bg-gray-100' };
+      }
     }
   }
 
@@ -113,9 +181,17 @@ export default function MyRequests() {
 
   function getDurationDisplay(request) {
     if (request.request_type === 'permission') {
-      return `${request.duration_hours}h`;
+      // Para permisos, calcular duración basada en fechas
+      const start = new Date(request.start_date);
+      const end = new Date(request.end_date);
+      const days = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
+      return `${days} día${days > 1 ? 's' : ''}`;
     } else {
-      return `${request.duration_days} día${request.duration_days > 1 ? 's' : ''}`;
+      // Para otros tipos, calcular días
+      const start = new Date(request.start_date);
+      const end = new Date(request.end_date);
+      const days = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
+      return `${days} día${days > 1 ? 's' : ''}`;
     }
   }
 
@@ -124,12 +200,12 @@ export default function MyRequests() {
     if (searchTerm) {
       const searchLower = searchTerm.toLowerCase();
       const reason = request.reason?.toLowerCase() || '';
-      const description = request.description?.toLowerCase() || '';
-      const typeInfo = getRequestTypeInfo(request.request_type);
+      const notes = request.notes?.toLowerCase() || '';
+      const typeInfo = getRequestTypeInfo(request.request_type, request.request_type === 'time_edit' ? 'time_edit' : 'normal');
       const typeLabel = typeInfo.label.toLowerCase();
       
       return reason.includes(searchLower) || 
-             description.includes(searchLower) || 
+             notes.includes(searchLower) || 
              typeLabel.includes(searchLower);
     }
 
@@ -174,13 +250,6 @@ export default function MyRequests() {
             Gestiona tus solicitudes de vacaciones, permisos y bajas
           </p>
         </div>
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="btn btn-primary flex items-center gap-2"
-        >
-          <Plus className="w-4 h-4" />
-          Nueva Solicitud
-        </button>
       </div>
 
       {/* Stats */}
@@ -246,7 +315,7 @@ export default function MyRequests() {
                 placeholder="Buscar solicitudes..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="input pl-10 w-full"
+                className="input pl-10"
               />
             </div>
           </div>
@@ -255,7 +324,7 @@ export default function MyRequests() {
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="input w-full"
+              className="input"
             >
               <option value="all">Todos los estados</option>
               <option value="pending">Pendientes</option>
@@ -263,26 +332,24 @@ export default function MyRequests() {
               <option value="rejected">Rechazadas</option>
             </select>
           </div>
-          <div className="flex items-end">
-            <button
-              onClick={() => {
-                setSearchTerm('');
-                setStatusFilter('all');
-              }}
-              className="btn btn-ghost"
-            >
-              Limpiar
-            </button>
-          </div>
         </div>
       </div>
 
       {/* Requests List */}
       <div className="card">
         <div className="p-6 border-b border-border">
-          <h3 className="text-lg font-semibold text-foreground">
-            Historial de Solicitudes
-          </h3>
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold text-foreground">
+              Historial de Solicitudes
+            </h3>
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="btn btn-primary flex items-center gap-2"
+            >
+              <Plus className="w-4 h-4" />
+              Nueva Solicitud
+            </button>
+          </div>
         </div>
         <div className="p-6">
           {filteredRequests.length === 0 ? (
@@ -305,7 +372,7 @@ export default function MyRequests() {
           ) : (
             <div className="space-y-4">
               {filteredRequests.map((request) => {
-                const typeInfo = getRequestTypeInfo(request.request_type);
+                const typeInfo = getRequestTypeInfo(request.request_type, request.request_type === 'time_edit' ? 'time_edit' : 'normal');
                 const statusInfo = getStatusInfo(request.status);
                 const TypeIcon = typeInfo.icon;
                 const StatusIcon = statusInfo.icon;
@@ -328,21 +395,39 @@ export default function MyRequests() {
                           <p className="text-sm text-muted-foreground mb-2">
                             {request.reason}
                           </p>
-                          {request.description && (
+                          {request.notes && (
                             <p className="text-sm text-muted-foreground mb-3">
-                              {request.description}
+                              {request.notes}
                             </p>
                           )}
-                          <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                            <span>Duración: {getDurationDisplay(request)}</span>
-                            <span>Desde: {formatDate(request.start_date)}</span>
-                            {request.request_type !== 'permission' && (
-                              <span>Hasta: {formatDate(request.end_date)}</span>
-                            )}
-                            {request.request_type === 'permission' && (
-                              <span>Horario: {formatTime(request.start_time)} - {formatTime(request.end_time)}</span>
-                            )}
-                          </div>
+                          
+                          {/* Información específica según el tipo de solicitud */}
+                          {request.request_type === 'time_edit' ? (
+                            // Información para solicitudes de edición de fichajes
+                            <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                              {request.time_entries && (
+                                <span>Fichaje: {new Date(request.time_entries.entry_time).toLocaleString('es-ES')}</span>
+                              )}
+                              {request.proposed_entry_time && (
+                                <span>Nueva fecha: {new Date(request.proposed_entry_time).toLocaleString('es-ES')}</span>
+                              )}
+                              {request.proposed_entry_type && (
+                                <span>Nuevo tipo: {request.proposed_entry_type}</span>
+                              )}
+                            </div>
+                          ) : (
+                            // Información para solicitudes normales
+                            <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                              <span>Duración: {getDurationDisplay(request)}</span>
+                              <span>Desde: {formatDate(request.start_date)}</span>
+                              {request.request_type !== 'permission' && (
+                                <span>Hasta: {formatDate(request.end_date)}</span>
+                              )}
+                              {request.request_type === 'permission' && (
+                                <span>Horario: {formatTime(request.start_time)} - {formatTime(request.end_time)}</span>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </div>
                       <div className="flex items-center gap-2">

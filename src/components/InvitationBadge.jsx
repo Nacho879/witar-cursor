@@ -1,30 +1,8 @@
 import * as React from 'react';
-import { supabase } from '@/lib/supabaseClient';
+import { useInvitations } from '@/contexts/InvitationContext';
 
-export default function InvitationBadge({ companyId }) {
-  const [pendingCount, setPendingCount] = React.useState(0);
-
-  React.useEffect(() => {
-    if (companyId) {
-      loadPendingInvitations();
-    }
-  }, [companyId]);
-
-  async function loadPendingInvitations() {
-    try {
-      const { count, error } = await supabase
-        .from('invitations')
-        .select('*', { count: 'exact', head: true })
-        .eq('company_id', companyId)
-        .eq('status', 'pending');
-
-      if (!error && count !== null) {
-        setPendingCount(count);
-      }
-    } catch (error) {
-      console.error('Error loading pending invitations:', error);
-    }
-  }
+export default function InvitationBadge() {
+  const { pendingCount } = useInvitations();
 
   if (pendingCount === 0) {
     return null;

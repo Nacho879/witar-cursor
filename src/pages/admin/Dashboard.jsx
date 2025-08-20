@@ -2,19 +2,15 @@ import * as React from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { 
   Users, 
-  Clock, 
+  Mail, 
   Calendar, 
-  FileText, 
+  Clock, 
   TrendingUp, 
-  AlertCircle,
+  Building,
   Plus,
-  Mail,
-  Building2,
-  CheckCircle,
-  XCircle,
-  Activity,
   UserCheck,
-  UserX
+  UserX,
+  Clock3
 } from 'lucide-react';
 
 export default function AdminDashboard() {
@@ -24,20 +20,17 @@ export default function AdminDashboard() {
     pendingInvitations: 0,
     pendingRequests: 0,
     todayTimeEntries: 0,
-    thisWeekHours: 0,
-    managers: 0,
-    employees: 0
+    thisWeekHours: 0
   });
+  const [companyInfo, setCompanyInfo] = React.useState(null);
   const [recentActivity, setRecentActivity] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
-  const [companyId, setCompanyId] = React.useState(null);
-  const [companyInfo, setCompanyInfo] = React.useState(null);
 
   React.useEffect(() => {
-    loadDashboardData();
+    loadData();
   }, []);
 
-  async function loadDashboardData() {
+  async function loadData() {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       
@@ -50,7 +43,6 @@ export default function AdminDashboard() {
           .single();
 
         if (userRole) {
-          setCompanyId(userRole.company_id);
           await Promise.all([
             loadCompanyInfo(userRole.company_id),
             loadStats(userRole.company_id),
@@ -59,7 +51,7 @@ export default function AdminDashboard() {
         }
       }
     } catch (error) {
-      console.error('Error loading dashboard data:', error);
+      console.error('Error loading data:', error);
     } finally {
       setLoading(false);
     }
@@ -67,13 +59,13 @@ export default function AdminDashboard() {
 
   async function loadCompanyInfo(companyId) {
     try {
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('companies')
-        .select('*')
+        .select('name, slug')
         .eq('id', companyId)
         .single();
 
-      if (!error && data) {
+      if (data) {
         setCompanyInfo(data);
       }
     } catch (error) {
@@ -96,22 +88,6 @@ export default function AdminDashboard() {
         .eq('company_id', companyId)
         .eq('is_active', true);
 
-      // Managers
-      const { count: managers } = await supabase
-        .from('user_company_roles')
-        .select('*', { count: 'exact', head: true })
-        .eq('company_id', companyId)
-        .eq('role', 'manager')
-        .eq('is_active', true);
-
-      // Empleados regulares
-      const { count: employees } = await supabase
-        .from('user_company_roles')
-        .select('*', { count: 'exact', head: true })
-        .eq('company_id', companyId)
-        .eq('role', 'employee')
-        .eq('is_active', true);
-
       // Invitaciones pendientes
       const { count: pendingInvitations } = await supabase
         .from('invitations')
@@ -127,26 +103,36 @@ export default function AdminDashboard() {
         .eq('status', 'pending');
 
       // Fichajes de hoy
-      const today = new Date().toISOString().split('T')[0];
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
       const { count: todayTimeEntries } = await supabase
         .from('time_entries')
         .select('*', { count: 'exact', head: true })
         .eq('company_id', companyId)
-        .gte('date', today)
-        .lte('date', today);
+        .gte('entry_time', today.toISOString());
 
       // Horas de esta semana
-      const startOfWeek = new Date();
-      startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
-      startOfWeek.setHours(0, 0, 0, 0);
+      const weekStart = new Date();
+      weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+      weekStart.setHours(0, 0, 0, 0);
       
-      const { data: weekEntries } = await supabase
+      const { data: weekTimeEntries } = await supabase
         .from('time_entries')
-        .select('duration_minutes')
+        .select('*')
         .eq('company_id', companyId)
-        .gte('date', startOfWeek.toISOString().split('T')[0]);
+        .gte('entry_time', weekStart.toISOString());
 
-      const thisWeekHours = weekEntries?.reduce((total, entry) => total + (entry.duration_minutes || 0), 0) / 60 || 0;
+      // Calcular horas totales de la semana
+      let thisWeekHours = 0;
+      if (weekTimeEntries) {
+        thisWeekHours = weekTimeEntries.reduce((total, entry) => {
+          if (entry.clock_out && entry.clock_in) {
+            const duration = new Date(entry.clock_out) - new Date(entry.clock_in);
+            return total + (duration / (1000 * 60 * 60)); // Convertir a horas
+          }
+          return total;
+        }, 0);
+      }
 
       setStats({
         totalEmployees: totalEmployees || 0,
@@ -154,9 +140,7 @@ export default function AdminDashboard() {
         pendingInvitations: pendingInvitations || 0,
         pendingRequests: pendingRequests || 0,
         todayTimeEntries: todayTimeEntries || 0,
-        thisWeekHours: Math.round(thisWeekHours * 100) / 100,
-        managers: managers || 0,
-        employees: employees || 0
+        thisWeekHours: Math.round(thisWeekHours * 10) / 10
       });
     } catch (error) {
       console.error('Error loading stats:', error);
@@ -165,230 +149,456 @@ export default function AdminDashboard() {
 
   async function loadRecentActivity(companyId) {
     try {
-      // Obtener fichajes recientes
-      const { data: recentTimeEntries } = await supabase
-        .from('time_entries')
-        .select(`
-          id,
-          type,
-          created_at,
-          user_company_roles!inner (
-            user_profiles!inner (
-              first_name,
-              last_name,
-              avatar_url
-            )
-          )
-        `)
+      // Obtener diferentes tipos de actividad reciente
+      const activities = [];
+
+      // 1. Invitaciones recientes
+      const { data: recentInvitations } = await supabase
+        .from('invitations')
+        .select('*')
         .eq('company_id', companyId)
         .order('created_at', { ascending: false })
         .limit(5);
 
-      // Obtener solicitudes recientes
+      if (recentInvitations) {
+        recentInvitations.forEach(invitation => {
+          activities.push({
+            id: `invitation-${invitation.id}`,
+            type: 'invitation',
+            title: `Invitación enviada a ${invitation.email}`,
+            description: `Rol: ${invitation.role}`,
+            status: invitation.status,
+            timestamp: invitation.created_at,
+            icon: 'Mail'
+          });
+        });
+      }
+
+      // 2. Solicitudes recientes
       const { data: recentRequests } = await supabase
         .from('requests')
-        .select(`
-          id,
-          type,
-          status,
-          created_at,
-          user_company_roles!inner (
-            user_profiles!inner (
-              first_name,
-              last_name,
-              avatar_url
-            )
-          )
-        `)
+        .select('*')
         .eq('company_id', companyId)
         .order('created_at', { ascending: false })
         .limit(5);
 
-      // Combinar y ordenar actividades
-      const activities = [
-        ...(recentTimeEntries || []).map(entry => ({
-          ...entry,
-          activityType: 'time_entry',
-          user: entry.user_company_roles.user_profiles
-        })),
-        ...(recentRequests || []).map(request => ({
-          ...request,
-          activityType: 'request',
-          user: request.user_company_roles.user_profiles
-        }))
-      ].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-       .slice(0, 10);
+      if (recentRequests) {
+        // Obtener información de usuarios para las solicitudes
+        const requestWithUserInfo = await Promise.all(
+          recentRequests.map(async (request) => {
+            let userName = 'Empleado';
+            try {
+              const { data: userProfile } = await supabase
+                .from('user_profiles')
+                .select('full_name')
+                .eq('user_id', request.user_id)
+                .maybeSingle();
+              
+              if (userProfile) {
+                userName = userProfile.full_name;
+              }
+            } catch (error) {
+              console.error('Error loading user profile for request:', error);
+            }
 
-      setRecentActivity(activities);
+            return {
+              ...request,
+              userName
+            };
+          })
+        );
+
+        requestWithUserInfo.forEach(request => {
+          activities.push({
+            id: `request-${request.id}`,
+            type: 'request',
+            title: `Solicitud de ${request.userName}`,
+            description: `${request.type} - ${request.status}`,
+            status: request.status,
+            timestamp: request.created_at,
+            icon: 'Calendar'
+          });
+        });
+      }
+
+      // 3. Fichajes recientes
+      const { data: recentTimeEntries } = await supabase
+        .from('time_entries')
+        .select('*')
+        .eq('company_id', companyId)
+        .order('entry_time', { ascending: false })
+        .limit(5);
+
+      if (recentTimeEntries) {
+        // Obtener información de usuarios para los fichajes
+        const timeEntriesWithUserInfo = await Promise.all(
+          recentTimeEntries.map(async (entry) => {
+            let userName = 'Empleado';
+            try {
+              const { data: userProfile } = await supabase
+                .from('user_profiles')
+                .select('full_name')
+                .eq('user_id', entry.user_id)
+                .maybeSingle();
+              
+              if (userProfile) {
+                userName = userProfile.full_name;
+              }
+            } catch (error) {
+              console.error('Error loading user profile for time entry:', error);
+            }
+
+            return {
+              ...entry,
+              userName
+            };
+          })
+        );
+
+        timeEntriesWithUserInfo.forEach(entry => {
+          activities.push({
+            id: `time-${entry.id}`,
+            type: 'time_entry',
+            title: `${entry.userName} registró entrada`,
+            description: `Tipo: ${entry.entry_type}`,
+            status: 'completed',
+            timestamp: entry.entry_time,
+            icon: 'Clock'
+          });
+        });
+      }
+
+      // 4. Empleados recientes
+      const { data: recentEmployees } = await supabase
+        .from('user_company_roles')
+        .select('*')
+        .eq('company_id', companyId)
+        .order('joined_at', { ascending: false })
+        .limit(5);
+
+      if (recentEmployees) {
+        // Obtener información de usuarios para los empleados
+        const employeesWithUserInfo = await Promise.all(
+          recentEmployees.map(async (employee) => {
+            let userName = 'Nuevo empleado';
+            try {
+              const { data: userProfile } = await supabase
+                .from('user_profiles')
+                .select('full_name')
+                .eq('user_id', employee.user_id)
+                .maybeSingle();
+              
+              if (userProfile) {
+                userName = userProfile.full_name;
+              }
+            } catch (error) {
+              console.error('Error loading user profile for employee:', error);
+            }
+
+            return {
+              ...employee,
+              userName
+            };
+          })
+        );
+
+        employeesWithUserInfo.forEach(employee => {
+          activities.push({
+            id: `employee-${employee.id}`,
+            type: 'employee',
+            title: `${employee.userName} se unió`,
+            description: `Rol: ${employee.role}`,
+            status: employee.is_active ? 'active' : 'inactive',
+            timestamp: employee.joined_at,
+            icon: 'UserCheck'
+          });
+        });
+      }
+
+      // Ordenar todas las actividades por timestamp
+      activities.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+      // Tomar las 10 más recientes
+      setRecentActivity(activities.slice(0, 10));
     } catch (error) {
       console.error('Error loading recent activity:', error);
     }
   }
 
+  function getActivityIcon(type) {
+    switch (type) {
+      case 'invitation':
+        return <Mail className="w-4 h-4" />;
+      case 'request':
+        return <Calendar className="w-4 h-4" />;
+      case 'time_entry':
+        return <Clock className="w-4 h-4" />;
+      case 'employee':
+        return <UserCheck className="w-4 h-4" />;
+      default:
+        return <div className="w-4 h-4 bg-primary rounded-full" />;
+    }
+  }
+
+  function getActivityColor(type) {
+    switch (type) {
+      case 'invitation':
+        return 'text-blue-600 bg-blue-100';
+      case 'request':
+        return 'text-purple-600 bg-purple-100';
+      case 'time_entry':
+        return 'text-green-600 bg-green-100';
+      case 'employee':
+        return 'text-orange-600 bg-orange-100';
+      default:
+        return 'text-gray-600 bg-gray-100';
+    }
+  }
+
+  function getStatusColor(status) {
+    switch (status) {
+      case 'pending':
+        return 'text-yellow-600 bg-yellow-100';
+      case 'accepted':
+      case 'approved':
+        return 'text-green-600 bg-green-100';
+      case 'rejected':
+      case 'expired':
+        return 'text-red-600 bg-red-100';
+      case 'active':
+        return 'text-green-600 bg-green-100';
+      case 'inactive':
+        return 'text-gray-600 bg-gray-100';
+      default:
+        return 'text-blue-600 bg-blue-100';
+    }
+  }
+
+  function formatTimeAgo(timestamp) {
+    const now = new Date();
+    const activityTime = new Date(timestamp);
+    const diffInMinutes = Math.floor((now - activityTime) / (1000 * 60));
+    
+    if (diffInMinutes < 1) return 'Ahora mismo';
+    if (diffInMinutes < 60) return `Hace ${diffInMinutes} min`;
+    
+    const diffInHours = Math.floor(diffInMinutes / 60);
+    if (diffInHours < 24) return `Hace ${diffInHours}h`;
+    
+    const diffInDays = Math.floor(diffInHours / 24);
+    if (diffInDays < 7) return `Hace ${diffInDays}d`;
+    
+    return activityTime.toLocaleDateString('es-ES', {
+      day: 'numeric',
+      month: 'short'
+    });
+  }
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      <div className="space-y-4">
+        <div className="animate-pulse">
+          <div className="h-8 bg-gray-200 rounded w-1/4 mb-4"></div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {[...Array(6)].map((_, i) => (
+              <div key={i} className="card p-6">
+                <div className="h-4 bg-gray-200 rounded w-3/4 mb-4"></div>
+                <div className="h-8 bg-gray-200 rounded w-1/2"></div>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 lg:space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
-          <p className="text-muted-foreground">
-            Bienvenido de vuelta, Administrador
+          <h1 className="text-2xl lg:text-3xl font-bold text-foreground">
+            Dashboard de Administrador
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            Bienvenido, {companyInfo?.name}
           </p>
         </div>
-        <div className="text-right">
-          <p className="text-sm text-muted-foreground">Empresa</p>
-          <p className="font-semibold text-foreground">
-            {companyInfo?.name || 'Cargando...'}
-          </p>
+        <div className="flex gap-3">
+          <button
+            onClick={() => window.location.href = '/admin/employees'}
+            className="btn btn-primary flex items-center gap-2 w-full sm:w-auto"
+          >
+            <Plus className="w-4 h-4" />
+            <span className="hidden sm:inline">Invitar Empleado</span>
+            <span className="sm:hidden">Invitar</span>
+          </button>
         </div>
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="bg-card p-6 rounded-lg border border-border">
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-6">
+        <div className="card p-4 lg:p-6">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-muted-foreground">Total Empleados</p>
-              <p className="text-2xl font-bold text-foreground">{stats.totalEmployees}</p>
+              <p className="text-2xl lg:text-3xl font-bold text-foreground">{stats.totalEmployees}</p>
             </div>
-            <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-              <Users className="w-6 h-6 text-blue-600" />
+            <div className="w-10 h-10 lg:w-12 lg:h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+              <Users className="w-5 h-5 lg:w-6 lg:h-6 text-blue-600" />
             </div>
+          </div>
+          <div className="mt-3 lg:mt-4">
+            <span className="text-sm text-green-600">
+              +{stats.activeEmployees} activos
+            </span>
           </div>
         </div>
 
-        <div className="bg-card p-6 rounded-lg border border-border">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Empleados Activos</p>
-              <p className="text-2xl font-bold text-foreground">{stats.activeEmployees}</p>
-            </div>
-            <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
-              <UserCheck className="w-6 h-6 text-green-600" />
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-card p-6 rounded-lg border border-border">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Managers</p>
-              <p className="text-2xl font-bold text-foreground">{stats.managers}</p>
-            </div>
-            <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
-              <Users className="w-6 h-6 text-purple-600" />
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-card p-6 rounded-lg border border-border">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Empleados</p>
-              <p className="text-2xl font-bold text-foreground">{stats.employees}</p>
-            </div>
-            <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
-              <UserX className="w-6 h-6 text-orange-600" />
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-card p-6 rounded-lg border border-border">
+        <div className="card p-4 lg:p-6">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-muted-foreground">Invitaciones Pendientes</p>
-              <p className="text-2xl font-bold text-foreground">{stats.pendingInvitations}</p>
+              <p className="text-2xl lg:text-3xl font-bold text-foreground">{stats.pendingInvitations}</p>
             </div>
-            <div className="w-12 h-12 bg-yellow-100 rounded-lg flex items-center justify-center">
-              <Mail className="w-6 h-6 text-yellow-600" />
+            <div className="w-10 h-10 lg:w-12 lg:h-12 bg-yellow-100 rounded-lg flex items-center justify-center">
+              <Mail className="w-5 h-5 lg:w-6 lg:h-6 text-yellow-600" />
             </div>
+          </div>
+          <div className="mt-3 lg:mt-4">
+            <span className="text-sm text-yellow-600">
+              Requieren atención
+            </span>
           </div>
         </div>
 
-        <div className="bg-card p-6 rounded-lg border border-border">
+        <div className="card p-4 lg:p-6">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-muted-foreground">Solicitudes Pendientes</p>
-              <p className="text-2xl font-bold text-foreground">{stats.pendingRequests}</p>
+              <p className="text-2xl lg:text-3xl font-bold text-foreground">{stats.pendingRequests}</p>
             </div>
-            <div className="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center">
-              <AlertCircle className="w-6 h-6 text-red-600" />
+            <div className="w-10 h-10 lg:w-12 lg:h-12 bg-purple-100 rounded-lg flex items-center justify-center">
+              <Calendar className="w-5 h-5 lg:w-6 lg:h-6 text-purple-600" />
             </div>
+          </div>
+          <div className="mt-3 lg:mt-4">
+            <span className="text-sm text-purple-600">
+              Por revisar
+            </span>
           </div>
         </div>
 
-        <div className="bg-card p-6 rounded-lg border border-border">
+        <div className="card p-4 lg:p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Fichajes Hoy</p>
-              <p className="text-2xl font-bold text-foreground">{stats.todayTimeEntries}</p>
+              <p className="text-sm font-medium text-muted-foreground">Fichajes de Hoy</p>
+              <p className="text-2xl lg:text-3xl font-bold text-foreground">{stats.todayTimeEntries}</p>
             </div>
-            <div className="w-12 h-12 bg-indigo-100 rounded-lg flex items-center justify-center">
-              <Clock className="w-6 h-6 text-indigo-600" />
+            <div className="w-10 h-10 lg:w-12 lg:h-12 bg-green-100 rounded-lg flex items-center justify-center">
+              <Clock3 className="w-5 h-5 lg:w-6 lg:h-6 text-green-600" />
             </div>
+          </div>
+          <div className="mt-3 lg:mt-4">
+            <span className="text-sm text-green-600">
+              Entradas registradas
+            </span>
           </div>
         </div>
 
-        <div className="bg-card p-6 rounded-lg border border-border">
+        <div className="card p-4 lg:p-6">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-muted-foreground">Horas Esta Semana</p>
-              <p className="text-2xl font-bold text-foreground">{stats.thisWeekHours}h</p>
+              <p className="text-2xl lg:text-3xl font-bold text-foreground">{stats.thisWeekHours}h</p>
             </div>
-            <div className="w-12 h-12 bg-teal-100 rounded-lg flex items-center justify-center">
-              <Activity className="w-6 h-6 text-teal-600" />
+            <div className="w-10 h-10 lg:w-12 lg:h-12 bg-orange-100 rounded-lg flex items-center justify-center">
+              <TrendingUp className="w-5 h-5 lg:w-6 lg:h-6 text-orange-600" />
             </div>
+          </div>
+          <div className="mt-3 lg:mt-4">
+            <span className="text-sm text-orange-600">
+              Total acumulado
+            </span>
+          </div>
+        </div>
+
+        <div className="card p-4 lg:p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-muted-foreground">Estado de la Empresa</p>
+              <p className="text-2xl lg:text-3xl font-bold text-foreground">Activa</p>
+            </div>
+            <div className="w-10 h-10 lg:w-12 lg:h-12 bg-emerald-100 rounded-lg flex items-center justify-center">
+              <Building className="w-5 h-5 lg:w-6 lg:h-6 text-emerald-600" />
+            </div>
+          </div>
+          <div className="mt-3 lg:mt-4">
+            <span className="text-sm text-emerald-600">
+              Operativa
+            </span>
           </div>
         </div>
       </div>
 
       {/* Recent Activity */}
-      <div className="bg-card p-6 rounded-lg border border-border">
-        <h2 className="text-xl font-semibold text-foreground mb-4">Actividad Reciente</h2>
-        <div className="space-y-4">
+      <div className="card p-4 lg:p-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+          <h2 className="text-lg lg:text-xl font-semibold">Actividad Reciente</h2>
+          <button
+            onClick={() => window.location.href = '/admin/requests'}
+            className="text-sm text-primary hover:underline self-start sm:self-auto"
+          >
+            Ver todas
+          </button>
+        </div>
+        
+        <div className="space-y-3 lg:space-y-4">
           {recentActivity.length > 0 ? (
             recentActivity.map((activity) => (
-              <div key={`${activity.activityType}-${activity.id}`} className="flex items-center space-x-4">
-                <div className="w-10 h-10 bg-secondary rounded-full flex items-center justify-center">
-                  {activity.activityType === 'time_entry' ? (
-                    <Clock className="w-5 h-5 text-muted-foreground" />
-                  ) : (
-                    <FileText className="w-5 h-5 text-muted-foreground" />
-                  )}
+              <div key={activity.id} className="flex items-start gap-3 lg:gap-4 p-3 lg:p-4 rounded-lg border border-border hover:bg-secondary/30 transition-colors">
+                <div className={`w-8 h-8 lg:w-10 lg:h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${getActivityColor(activity.type)}`}>
+                  {getActivityIcon(activity.type)}
                 </div>
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-foreground">
-                    {activity.user?.first_name} {activity.user?.last_name}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {activity.activityType === 'time_entry' 
-                      ? `Fichaje ${activity.type === 'in' ? 'entrada' : 'salida'}`
-                      : `Solicitud ${activity.type} - ${activity.status}`
-                    }
-                  </p>
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  {new Date(activity.created_at).toLocaleString('es-ES', {
-                    day: '2-digit',
-                    month: '2-digit',
-                    hour: '2-digit',
-                    minute: '2-digit'
-                  })}
+                
+                <div className="flex-1 min-w-0">
+                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-foreground text-sm lg:text-base">{activity.title}</p>
+                      <p className="text-xs lg:text-sm text-muted-foreground mt-1">{activity.description}</p>
+                    </div>
+                    
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                      {activity.status && (
+                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(activity.status)} self-start sm:self-auto`}>
+                          {activity.status === 'pending' && 'Pendiente'}
+                          {activity.status === 'accepted' && 'Aceptada'}
+                          {activity.status === 'approved' && 'Aprobada'}
+                          {activity.status === 'rejected' && 'Rechazada'}
+                          {activity.status === 'expired' && 'Expirada'}
+                          {activity.status === 'active' && 'Activo'}
+                          {activity.status === 'inactive' && 'Inactivo'}
+                          {activity.status === 'completed' && 'Completado'}
+                        </span>
+                      )}
+                      <span className="text-xs text-muted-foreground self-start sm:self-auto">
+                        {formatTimeAgo(activity.timestamp)}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </div>
             ))
           ) : (
-            <p className="text-muted-foreground text-center py-4">
-              No hay actividad reciente
-            </p>
+            <div className="text-center py-6 lg:py-8">
+              <div className="w-12 h-12 lg:w-16 lg:h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-3 lg:mb-4">
+                <Clock className="w-6 h-6 lg:w-8 lg:h-8 text-muted-foreground" />
+              </div>
+              <p className="text-muted-foreground text-sm lg:text-base">No hay actividad reciente</p>
+              <p className="text-xs lg:text-sm text-muted-foreground mt-1">
+                Las actividades aparecerán aquí cuando haya movimiento en la empresa
+              </p>
+            </div>
           )}
         </div>
       </div>

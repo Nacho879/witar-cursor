@@ -45,29 +45,64 @@ export default function Departments() {
         .single();
 
       if (userRole) {
-        const { data, error } = await supabase
+        // Cargar departamentos básicos
+        const { data: departmentsData, error } = await supabase
           .from('departments')
-          .select(`
-            *,
-            user_company_roles!departments_manager_id_fkey (
-              user_profiles (
-                full_name,
-                email
-              )
-            ),
-            employees:user_company_roles!user_company_roles_department_id_fkey (
-              id,
-              user_profiles (
-                full_name
-              )
-            )
-          `)
+          .select('*')
           .eq('company_id', userRole.company_id)
           .order('name');
 
-        if (!error && data) {
-          setDepartments(data);
-          calculateStats(data);
+        if (!error && departmentsData) {
+          // Cargar información del manager y empleados para cada departamento
+          const departmentsWithDetails = await Promise.all(
+            departmentsData.map(async (dept) => {
+              let managerName = 'Sin asignar';
+              
+              // Si hay manager_id, obtener información del manager
+              if (dept.manager_id) {
+                try {
+                  const { data: managerRole } = await supabase
+                    .from('user_company_roles')
+                    .select('user_id')
+                    .eq('id', dept.manager_id)
+                    .eq('is_active', true)
+                    .single();
+
+                  if (managerRole) {
+                    const { data: managerProfile } = await supabase
+                      .from('user_profiles')
+                      .select('full_name')
+                      .eq('user_id', managerRole.user_id)
+                      .maybeSingle();
+
+                    if (managerProfile) {
+                      managerName = managerProfile.full_name;
+                    }
+                  }
+                } catch (error) {
+                  console.error('Error loading manager info:', error);
+                }
+              }
+
+              // Contar empleados en el departamento
+              const { count: employeeCount } = await supabase
+                .from('user_company_roles')
+                .select('*', { count: 'exact', head: true })
+                .eq('company_id', userRole.company_id)
+                .eq('department_id', dept.id)
+                .eq('is_active', true)
+                .neq('role', 'owner');
+
+              return {
+                ...dept,
+                employee_count: employeeCount || 0,
+                manager_name: managerName
+              };
+            })
+          );
+
+          setDepartments(departmentsWithDetails);
+          calculateStats(departmentsWithDetails);
         }
       }
     } catch (error) {
@@ -81,7 +116,7 @@ export default function Departments() {
     const total = departmentsData.length;
     const active = departmentsData.filter(d => d.status === 'active').length;
     const inactive = departmentsData.filter(d => d.status === 'inactive').length;
-    const totalEmployees = departmentsData.reduce((sum, dept) => sum + (dept.employees?.length || 0), 0);
+    const totalEmployees = departmentsData.reduce((sum, dept) => sum + (dept.employee_count || 0), 0);
 
     setStats({ total, active, inactive, totalEmployees });
   }
@@ -121,26 +156,16 @@ export default function Departments() {
       const searchLower = searchTerm.toLowerCase();
       const name = department.name?.toLowerCase() || '';
       const description = department.description?.toLowerCase() || '';
-      const managerName = department.user_company_roles?.user_profiles?.full_name?.toLowerCase() || '';
       
       return name.includes(searchLower) || 
-             description.includes(searchLower) || 
-             managerName.includes(searchLower);
+             description.includes(searchLower);
     }
     return true;
   });
 
   function handleDepartmentSaved(savedDepartment) {
-    if (selectedDepartment) {
-      // Actualizar departamento existente
-      setDepartments(prev => prev.map(dept => 
-        dept.id === savedDepartment.id ? savedDepartment : dept
-      ));
-    } else {
-      // Añadir nuevo departamento
-      setDepartments(prev => [...prev, savedDepartment]);
-    }
-    calculateStats([...departments, savedDepartment]);
+    // Recargar todos los datos para obtener información actualizada
+    loadDepartments();
   }
 
   if (loading) {
@@ -296,12 +321,12 @@ export default function Departments() {
                       </div>
                     </td>
                     <td className="td">
-                      {department.user_company_roles?.user_profiles?.full_name || 'Sin manager'}
+                      {department.manager_name}
                     </td>
                     <td className="td">
                       <div className="flex items-center gap-2">
                         <Users className="w-4 h-4 text-muted-foreground" />
-                        <span>{department.employees?.length || 0} empleados</span>
+                        <span>{department.employee_count} empleados</span>
                       </div>
                     </td>
                     <td className="td">
@@ -315,47 +340,44 @@ export default function Departments() {
                       </span>
                     </td>
                     <td className="td">
-                      <div className="relative">
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => {
+                            setSelectedDepartment(department);
+                            setShowModal(true);
+                          }}
+                          className="btn btn-ghost btn-sm"
+                          title="Editar"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
                         <button
                           onClick={() => setShowActionsMenu(showActionsMenu === department.id ? null : department.id)}
-                          className="btn btn-ghost btn-sm"
+                          className="btn btn-ghost btn-sm relative"
+                          title="Más acciones"
                         >
                           <MoreHorizontal className="w-4 h-4" />
+                          {showActionsMenu === department.id && (
+                            <div className="absolute right-0 top-full mt-1 bg-background border border-border rounded-lg shadow-lg z-10 min-w-[120px]">
+                              <button
+                                onClick={() => toggleDepartmentStatus(department.id, department.status)}
+                                className="w-full px-3 py-2 text-left text-sm hover:bg-secondary flex items-center gap-2"
+                              >
+                                {department.status === 'active' ? (
+                                  <>
+                                    <Eye className="w-4 h-4" />
+                                    Desactivar
+                                  </>
+                                ) : (
+                                  <>
+                                    <Eye className="w-4 h-4" />
+                                    Activar
+                                  </>
+                                )}
+                              </button>
+                            </div>
+                          )}
                         </button>
-                        
-                        {showActionsMenu === department.id && (
-                          <div className="absolute right-0 top-full mt-1 bg-background border border-border rounded-lg shadow-lg z-10 min-w-[150px]">
-                            <button
-                              onClick={() => {
-                                setSelectedDepartment(department);
-                                setShowModal(true);
-                                setShowActionsMenu(null);
-                              }}
-                              className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-secondary transition-colors"
-                            >
-                              <Eye className="w-4 h-4" />
-                              Ver Detalles
-                            </button>
-                            <button
-                              onClick={() => {
-                                setSelectedDepartment(department);
-                                setShowModal(true);
-                                setShowActionsMenu(null);
-                              }}
-                              className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-secondary transition-colors"
-                            >
-                              <Edit className="w-4 h-4" />
-                              Editar
-                            </button>
-                            <button
-                              onClick={() => toggleDepartmentStatus(department.id, department.status)}
-                              className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-secondary transition-colors text-destructive"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                              {department.status === 'active' ? 'Desactivar' : 'Activar'}
-                            </button>
-                          </div>
-                        )}
                       </div>
                     </td>
                   </tr>
