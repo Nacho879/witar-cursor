@@ -600,23 +600,23 @@ export default function FloatingTimeClock() {
 
   return (
     <div className="fixed top-4 right-4 z-50">
-      <div className="bg-green-100 dark:bg-green-900/20 rounded-full px-5 py-2 shadow-lg border border-green-200 dark:border-green-800">
-        <div className="flex items-center justify-between gap-3">
+      <div className="bg-green-100 dark:bg-green-900/20 rounded-full px-3 sm:px-5 py-2 shadow-lg border border-green-200 dark:border-green-800">
+        <div className="flex items-center justify-between gap-2 sm:gap-3">
           {/* Tiempo transcurrido */}
-          <div className="text-sm font-semibold text-gray-700 dark:text-gray-300 min-w-[70px] flex items-center">
+          <div className="text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-300 min-w-[60px] sm:min-w-[70px] flex items-center">
             {isActive ? formatTime(elapsedTime) : '0h 0min'}
           </div>
 
-          {/* Botones de acción - Siempre visibles en una línea */}
-          <div className="flex items-center gap-2">
+          {/* Botones de acción - Responsive */}
+          <div className="flex items-center gap-1 sm:gap-2">
             {!isActive && (
               <button
                 onClick={handleClockIn}
                 disabled={loading}
-                className="px-3 py-1.5 bg-green-500 hover:bg-green-600 disabled:opacity-50 text-white rounded-full text-xs transition-colors font-medium flex items-center justify-center"
+                className="px-2 sm:px-3 py-1.5 bg-green-500 hover:bg-green-600 disabled:opacity-50 text-white rounded-full text-xs transition-colors font-medium flex items-center justify-center"
               >
                 <Play className="w-3 h-3" />
-                <span className="ml-1">Fichar</span>
+                <span className="ml-1 hidden sm:inline">Fichar</span>
               </button>
             )}
             
@@ -625,18 +625,18 @@ export default function FloatingTimeClock() {
                 <button
                   onClick={handlePause}
                   disabled={loading}
-                  className="px-3 py-1.5 bg-gray-500 hover:bg-gray-600 disabled:opacity-50 text-white rounded-full text-xs transition-colors font-medium flex items-center justify-center"
+                  className="px-2 sm:px-3 py-1.5 bg-gray-500 hover:bg-gray-600 disabled:opacity-50 text-white rounded-full text-xs transition-colors font-medium flex items-center justify-center"
                 >
                   {isPaused ? <Play className="w-3 h-3" /> : <Pause className="w-3 h-3" />}
-                  <span className="ml-1">{isPaused ? 'Reanudar' : 'Pausa'}</span>
+                  <span className="ml-1 hidden sm:inline">{isPaused ? 'Reanudar' : 'Pausa'}</span>
                 </button>
                 <button
                   onClick={handleClockOut}
                   disabled={loading}
-                  className="px-3 py-1.5 bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white rounded-full text-xs transition-colors font-medium flex items-center justify-center"
+                  className="px-2 sm:px-3 py-1.5 bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white rounded-full text-xs transition-colors font-medium flex items-center justify-center"
                 >
                   <Square className="w-3 h-3" />
-                  <span className="ml-1">Salir</span>
+                  <span className="ml-1 hidden sm:inline">Salir</span>
                 </button>
               </>
             )}
@@ -646,9 +646,9 @@ export default function FloatingTimeClock() {
           <div className="relative flex items-center">
             <button
               onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-              className="flex items-center gap-2 hover:bg-green-200 dark:hover:bg-green-800/30 rounded-full px-2 py-1 transition-colors"
+              className="flex items-center gap-1 sm:gap-2 hover:bg-green-200 dark:hover:bg-green-800/30 rounded-full px-1 sm:px-2 py-1 transition-colors"
             >
-              <div className="w-8 h-8 rounded-full border-2 border-green-300 dark:border-green-700 overflow-hidden shadow-md flex items-center justify-center">
+              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full border-2 border-green-300 dark:border-green-700 overflow-hidden shadow-md flex items-center justify-center">
                 {userProfile?.avatar_url ? (
                   <img
                     src={userProfile.avatar_url}
@@ -656,25 +656,25 @@ export default function FloatingTimeClock() {
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  <div className="w-full h-full bg-green-500 flex items-center justify-center text-white text-sm font-bold">
+                  <div className="w-full h-full bg-green-500 flex items-center justify-center text-white text-xs sm:text-sm font-bold">
                     {userProfile?.full_name?.charAt(0) || 'U'}
                   </div>
                 )}
               </div>
-              <div className="flex flex-col items-start justify-center">
-                <span className="text-xs font-semibold text-gray-700 dark:text-gray-300 hidden sm:block leading-tight">
+              <div className="flex flex-col items-start justify-center hidden sm:block">
+                <span className="text-xs font-semibold text-gray-700 dark:text-gray-300 leading-tight">
                   {userProfile?.full_name || 'Usuario'}
                 </span>
-                <span className="text-xs text-gray-500 dark:text-gray-400 hidden sm:block leading-tight">
+                <span className="text-xs text-gray-500 dark:text-gray-400 leading-tight">
                   {userRole === 'employee' ? 'Empleado' : userRole === 'manager' ? 'Manager' : userRole === 'admin' ? 'Administrador' : 'Usuario'}
                 </span>
               </div>
-              <ChevronDown className="w-4 h-4 text-gray-600 dark:text-gray-400 flex-shrink-0" />
+              <ChevronDown className="w-3 h-3 sm:w-4 sm:h-4 text-gray-600 dark:text-gray-400 flex-shrink-0" />
             </button>
 
             {/* Menú desplegable */}
             {isDropdownOpen && (
-              <div className="absolute right-0 top-full mt-2 w-56 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 py-3">
+              <div className="absolute right-0 top-full mt-2 w-48 sm:w-56 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 py-3">
                 <div className="px-4 py-2 border-b border-gray-200 dark:border-gray-700 mb-2">
                   <div className="flex items-center gap-3">
                     <div className="w-12 h-12 rounded-full border-2 border-green-300 dark:border-green-700 overflow-hidden">

@@ -230,7 +230,7 @@ const LandingPage = () => {
                   La plataforma más completa de gestión de RRHH
                 </div>
 
-                <h1 className="text-5xl md:text-7xl font-bold text-foreground leading-tight">
+                <h1 className="text-4xl sm:text-5xl md:text-7xl font-bold text-foreground leading-tight">
                   <span className="text-primary">
                     Simplifica
                   </span>
@@ -238,47 +238,47 @@ const LandingPage = () => {
                   la gestión de tu equipo
                 </h1>
                 
-                <p className="text-xl md:text-2xl text-muted-foreground max-w-3xl mx-auto leading-relaxed">
+                <p className="text-lg sm:text-xl md:text-2xl text-muted-foreground max-w-3xl mx-auto leading-relaxed px-4 sm:px-0">
                   Control horario, vacaciones, documentos laborales y más. 
                   Todo en una plataforma moderna y fácil de usar.
                 </p>
 
                 {/* Stats */}
-                <div className="flex flex-wrap justify-center gap-8 py-8">
+                <div className="flex flex-wrap justify-center gap-4 sm:gap-8 py-6 sm:py-8 px-4 sm:px-0">
                   {[
                     { number: "500+", label: "Empresas confían en Witar" },
                     { number: "50K+", label: "Empleados gestionados" },
                     { number: "99.9%", label: "Tiempo de actividad" }
                   ].map((stat, index) => (
                     <div key={index} className="text-center">
-                      <div className="text-3xl font-bold text-foreground">{stat.number}</div>
-                      <div className="text-sm text-muted-foreground">{stat.label}</div>
+                      <div className="text-2xl sm:text-3xl font-bold text-foreground">{stat.number}</div>
+                      <div className="text-xs sm:text-sm text-muted-foreground">{stat.label}</div>
                     </div>
                   ))}
                 </div>
 
-                <div className="flex flex-col sm:flex-row gap-4 justify-center items-center pt-8">
+                <div className="flex flex-col sm:flex-row gap-4 justify-center items-center pt-6 sm:pt-8 px-4 sm:px-0">
                   <Link
                     to="/register"
-                    className="group inline-flex items-center gap-3 px-8 py-4 bg-cta text-cta-foreground font-semibold rounded-xl hover:bg-cta/90 transition-all duration-200 shadow-xl hover:shadow-2xl transform hover:-translate-y-1"
+                    className="group inline-flex items-center justify-center gap-3 px-6 sm:px-8 py-3 sm:py-4 bg-cta text-cta-foreground font-semibold rounded-xl hover:bg-cta/90 transition-all duration-200 shadow-xl hover:shadow-2xl transform hover:-translate-y-1 w-full sm:w-auto"
                   >
                     Empezar gratis
-                    <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                    <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 group-hover:translate-x-1 transition-transform" />
                   </Link>
                   
                   <Link
                     to="/demo"
-                    className="inline-flex items-center gap-3 px-8 py-4 border-2 border-primary text-primary font-semibold rounded-xl hover:bg-primary hover:text-primary-foreground transition-all duration-200"
+                    className="inline-flex items-center justify-center gap-3 px-6 sm:px-8 py-3 sm:py-4 border-2 border-primary text-primary font-semibold rounded-xl hover:bg-primary hover:text-primary-foreground transition-all duration-200 w-full sm:w-auto"
                   >
-                    <Play className="w-5 h-5" />
+                    <Play className="w-4 h-4 sm:w-5 sm:h-5" />
                     Solicitar Demo
                   </Link>
                   
                   <Link
                     to="/login"
-                    className="inline-flex items-center gap-3 px-8 py-4 border-2 border-border text-foreground font-semibold rounded-xl hover:bg-secondary transition-all duration-200"
+                    className="inline-flex items-center justify-center gap-3 px-6 sm:px-8 py-3 sm:py-4 border-2 border-border text-foreground font-semibold rounded-xl hover:bg-secondary transition-all duration-200 w-full sm:w-auto"
                   >
-                    <LogIn className="w-5 h-5" />
+                    <LogIn className="w-4 h-4 sm:w-5 sm:h-5" />
                     Acceder a mi cuenta
                   </Link>
                 </div>
@@ -299,10 +299,10 @@ const LandingPage = () => {
               variants={fadeInUp}
               className="text-center mb-20"
             >
-              <h2 className="text-4xl md:text-5xl font-bold text-foreground mb-6">
+              <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-foreground mb-4 sm:mb-6 px-4 sm:px-0">
                 Todo lo que necesitas para gestionar tu equipo
               </h2>
-              <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
+              <p className="text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto px-4 sm:px-0">
                 Una plataforma completa que integra todas las herramientas necesarias 
                 para la gestión eficiente de recursos humanos.
               </p>
@@ -313,7 +313,7 @@ const LandingPage = () => {
               whileInView="animate"
               viewport={{ once: true }}
               variants={staggerContainer}
-              className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8"
+              className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8"
             >
               {[
                 {
@@ -356,7 +356,7 @@ const LandingPage = () => {
                 <motion.div
                   key={index}
                   variants={fadeInUp}
-                  className="group bg-card p-8 rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 border border-border hover:border-primary/20"
+                  className="group bg-card p-6 sm:p-8 rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 border border-border hover:border-primary/20"
                 >
                   <div className={`w-16 h-16 bg-gradient-to-br ${feature.color === 'bg-primary' ? 'from-primary to-primary-dark' : feature.color === 'bg-success' ? 'from-success to-green-600' : 'from-cta to-orange-600'} rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300 shadow-lg`}>
                     <feature.icon className="w-8 h-8 text-white" />

@@ -260,127 +260,128 @@ export default function OwnerDashboard() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">
+          <h1 className="text-2xl sm:text-3xl font-bold text-foreground">
             Dashboard
           </h1>
-          <p className="text-muted-foreground mt-1">
+          <p className="text-muted-foreground mt-1 text-sm sm:text-base">
             Bienvenido de vuelta, {companyInfo?.name}
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           <NotificationCenter />
           <ThemeToggle/>
           <button
             onClick={() => window.location.href = '/owner/employees'}
-            className="btn btn-primary flex items-center gap-2"
+            className="btn btn-primary flex items-center gap-2 text-sm sm:text-base px-3 sm:px-4 py-2"
           >
             <Plus className="w-4 h-4" />
-            Invitar Empleado
+            <span className="hidden sm:inline">Invitar Empleado</span>
+            <span className="sm:hidden">Invitar</span>
           </button>
         </div>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <div className="card p-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+        <div className="card p-4 sm:p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Total Empleados</p>
-              <p className="text-3xl font-bold text-foreground">{stats.totalEmployees}</p>
+              <p className="text-xs sm:text-sm font-medium text-muted-foreground">Total Empleados</p>
+              <p className="text-2xl sm:text-3xl font-bold text-foreground">{stats.totalEmployees}</p>
             </div>
-            <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-              <Users className="w-6 h-6 text-blue-600" />
+            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+              <Users className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
             </div>
           </div>
-          <div className="mt-4">
-            <span className="text-sm text-green-600">
+          <div className="mt-3 sm:mt-4">
+            <span className="text-xs sm:text-sm text-green-600">
               +{stats.activeEmployees} activos
             </span>
           </div>
         </div>
 
-        <div className="card p-6">
+        <div className="card p-4 sm:p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Invitaciones Pendientes</p>
-              <p className="text-3xl font-bold text-foreground">{stats.pendingInvitations}</p>
+              <p className="text-xs sm:text-sm font-medium text-muted-foreground">Invitaciones Pendientes</p>
+              <p className="text-2xl sm:text-3xl font-bold text-foreground">{stats.pendingInvitations}</p>
             </div>
-            <div className="w-12 h-12 bg-yellow-100 rounded-lg flex items-center justify-center">
-              <Mail className="w-6 h-6 text-yellow-600" />
+            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-yellow-100 rounded-lg flex items-center justify-center">
+              <Mail className="w-5 h-5 sm:w-6 sm:h-6 text-yellow-600" />
             </div>
           </div>
-          <div className="mt-4">
-            <span className="text-sm text-yellow-600">
+          <div className="mt-3 sm:mt-4">
+            <span className="text-xs sm:text-sm text-yellow-600">
               Requieren atención
             </span>
           </div>
         </div>
 
-        <div className="card p-6">
+        <div className="card p-4 sm:p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Solicitudes Pendientes</p>
-              <p className="text-3xl font-bold text-foreground">{stats.pendingRequests}</p>
+              <p className="text-xs sm:text-sm font-medium text-muted-foreground">Solicitudes Pendientes</p>
+              <p className="text-2xl sm:text-3xl font-bold text-foreground">{stats.pendingRequests}</p>
             </div>
-            <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
-              <Calendar className="w-6 h-6 text-purple-600" />
+            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-purple-100 rounded-lg flex items-center justify-center">
+              <Calendar className="w-5 h-5 sm:w-6 sm:h-6 text-purple-600" />
             </div>
           </div>
-          <div className="mt-4">
-            <span className="text-sm text-purple-600">
+          <div className="mt-3 sm:mt-4">
+            <span className="text-xs sm:text-sm text-purple-600">
               Por revisar
             </span>
           </div>
         </div>
 
-        <div className="card p-6">
+        <div className="card p-4 sm:p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Fichajes Hoy</p>
-              <p className="text-3xl font-bold text-foreground">{stats.todayTimeEntries}</p>
+              <p className="text-xs sm:text-sm font-medium text-muted-foreground">Fichajes Hoy</p>
+              <p className="text-2xl sm:text-3xl font-bold text-foreground">{stats.todayTimeEntries}</p>
             </div>
-            <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
-              <Clock className="w-6 h-6 text-green-600" />
+            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-green-100 rounded-lg flex items-center justify-center">
+              <Clock className="w-5 h-5 sm:w-6 sm:h-6 text-green-600" />
             </div>
           </div>
-          <div className="mt-4">
-            <span className="text-sm text-green-600">
+          <div className="mt-3 sm:mt-4">
+            <span className="text-xs sm:text-sm text-green-600">
               Entradas/salidas
             </span>
           </div>
         </div>
 
-        <div className="card p-6">
+        <div className="card p-4 sm:p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Horas Esta Semana</p>
-              <p className="text-3xl font-bold text-foreground">{stats.thisWeekHours}h</p>
+              <p className="text-xs sm:text-sm font-medium text-muted-foreground">Horas Esta Semana</p>
+              <p className="text-2xl sm:text-3xl font-bold text-foreground">{stats.thisWeekHours}h</p>
             </div>
-            <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
-              <TrendingUp className="w-6 h-6 text-orange-600" />
+            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-orange-100 rounded-lg flex items-center justify-center">
+              <TrendingUp className="w-5 h-5 sm:w-6 sm:h-6 text-orange-600" />
             </div>
           </div>
-          <div className="mt-4">
-            <span className="text-sm text-orange-600">
+          <div className="mt-3 sm:mt-4">
+            <span className="text-xs sm:text-sm text-orange-600">
               Total registrado
             </span>
           </div>
         </div>
 
-        <div className="card p-6">
+        <div className="card p-4 sm:p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Departamentos</p>
-              <p className="text-3xl font-bold text-foreground">{stats.totalDepartments}</p>
+              <p className="text-xs sm:text-sm font-medium text-muted-foreground">Departamentos</p>
+              <p className="text-2xl sm:text-3xl font-bold text-foreground">{stats.totalDepartments}</p>
             </div>
-            <div className="w-12 h-12 bg-indigo-100 rounded-lg flex items-center justify-center">
-              <Building className="w-6 h-6 text-indigo-600" />
+            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-indigo-100 rounded-lg flex items-center justify-center">
+              <Building className="w-5 h-5 sm:w-6 sm:h-6 text-indigo-600" />
             </div>
           </div>
-          <div className="mt-4">
-            <span className="text-sm text-indigo-600">
+          <div className="mt-3 sm:mt-4">
+            <span className="text-xs sm:text-sm text-indigo-600">
               Organizados
             </span>
           </div>
@@ -388,7 +389,7 @@ export default function OwnerDashboard() {
       </div>
 
       {/* Quick Actions */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
         {/* Recent Activity */}
         <div className="card">
           <div className="p-6 border-b border-border">
