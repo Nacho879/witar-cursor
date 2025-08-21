@@ -61,36 +61,60 @@ serve(async (req) => {
 })
 
 async function handleCheckoutSessionCompleted(session: any, supabase: any) {
+  console.log('Processing checkout.session.completed:', session.id)
   const companyId = session.metadata?.companyId
   const customerId = session.customer
+  const employeeCount = parseInt(session.metadata?.employeeCount || '0')
+  const billingEmployeeCount = parseInt(session.metadata?.billingEmployeeCount || '1')
+
+  console.log('Session metadata:', { companyId, customerId, employeeCount, billingEmployeeCount })
 
   if (companyId && customerId) {
-    await supabase
+    const { error } = await supabase
       .from('companies')
       .update({
         stripe_customer_id: customerId,
         subscription_status: 'active',
-        stripe_session_id: null
+        stripe_session_id: null,
+        employee_limit: Math.max(employeeCount, 25) // Mínimo 25 empleados para el plan
       })
       .eq('id', companyId)
+
+    if (error) {
+      console.error('Error updating company:', error)
+    } else {
+      console.log('Company updated successfully:', companyId)
+    }
+  } else {
+    console.error('Missing companyId or customerId in session metadata')
   }
 }
 
 async function handleSubscriptionCreated(subscription: any, supabase: any) {
+  console.log('Processing customer.subscription.created:', subscription.id)
   const companyId = subscription.metadata?.companyId
   const employeeCount = parseInt(subscription.metadata?.employeeCount || '0')
+  const billingEmployeeCount = parseInt(subscription.metadata?.billingEmployeeCount || '1')
+
+  console.log('Subscription metadata:', { companyId, employeeCount, billingEmployeeCount })
 
   if (companyId) {
-    await supabase
+    const { error } = await supabase
       .from('companies')
       .update({
         stripe_subscription_id: subscription.id,
         subscription_status: subscription.status,
-        employee_limit: employeeCount,
+        employee_limit: Math.max(employeeCount, 25), // Mínimo 25 empleados para el plan
         subscription_current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
         subscription_current_period_end: new Date(subscription.current_period_end * 1000).toISOString()
       })
       .eq('id', companyId)
+
+    if (error) {
+      console.error('Error updating company subscription:', error)
+    } else {
+      console.log('Company subscription updated successfully:', companyId)
+    }
 
     // Crear factura
     await supabase

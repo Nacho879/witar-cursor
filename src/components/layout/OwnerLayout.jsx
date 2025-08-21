@@ -10,15 +10,32 @@ import {
   Home,
   Menu,
   X,
-  Bell
+  Bell,
+  LogOut
 } from 'lucide-react';
 import InvitationBadge from '@/components/InvitationBadge';
 import FloatingTimeClock from '@/components/FloatingTimeClock';
 import { InvitationProvider } from '@/contexts/InvitationContext';
+import { supabase } from '@/lib/supabaseClient';
+import { useNavigate } from 'react-router-dom';
 import React from 'react';
 
 export default function OwnerLayout({ children }){
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
+  const navigate = useNavigate();
+
+  const handleLogout = async () => {
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        console.error('Error signing out:', error);
+        return;
+      }
+      navigate('/login');
+    } catch (error) {
+      console.error('Error during logout:', error);
+    }
+  };
 
   return (
     <InvitationProvider>
@@ -143,6 +160,15 @@ export default function OwnerLayout({ children }){
               <Bell className='w-4 h-4' />
               <span className='lg:block'>Notificaciones</span>
             </a>
+            
+            {/* Logout button */}
+            <button
+              onClick={handleLogout}
+              className='px-3 py-2 rounded hover:bg-destructive/10 text-destructive hover:text-destructive flex items-center gap-2 transition-colors'
+            >
+              <LogOut className='w-4 h-4' />
+              <span className='lg:block'>Cerrar Sesión</span>
+            </button>
           </nav>
         </aside>
 

@@ -114,7 +114,7 @@ export default function MyDocuments() {
           // Cargar los perfiles de los uploaders por separado
           const { data: uploaderProfiles, error: profilesError } = await supabase
             .from('user_profiles')
-            .select('user_id, full_name, email')
+            .select('user_id, full_name')
             .in('user_id', uploaderIds);
 
           if (!profilesError && uploaderProfiles) {
@@ -243,26 +243,26 @@ export default function MyDocuments() {
     return true;
   });
 
-  async function handleDownload(document) {
+  async function handleDownload(doc) {
     try {
-      if (document.file_url) {
+      if (doc.file_url) {
         // Verificar si es un archivo Base64
-        if (document.file_url.startsWith('data:')) {
+        if (doc.file_url.startsWith('data:')) {
           // Es un archivo Base64, descargar directamente
           const link = document.createElement('a');
-          link.href = document.file_url;
+          link.href = doc.file_url;
           
           // Extraer el nombre del archivo del título o usar un nombre por defecto
-          const fileName = document.title || 'documento';
+          const fileName = doc.title || 'documento';
           
           // Agregar extensión basada en el tipo de archivo
           let extension = '';
-          if (document.file_type) {
-            if (document.file_type.includes('pdf')) extension = '.pdf';
-            else if (document.file_type.includes('word') || document.file_type.includes('document')) extension = '.docx';
-            else if (document.file_type.includes('excel') || document.file_type.includes('spreadsheet')) extension = '.xlsx';
-            else if (document.file_type.includes('image')) extension = '.jpg';
-            else if (document.file_type.includes('text')) extension = '.txt';
+          if (doc.file_type) {
+            if (doc.file_type.includes('pdf')) extension = '.pdf';
+            else if (doc.file_type.includes('word') || doc.file_type.includes('document')) extension = '.docx';
+            else if (doc.file_type.includes('excel') || doc.file_type.includes('spreadsheet')) extension = '.xlsx';
+            else if (doc.file_type.includes('image')) extension = '.jpg';
+            else if (doc.file_type.includes('text')) extension = '.txt';
           }
           
           link.download = fileName + extension;
@@ -271,7 +271,7 @@ export default function MyDocuments() {
           document.body.removeChild(link);
         } else {
           // Es una URL, abrir en nueva pestaña
-          window.open(document.file_url, '_blank');
+          window.open(doc.file_url, '_blank');
         }
       }
     } catch (error) {

@@ -26,13 +26,20 @@ export class ReportsService {
 
       // Obtener los perfiles de usuario por separado
       const userIds = [...new Set(timeEntries.map(entry => entry.user_id))];
-      const { data: profiles, error: profilesError } = await supabase
-        .from('user_profiles')
-        .select('user_id, full_name')
-        .in('user_id', userIds);
+      
+      // Verificar que userIds sea un array válido antes de hacer la consulta
+      let profiles = null;
+      if (userIds.length > 0) {
+        const { data: profilesData, error: profilesError } = await supabase
+          .from('user_profiles')
+          .select('user_id, full_name')
+          .in('user_id', userIds);
 
-      if (profilesError) {
-        console.error('Error loading user profiles:', profilesError);
+        if (profilesError) {
+          console.error('Error loading user profiles:', profilesError);
+        } else {
+          profiles = profilesData;
+        }
       }
 
       // Combinar los datos
@@ -111,13 +118,20 @@ export class ReportsService {
 
       // Obtener los perfiles de usuario por separado
       const userIds = [...new Set(timeEntries.map(entry => entry.user_id))];
-      const { data: profiles, error: profilesError } = await supabase
-        .from('user_profiles')
-        .select('user_id, full_name')
-        .in('user_id', userIds);
+      
+      // Verificar que userIds sea un array válido antes de hacer la consulta
+      let profiles = null;
+      if (userIds.length > 0) {
+        const { data: profilesData, error: profilesError } = await supabase
+          .from('user_profiles')
+          .select('user_id, full_name')
+          .in('user_id', userIds);
 
-      if (profilesError) {
-        console.error('Error loading user profiles:', profilesError);
+        if (profilesError) {
+          console.error('Error loading user profiles:', profilesError);
+        } else {
+          profiles = profilesData;
+        }
       }
 
       // Combinar los datos
@@ -278,13 +292,20 @@ export class ReportsService {
 
       // Obtener los perfiles de usuario por separado
       const userIds = [...new Set(timeEntries.map(entry => entry.user_id))];
-      const { data: profiles, error: profilesError } = await supabase
-        .from('user_profiles')
-        .select('user_id, full_name')
-        .in('user_id', userIds);
+      
+      // Verificar que userIds sea un array válido antes de hacer la consulta
+      let profiles = null;
+      if (userIds.length > 0) {
+        const { data: profilesData, error: profilesError } = await supabase
+          .from('user_profiles')
+          .select('user_id, full_name')
+          .in('user_id', userIds);
 
-      if (profilesError) {
-        console.error('Error loading user profiles:', profilesError);
+        if (profilesError) {
+          console.error('Error loading user profiles:', profilesError);
+        } else {
+          profiles = profilesData;
+        }
       }
 
       // Combinar los datos
@@ -432,12 +453,21 @@ export class ReportsService {
 
       // Obtener perfiles de empleados por separado
       const userIds = employees.map(emp => emp.user_id);
-      const { data: profiles, error: profilesError } = await supabase
-        .from('user_profiles')
-        .select('user_id, full_name, avatar_url')
-        .in('user_id', userIds);
+      
+      // Verificar que userIds sea un array válido antes de hacer la consulta
+      let profiles = null;
+      if (userIds.length > 0) {
+        const { data: profilesData, error: profilesError } = await supabase
+          .from('user_profiles')
+          .select('user_id, full_name, avatar_url')
+          .in('user_id', userIds);
 
-      if (profilesError) throw profilesError;
+        if (profilesError) {
+          console.error('Error loading user profiles:', profilesError);
+        } else {
+          profiles = profilesData;
+        }
+      }
 
       // Obtener departamentos por separado
       const departmentIds = employees.map(emp => emp.department_id).filter(id => id);

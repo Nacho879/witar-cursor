@@ -54,8 +54,8 @@ export default function Notifications() {
         let query = supabase
           .from('notifications')
           .select('*')
-          .eq('company_id', companyId)
           .or(`recipient_id.eq.${user.id},recipient_id.is.null`)
+          .eq('company_id', companyId)
           .order('created_at', { ascending: false });
 
         // Aplicar filtros

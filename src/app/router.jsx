@@ -7,6 +7,10 @@ import RegisterOwner from '@/pages/auth/RegisterOwner';
 import Welcome from '@/pages/auth/Welcome';
 import AcceptInvitation from '@/pages/auth/AcceptInvitation';
 import ChangePassword from '@/pages/auth/ChangePassword';
+import Demo from '@/pages/Demo';
+import TerminosCondiciones from '@/pages/legal/TerminosCondiciones';
+import PoliticaPrivacidad from '@/pages/legal/PoliticaPrivacidad';
+import PoliticaCookies from '@/pages/legal/PoliticaCookies';
 
 import OwnerLayout from '@/components/layout/OwnerLayout';
 import OwnerDashboard from '@/pages/owner/Dashboard';
@@ -45,7 +49,11 @@ import EmployeeProfile from '@/pages/employee/Profile';
 
 const router = createBrowserRouter([
   { path: "/", element: <LandingPage /> },
+  { path: "/demo", element: <Demo /> },
   { path: "/login", element: <Login /> },
+  { path: "/terminos-condiciones", element: <TerminosCondiciones /> },
+  { path: "/politica-privacidad", element: <PoliticaPrivacidad /> },
+  { path: "/politica-cookies", element: <PoliticaCookies /> },
   { path: "/register", element: <RegisterOwner /> },
   { path: "/welcome", element: <Welcome /> },
   { path: "/accept-invitation", element: <AcceptInvitation /> },

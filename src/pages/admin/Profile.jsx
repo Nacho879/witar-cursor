@@ -219,36 +219,7 @@ export default function AdminProfile() {
     }
   }
 
-  function handleQuickAction(action) {
-    switch (action) {
-      case 'my_time_entries':
-        window.location.href = '/admin/my-time-entries';
-        break;
-      case 'my_requests':
-        window.location.href = '/admin/my-requests';
-        break;
-      case 'my_documents':
-        window.location.href = '/admin/my-documents';
-        break;
-      case 'upload_documents':
-        window.location.href = '/admin/my-documents';
-        break;
-      case 'employees':
-        window.location.href = '/admin/employees';
-        break;
-      case 'invitations':
-        window.location.href = '/admin/invitations';
-        break;
-      case 'departments':
-        window.location.href = '/admin/departments';
-        break;
-      case 'reports':
-        window.location.href = '/admin/reports';
-        break;
-      default:
-        break;
-    }
-  }
+
 
   async function loadProfileData() {
     try {
@@ -472,43 +443,7 @@ export default function AdminProfile() {
         </div>
       </div>
 
-      {/* Quick Actions - Administrativas */}
-      <div className="card p-6">
-        <h2 className="text-xl font-semibold text-foreground mb-4">Acciones Administrativas</h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <button
-            onClick={() => handleQuickAction('employees')}
-            className="p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-900/30 transition-colors text-center"
-          >
-            <Users className="w-8 h-8 text-indigo-600 mx-auto mb-2" />
-            <span className="text-sm font-medium text-indigo-700 dark:text-indigo-300">Gestionar Empleados</span>
-          </button>
-          
-          <button
-            onClick={() => handleQuickAction('invitations')}
-            className="p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg hover:bg-yellow-100 dark:hover:bg-yellow-900/30 transition-colors text-center"
-          >
-            <Mail className="w-8 h-8 text-yellow-600 mx-auto mb-2" />
-            <span className="text-sm font-medium text-yellow-700 dark:text-yellow-300">Invitaciones</span>
-          </button>
-          
-          <button
-            onClick={() => handleQuickAction('departments')}
-            className="p-4 bg-teal-50 dark:bg-teal-900/20 rounded-lg hover:bg-teal-100 dark:hover:bg-teal-900/30 transition-colors text-center"
-          >
-            <Building className="w-8 h-8 text-teal-600 mx-auto mb-2" />
-            <span className="text-sm font-medium text-teal-700 dark:text-teal-300">Departamentos</span>
-          </button>
-          
-          <button
-            onClick={() => handleQuickAction('reports')}
-            className="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors text-center"
-          >
-            <BarChart3 className="w-8 h-8 text-red-600 mx-auto mb-2" />
-            <span className="text-sm font-medium text-red-700 dark:text-red-300">Reportes</span>
-          </button>
-        </div>
-      </div>
+
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">

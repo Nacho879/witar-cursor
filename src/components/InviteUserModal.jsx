@@ -61,6 +61,15 @@ export default function InviteUserModal({ isOpen, onClose, companyId, department
     setMessage('');
 
     try {
+      console.log('Starting invitation process...');
+      console.log('Company ID:', companyId);
+      console.log('Form data:', { firstName, lastName, email, role, departmentId, supervisorId });
+
+      // Verificar que tenemos companyId
+      if (!companyId) {
+        throw new Error('Company ID no encontrado');
+      }
+
       // Verificar límite del plan antes de enviar invitación
       const canAddEmployee = await BillingService.canAddEmployee(companyId);
       if (!canAddEmployee) {
@@ -68,35 +77,53 @@ export default function InviteUserModal({ isOpen, onClose, companyId, department
         return;
       }
 
+      // Obtener usuario actual
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) {
+        throw new Error('Usuario no autenticado');
+      }
+
+      console.log('Current user:', user.id);
+
       // Generar token único
       const token = crypto.randomUUID();
+      console.log('Generated token:', token);
 
       // Calcular fecha de expiración (7 días)
       const expiresAt = new Date();
       expiresAt.setDate(expiresAt.getDate() + 7);
+      console.log('Expires at:', expiresAt.toISOString());
+
+      // Datos de la invitación
+      const invitationData = {
+        company_id: companyId,
+        invited_by: user.id,
+        first_name: firstName.trim(),
+        last_name: lastName.trim(),
+        email: email.toLowerCase().trim(),
+        role: role,
+        department_id: departmentId || null,
+        supervisor_id: supervisorId || null,
+        token: token,
+        expires_at: expiresAt.toISOString(),
+        status: 'pending'
+      };
+
+      console.log('Invitation data to insert:', invitationData);
 
       // Crear la invitación
       const { data, error } = await supabase
         .from('invitations')
-        .insert({
-          company_id: companyId,
-          invited_by: (await supabase.auth.getUser()).data.user.id,
-          first_name: firstName.trim(),
-          last_name: lastName.trim(),
-          email: email.toLowerCase().trim(),
-          role: role,
-          department_id: departmentId || null,
-          supervisor_id: supervisorId || null,
-          token: token,
-          expires_at: expiresAt.toISOString(),
-          status: 'pending'
-        })
+        .insert(invitationData)
         .select()
         .single();
 
       if (error) {
+        console.error('Error creating invitation:', error);
         throw error;
       }
+
+      console.log('Invitation created successfully:', data);
 
       // Enviar email con credenciales temporales
       const { data: emailData, error: emailError } = await supabase.functions.invoke('send-invitation-email', {

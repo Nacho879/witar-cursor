@@ -637,6 +637,8 @@ export default function Employees() {
       <InviteUserModal
         isOpen={showInviteModal}
         onClose={() => setShowInviteModal(false)}
+        companyId={companyId}
+        departments={departments}
         onInviteSent={() => {
           setShowInviteModal(false);
           loadEmployees(companyId);

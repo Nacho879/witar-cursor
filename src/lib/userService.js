@@ -40,13 +40,21 @@ export class UserService {
   // Obtener información completa de usuarios
   static async getUsersInfo(userIds) {
     try {
-      // Obtener perfiles de usuario
+      // Verificar que userIds sea un array válido
+      if (!Array.isArray(userIds) || userIds.length === 0) {
+        return [];
+      }
+
+      // Obtener perfiles de usuario usando la sintaxis correcta de Supabase
       const { data: profiles, error: profilesError } = await supabase
         .from('user_profiles')
         .select('user_id, full_name, avatar_url')
         .in('user_id', userIds);
 
-      if (profilesError) throw profilesError;
+      if (profilesError) {
+        console.error('Error loading user profiles:', profilesError);
+        throw profilesError;
+      }
 
       // Obtener emails usando Edge Function
       const { data: emailsData } = await supabase.functions.invoke('get-user-emails', {

@@ -13,6 +13,9 @@ export default function AcceptInvitation() {
   const [success, setSuccess] = React.useState(false);
 
   const token = searchParams.get('token');
+  
+  console.log('URL search params:', Object.fromEntries(searchParams.entries()));
+  console.log('Extracted token:', token);
 
   React.useEffect(() => {
     if (token) {
@@ -25,35 +28,51 @@ export default function AcceptInvitation() {
 
   async function verifyInvitation() {
     try {
-      const { data, error } = await supabase
+      console.log('Verifying invitation with token:', token);
+      
+      // Primero obtener la invitación sin join
+      const { data: invitation, error: invitationError } = await supabase
         .from('invitations')
-        .select(`
-          *,
-          companies (
-            id,
-            name,
-            slug,
-            description
-          )
-        `)
+        .select('*')
         .eq('token', token)
         .eq('status', 'pending')
         .single();
 
-      if (error || !data) {
+      console.log('Invitation query result:', { invitation, error: invitationError });
+
+      if (invitationError || !invitation) {
+        console.error('Invitation not found:', invitationError);
         setError('Invitación no válida o expirada');
         setLoading(false);
         return;
       }
 
       // Verificar que no ha expirado
-      if (new Date(data.expires_at) < new Date()) {
+      if (new Date(invitation.expires_at) < new Date()) {
         setError('La invitación ha expirado');
         setLoading(false);
         return;
       }
 
-      setInvitation(data);
+      // Luego obtener la información de la empresa por separado
+      const { data: company, error: companyError } = await supabase
+        .from('companies')
+        .select('id, name, slug, description')
+        .eq('id', invitation.company_id)
+        .single();
+
+      if (companyError) {
+        console.error('Error getting company:', companyError);
+      }
+
+      // Combinar los datos
+      const fullInvitation = {
+        ...invitation,
+        companies: company || { name: 'Empresa no encontrada' }
+      };
+
+      console.log('Full invitation data:', fullInvitation);
+      setInvitation(fullInvitation);
       setLoading(false);
     } catch (error) {
       console.error('Error verifying invitation:', error);

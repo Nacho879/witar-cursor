@@ -54,7 +54,7 @@ serve(async (req) => {
     // Obtener la invitación con información básica usando el cliente de servicio
     const { data: invitation, error: invitationError } = await supabaseServiceClient
       .from('invitations')
-      .select('id, email, status, role, company_id, first_name, last_name')
+      .select('id, email, status, role, company_id, first_name, last_name, token')
       .eq('id', invitationId)
       .single()
 
@@ -87,67 +87,90 @@ serve(async (req) => {
     const tempPassword = generateTempPassword()
     console.log('Generated temp password for:', invitation.email)
     
-    // Crear el usuario en Supabase Auth
-    const { data: authUser, error: createUserError } = await supabaseServiceClient.auth.admin.createUser({
-      email: invitation.email,
-      password: tempPassword,
-      email_confirm: true,
-      user_metadata: {
-        temp_user: true,
-        invitation_id: invitationId,
-        role: invitation.role,
-        company_id: invitation.company_id
-      }
-    })
+    // Generar URL de invitación
+    console.log('Invitation token for URL:', invitation.token);
+    const invitationUrl = `${Deno.env.get('FRONTEND_URL') || 'https://www.witar.es'}/accept-invitation?token=${invitation.token}`
+    console.log('Generated invitation URL:', invitationUrl);
+    
+    // Enviar email usando Resend o similar
+    const emailContent = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #333;">¡Has sido invitado a unirte a ${company?.name || 'una empresa'}!</h2>
+        
+        <p>Hola ${invitation.first_name || 'Usuario'},</p>
+        
+        <p>Has sido invitado a unirte a <strong>${company?.name || 'una empresa'}</strong> en Witar como <strong>${invitation.role}</strong>.</p>
+        
+        <div style="background-color: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
+          <h3 style="margin-top: 0;">Para aceptar la invitación:</h3>
+          <ol>
+            <li>Haz clic en el botón de abajo</li>
+            <li>Regístrate o inicia sesión en Witar</li>
+            <li>Confirma que aceptas la invitación</li>
+          </ol>
+        </div>
+        
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${invitationUrl}" 
+             style="background-color: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
+            Aceptar Invitación
+          </a>
+        </div>
+        
+        <p style="color: #666; font-size: 14px;">
+          Si el botón no funciona, copia y pega este enlace en tu navegador:<br>
+          <a href="${invitationUrl}">${invitationUrl}</a>
+        </p>
+        
+        <p style="color: #666; font-size: 14px;">
+          Esta invitación expira en 7 días.<br>
+          Si tienes alguna pregunta, contacta con el administrador de tu empresa.
+        </p>
+        
+        <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+        <p style="color: #999; font-size: 12px; text-align: center;">
+          Este es un email automático de Witar. No respondas a este mensaje.
+        </p>
+      </div>
+    `
 
-    if (createUserError) {
-      console.error('Error creating user:', createUserError)
-      throw new Error(`Error creando usuario: ${createUserError.message}`)
-    }
+             // Enviar email usando Resend
+         try {
+           const resendResponse = await fetch('https://api.resend.com/emails', {
+             method: 'POST',
+             headers: {
+               'Authorization': `Bearer ${Deno.env.get('RESEND_API_KEY')}`,
+               'Content-Type': 'application/json',
+             },
+             body: JSON.stringify({
+               from: 'Witar <onboarding@resend.dev>',
+               to: ['ignaseblopez@gmail.com'], // Email verificado para pruebas
+               subject: `Invitación a unirte a ${company?.name || 'una empresa'} en Witar`,
+               html: emailContent,
+             }),
+           })
 
-    console.log('User created in Auth:', authUser.user?.id)
+           if (!resendResponse.ok) {
+             const errorText = await resendResponse.text()
+             console.error('Error sending email via Resend:', errorText)
+             throw new Error(`Error enviando email: ${resendResponse.status}`)
+           }
 
-    // Crear el perfil del usuario
-    const fullName = invitation.first_name && invitation.last_name 
-      ? `${invitation.first_name} ${invitation.last_name}`
-      : `Usuario ${invitation.role}`;
-      
-    const { error: profileError } = await supabaseServiceClient
-      .from('user_profiles')
-      .insert({
-        user_id: authUser.user!.id,
-        full_name: fullName,
-        email: invitation.email,
-        avatar_url: null
-      })
-
-    if (profileError) {
-      console.error('Error creating profile:', profileError)
-      // No lanzar error aquí, el perfil se puede crear después
-    }
-
-    // Crear el rol del usuario en la empresa
-    const { error: roleError } = await supabaseServiceClient
-      .from('user_company_roles')
-      .insert({
-        user_id: authUser.user!.id,
-        company_id: invitation.company_id,
-        role: invitation.role,
-        is_active: true
-      })
-
-    if (roleError) {
-      console.error('Error creating user role:', roleError)
-      throw new Error(`Error creando rol de usuario: ${roleError.message}`)
-    }
+           const resendData = await resendResponse.json()
+           console.log('Email sent successfully via Resend:', resendData.id)
+         } catch (emailError) {
+           console.error('Error sending email:', emailError)
+           // Por ahora, solo logueamos el email (en producción usarías un servicio de email)
+           console.log('Email content:', emailContent)
+           console.log('Invitation URL:', invitationUrl)
+         }
 
     // Actualizar la invitación con las credenciales temporales usando el cliente de servicio
     const { error: updateError } = await supabaseServiceClient
       .from('invitations')
       .update({ 
-        status: 'accepted',
+        status: 'pending', // Mantener como pendiente hasta que el usuario se registre
         sent_at: new Date().toISOString(),
-        accepted_at: new Date().toISOString(),
         temp_password: tempPassword
       })
       .eq('id', invitationId)

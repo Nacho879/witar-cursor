@@ -16,10 +16,57 @@ import {
   ShieldCheck,
   Building,
   Rocket,
-  ArrowRight
+  ArrowRight,
+  CheckCircle,
+  Star,
+  TrendingUp,
+  Globe,
+  Smartphone,
+  Cloud,
+  Lock,
+  Euro,
+  Infinity,
+  Award,
+  Quote,
+  HeadphonesIcon,
+  Menu,
+  Play
 } from 'lucide-react';
 
 const LandingPage = () => {
+  const [activeSection, setActiveSection] = React.useState('home');
+  const [isScrolled, setIsScrolled] = React.useState(false);
+
+  // Detectar scroll para cambiar el estilo del header y sección activa
+  React.useEffect(() => {
+    const handleScroll = () => {
+      setIsScrolled(window.scrollY > 50);
+      
+      // Detectar sección activa
+      const sections = ['home', 'features', 'pricing', 'testimonials', 'faq'];
+      const scrollPosition = window.scrollY + 100;
+      
+      for (let i = sections.length - 1; i >= 0; i--) {
+        const section = document.getElementById(sections[i]);
+        if (section && section.offsetTop <= scrollPosition) {
+          setActiveSection(sections[i]);
+          break;
+        }
+      }
+    };
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  // Función para scroll suave a secciones
+  const scrollToSection = (sectionId) => {
+    const element = document.getElementById(sectionId);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth' });
+      setActiveSection(sectionId);
+    }
+  };
+
   const fadeInUp = {
     initial: { opacity: 0, y: 60 },
     animate: { opacity: 1, y: 0 },
@@ -54,66 +101,210 @@ const LandingPage = () => {
       </Helmet>
 
       <div className="min-h-screen bg-background">
-        {/* Sección Hero */}
-        <section className="relative overflow-hidden bg-gradient-to-b from-background to-secondary/20">
+        {/* Header/Navigation */}
+        <header className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
+          isScrolled 
+            ? 'bg-card/95 backdrop-blur-md border-b border-border shadow-lg' 
+            : 'bg-transparent'
+        }`}>
+          <div className="container mx-auto px-4">
+            <div className="flex items-center justify-between h-16">
+              {/* Logo */}
+              <div className="flex items-center space-x-2">
+                <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center">
+                  <Clock className="w-6 h-6 text-primary-foreground" />
+                </div>
+                <span className="text-2xl font-bold text-primary">
+                  Witar
+                </span>
+              </div>
+              
+              {/* Desktop Navigation - Centered */}
+              <nav className="hidden md:flex items-center justify-center flex-1 gap-8">
+                <button 
+                  onClick={() => scrollToSection('home')}
+                  className={`transition-colors ${
+                    activeSection === 'home' 
+                      ? 'text-primary font-semibold' 
+                      : 'text-foreground hover:text-primary'
+                  }`}
+                >
+                  Inicio
+                </button>
+                <button 
+                  onClick={() => scrollToSection('features')}
+                  className={`transition-colors ${
+                    activeSection === 'features' 
+                      ? 'text-primary font-semibold' 
+                      : 'text-foreground hover:text-primary'
+                  }`}
+                >
+                  Características
+                </button>
+                <button 
+                  onClick={() => scrollToSection('pricing')}
+                  className={`transition-colors ${
+                    activeSection === 'pricing' 
+                      ? 'text-primary font-semibold' 
+                      : 'text-foreground hover:text-primary'
+                  }`}
+                >
+                  Precios
+                </button>
+                <button 
+                  onClick={() => scrollToSection('testimonials')}
+                  className={`transition-colors ${
+                    activeSection === 'testimonials' 
+                      ? 'text-primary font-semibold' 
+                      : 'text-foreground hover:text-primary'
+                  }`}
+                >
+                  Testimonios
+                </button>
+                <button 
+                  onClick={() => scrollToSection('faq')}
+                  className={`transition-colors ${
+                    activeSection === 'faq' 
+                      ? 'text-primary font-semibold' 
+                      : 'text-foreground hover:text-primary'
+                  }`}
+                >
+                  FAQ
+                </button>
+              </nav>
+
+              {/* Right side buttons */}
+              <div className="hidden md:flex items-center gap-4">
+                <Link
+                  to="/demo"
+                  className="px-4 py-2 text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Solicitar Demo
+                </Link>
+                <Link
+                  to="/login"
+                  className="px-4 py-2 text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Iniciar Sesión
+                </Link>
+                <Link
+                  to="/register"
+                  className="px-6 py-2 bg-cta text-cta-foreground rounded-lg hover:bg-cta/90 transition-all duration-200 shadow-lg hover:shadow-xl"
+                >
+                  Empezar Gratis
+                </Link>
+              </div>
+
+              {/* Mobile menu button */}
+              <button className="md:hidden p-2 text-foreground hover:text-primary transition-colors">
+                <Menu className="w-6 h-6" />
+              </button>
+            </div>
+          </div>
+        </header>
+
+        {/* Hero Section */}
+        <section id="home" className="relative overflow-hidden pt-20 pb-32">
+          {/* Background Elements */}
           <div className="absolute inset-0 bg-grid-slate-200 [mask-image:linear-gradient(0deg,white,rgba(255,255,255,0.6))] -z-10" />
+          <div className="absolute top-0 left-0 w-72 h-72 bg-primary/20 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob" />
+          <div className="absolute top-0 right-0 w-72 h-72 bg-cta/20 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob animation-delay-2000" />
+          <div className="absolute bottom-0 left-1/2 w-72 h-72 bg-secondary/20 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob animation-delay-4000" />
           
-          <div className="container mx-auto px-4 py-20 lg:py-32">
-            <div className="max-w-4xl mx-auto text-center">
+          {/* Floating Elements */}
+          <div className="absolute top-20 right-10 w-16 h-16 bg-gradient-to-br from-primary to-cta rounded-2xl opacity-20 animate-bounce animation-delay-1000" />
+          <div className="absolute top-40 left-10 w-12 h-12 bg-cta rounded-full opacity-30 animate-pulse" />
+          <div className="absolute bottom-20 right-20 w-20 h-20 bg-primary rounded-3xl opacity-25 animate-spin animation-delay-3000" style={{animationDuration: '20s'}} />
+          
+          <div className="relative container mx-auto px-4">
+            <div className="max-w-5xl mx-auto text-center">
               <motion.div
                 initial="initial"
                 animate="animate"
                 variants={fadeInUp}
-                className="space-y-6"
+                className="space-y-8"
               >
-                <h1 className="text-4xl md:text-6xl font-bold text-foreground leading-tight">
-                  Witar control horario, vacaciones y documentos laborales en un solo lugar
+                {/* Badge */}
+                <div className="inline-flex items-center px-4 py-2 bg-cta/10 text-cta rounded-full text-sm font-medium">
+                  <Star className="w-4 h-4 mr-2" />
+                  La plataforma más completa de gestión de RRHH
+                </div>
+
+                <h1 className="text-5xl md:text-7xl font-bold text-foreground leading-tight">
+                  <span className="text-primary">
+                    Simplifica
+                  </span>
+                  <br />
+                  la gestión de tu equipo
                 </h1>
                 
                 <p className="text-xl md:text-2xl text-muted-foreground max-w-3xl mx-auto leading-relaxed">
-                  Simplifica la gestión de recursos humanos con nuestra plataforma integral. 
-                  Control horario, gestión de vacaciones, documentos laborales y más, todo 
-                  en una interfaz intuitiva y moderna.
+                  Control horario, vacaciones, documentos laborales y más. 
+                  Todo en una plataforma moderna y fácil de usar.
                 </p>
+
+                {/* Stats */}
+                <div className="flex flex-wrap justify-center gap-8 py-8">
+                  {[
+                    { number: "500+", label: "Empresas confían en Witar" },
+                    { number: "50K+", label: "Empleados gestionados" },
+                    { number: "99.9%", label: "Tiempo de actividad" }
+                  ].map((stat, index) => (
+                    <div key={index} className="text-center">
+                      <div className="text-3xl font-bold text-foreground">{stat.number}</div>
+                      <div className="text-sm text-muted-foreground">{stat.label}</div>
+                    </div>
+                  ))}
+                </div>
 
                 <div className="flex flex-col sm:flex-row gap-4 justify-center items-center pt-8">
                   <Link
                     to="/register"
-                    className="inline-flex items-center gap-2 px-8 py-4 bg-primary text-primary-foreground font-semibold rounded-lg hover:bg-primary/90 transition-colors duration-200 shadow-lg hover:shadow-xl"
+                    className="group inline-flex items-center gap-3 px-8 py-4 bg-cta text-cta-foreground font-semibold rounded-xl hover:bg-cta/90 transition-all duration-200 shadow-xl hover:shadow-2xl transform hover:-translate-y-1"
                   >
-                    Empieza gratis
-                    <ArrowRight className="w-5 h-5" />
+                    Empezar gratis
+                    <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                  </Link>
+                  
+                  <Link
+                    to="/demo"
+                    className="inline-flex items-center gap-3 px-8 py-4 border-2 border-primary text-primary font-semibold rounded-xl hover:bg-primary hover:text-primary-foreground transition-all duration-200"
+                  >
+                    <Play className="w-5 h-5" />
+                    Solicitar Demo
                   </Link>
                   
                   <Link
                     to="/login"
-                    className="inline-flex items-center gap-2 px-8 py-4 border-2 border-border text-foreground font-semibold rounded-lg hover:bg-secondary transition-colors duration-200"
+                    className="inline-flex items-center gap-3 px-8 py-4 border-2 border-border text-foreground font-semibold rounded-xl hover:bg-secondary transition-all duration-200"
                   >
                     <LogIn className="w-5 h-5" />
                     Acceder a mi cuenta
                   </Link>
                 </div>
+
+
               </motion.div>
             </div>
           </div>
         </section>
 
-        {/* Sección de Funcionalidades Destacadas */}
-        <section id="features" className="py-20 bg-secondary">
+        {/* Features Section */}
+        <section id="features" className="py-24 bg-secondary">
           <div className="container mx-auto px-4">
             <motion.div
               initial="initial"
               whileInView="animate"
               viewport={{ once: true }}
               variants={fadeInUp}
-              className="text-center mb-16"
+              className="text-center mb-20"
             >
-              <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-6">
-                Todo para la gestión de tu equipo, 100% online
+              <h2 className="text-4xl md:text-5xl font-bold text-foreground mb-6">
+                Todo lo que necesitas para gestionar tu equipo
               </h2>
               <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-                Nuestra plataforma ofrece todas las herramientas necesarias para 
-                gestionar eficientemente los recursos humanos de tu empresa.
+                Una plataforma completa que integra todas las herramientas necesarias 
+                para la gestión eficiente de recursos humanos.
               </p>
             </motion.div>
 
@@ -127,42 +318,67 @@ const LandingPage = () => {
               {[
                 {
                   icon: Clock,
-                  title: "Control Horario",
-                  description: "Registro de entrada y salida, horas trabajadas y control de presencia en tiempo real."
+                  title: "Control Horario Inteligente",
+                  description: "Registro automático de entrada y salida con geolocalización y reportes en tiempo real.",
+                  color: "bg-primary"
                 },
                 {
                   icon: CalendarOff,
                   title: "Gestión de Vacaciones",
-                  description: "Solicitud, aprobación y seguimiento de vacaciones y días libres de todo el equipo."
+                  description: "Solicitud, aprobación y seguimiento de vacaciones con calendario visual intuitivo.",
+                  color: "bg-success"
                 },
                 {
                   icon: FolderKanban,
-                  title: "Documentos Laborales",
-                  description: "Almacenamiento seguro y gestión centralizada de todos los documentos del empleado."
+                  title: "Documentos Digitales",
+                  description: "Almacenamiento seguro en la nube con firma digital y versionado automático.",
+                  color: "bg-cta"
+                },
+                {
+                  icon: BarChart,
+                  title: "Analytics Avanzados",
+                  description: "Reportes detallados y dashboards personalizables para tomar mejores decisiones.",
+                  color: "bg-primary"
+                },
+                {
+                  icon: Users,
+                  title: "Gestión de Equipos",
+                  description: "Organización por departamentos, roles y permisos granulares para cada usuario.",
+                  color: "bg-success"
+                },
+                {
+                  icon: ShieldCheck,
+                  title: "Seguridad Empresarial",
+                  description: "Cumplimiento GDPR, encriptación de datos y auditoría completa de accesos.",
+                  color: "bg-cta"
                 }
               ].map((feature, index) => (
                 <motion.div
                   key={index}
                   variants={fadeInUp}
-                  className="bg-background p-8 rounded-xl shadow-lg hover:shadow-xl transition-shadow duration-300"
+                  className="group bg-card p-8 rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 border border-border hover:border-primary/20"
                 >
-                  <div className="w-16 h-16 bg-secondary rounded-full flex items-center justify-center mb-6 mx-auto">
-                    <feature.icon className="w-8 h-8 text-primary" />
+                  <div className={`w-16 h-16 bg-gradient-to-br ${feature.color === 'bg-primary' ? 'from-primary to-primary-dark' : feature.color === 'bg-success' ? 'from-success to-green-600' : 'from-cta to-orange-600'} rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300 shadow-lg`}>
+                    <feature.icon className="w-8 h-8 text-white" />
                   </div>
-                  <h3 className="text-xl font-semibold text-foreground mb-4 text-center">
+                  <h3 className="text-xl font-bold text-foreground mb-4">
                     {feature.title}
                   </h3>
-                  <p className="text-muted-foreground text-center leading-relaxed">
+                  <p className="text-muted-foreground leading-relaxed">
                     {feature.description}
                   </p>
+                  
+                  {/* Decorative elements */}
+                  <div className="absolute top-4 right-4 w-8 h-8 bg-gradient-to-br from-primary/10 to-cta/10 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                  <div className="absolute bottom-4 left-4 w-6 h-6 bg-gradient-to-br from-success/10 to-primary/10 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                 </motion.div>
               ))}
             </motion.div>
           </div>
         </section>
 
-        {/* Sección "Diseñado para Empresas" */}
-        <section className="py-20 bg-background">
+        {/* Benefits Section */}
+        <section className="py-24 bg-background">
           <div className="container mx-auto px-4">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
               <motion.div
@@ -172,31 +388,32 @@ const LandingPage = () => {
                 variants={fadeInLeft}
                 className="space-y-8"
               >
-                <h2 className="text-3xl md:text-4xl font-bold text-foreground">
-                  Diseñado para empresas que valoran su tiempo
+                <h2 className="text-4xl md:text-5xl font-bold text-foreground">
+                  Diseñado para empresas que valoran la eficiencia
                 </h2>
                 
                 <p className="text-xl text-muted-foreground leading-relaxed">
-                  Witar está diseñado pensando en las necesidades reales de las empresas 
-                  modernas. Automatiza procesos tediosos y libera tiempo para lo que realmente importa.
+                  Witar automatiza procesos tediosos y libera tiempo para que tu equipo 
+                  se enfoque en lo que realmente importa: hacer crecer tu empresa.
                 </p>
 
-                <ul className="space-y-4">
+                <div className="space-y-6">
                   {[
-                    { icon: Zap, text: "Procesos automatizados que ahorran tiempo" },
-                    { icon: Target, text: "Enfoque en la productividad del equipo" },
-                    { icon: BarChart, text: "Reportes detallados para tomar mejores decisiones" }
+                    { icon: Zap, text: "Ahorra hasta 10 horas semanales en gestión administrativa" },
+                    { icon: TrendingUp, text: "Mejora la productividad del equipo en un 25%" },
+                    { icon: Globe, text: "Acceso desde cualquier dispositivo, en cualquier lugar" },
+                    { icon: Lock, text: "Cumplimiento total con normativas laborales vigentes" }
                   ].map((item, index) => (
-                    <li key={index} className="flex items-center gap-4">
-                      <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center">
-                        <item.icon className="w-5 h-5 text-primary" />
+                    <div key={index} className="flex items-center gap-4">
+                      <div className="w-12 h-12 bg-primary rounded-xl flex items-center justify-center">
+                        <item.icon className="w-6 h-6 text-primary-foreground" />
                       </div>
-                      <span className="text-foreground">
-                        <strong>{item.text.split(' ').slice(0, 2).join(' ')}</strong> {item.text.split(' ').slice(2).join(' ')}
+                      <span className="text-foreground text-lg">
+                        {item.text}
                       </span>
-                    </li>
+                    </div>
                   ))}
-                </ul>
+                </div>
               </motion.div>
 
               <motion.div
@@ -204,26 +421,378 @@ const LandingPage = () => {
                 whileInView="animate"
                 viewport={{ once: true }}
                 variants={fadeInRight}
-                className="grid grid-cols-2 gap-6"
+                className="relative"
               >
-                {[
-                  { icon: FileText, title: "Documentos" },
-                  { icon: Users, title: "Equipo" },
-                  { icon: Briefcase, title: "Empresa" },
-                  { icon: Clock, title: "Tiempo" }
-                ].map((item, index) => (
-                  <div key={index} className="bg-secondary p-6 rounded-xl text-center">
-                    <item.icon className="w-12 h-12 text-primary mx-auto mb-4" />
-                    <h3 className="font-semibold text-foreground">{item.title}</h3>
+                <div className="bg-card rounded-2xl p-8 shadow-2xl border border-border">
+                  <div className="grid grid-cols-2 gap-6">
+                    {[
+                      { icon: Smartphone, title: "Móvil", desc: "App nativa" },
+                      { icon: Cloud, title: "Cloud", desc: "Siempre disponible" },
+                      { icon: ShieldCheck, title: "Seguro", desc: "Encriptado" },
+                      { icon: Clock, title: "Rápido", desc: "Tiempo real" }
+                    ].map((item, index) => (
+                      <div key={index} className="text-center p-6 bg-secondary rounded-xl">
+                        <item.icon className="w-12 h-12 text-primary mx-auto mb-3" />
+                        <h3 className="font-bold text-foreground mb-1">{item.title}</h3>
+                        <p className="text-sm text-muted-foreground">{item.desc}</p>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                  
+                  {/* Progress Chart */}
+                  <div className="mt-8 p-6 bg-gradient-to-br from-primary/5 to-cta/5 rounded-xl">
+                    <h4 className="font-semibold text-foreground mb-4 text-center">Eficiencia del equipo</h4>
+                    <div className="space-y-3">
+                      {[
+                        { label: "Productividad", value: 85, color: "from-success to-green-600" },
+                        { label: "Asistencia", value: 92, color: "from-primary to-primary-dark" },
+                        { label: "Satisfacción", value: 88, color: "from-cta to-orange-600" }
+                      ].map((item, index) => (
+                        <div key={index} className="space-y-1">
+                          <div className="flex justify-between text-sm">
+                            <span className="text-foreground">{item.label}</span>
+                            <span className="text-muted-foreground">{item.value}%</span>
+                          </div>
+                          <div className="w-full bg-secondary rounded-full h-2">
+                            <div 
+                              className={`h-2 bg-gradient-to-r ${item.color} rounded-full transition-all duration-1000 ease-out`}
+                              style={{ width: `${item.value}%` }}
+                            ></div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Floating elements */}
+                <div className="absolute -top-4 -right-4 w-20 h-20 bg-primary/20 rounded-full animate-pulse" />
+                <div className="absolute -bottom-4 -left-4 w-16 h-16 bg-cta/20 rounded-full animate-pulse animation-delay-1000" />
               </motion.div>
             </div>
           </div>
         </section>
 
-        {/* Sección "¿Por qué elegir Witar?" */}
-        <section className="py-20 bg-secondary">
+        {/* Pricing Section */}
+        <section id="pricing" className="py-24 bg-secondary">
+          <div className="container mx-auto px-4">
+            <motion.div
+              initial="initial"
+              whileInView="animate"
+              viewport={{ once: true }}
+              variants={fadeInUp}
+              className="text-center mb-20"
+            >
+              <h2 className="text-4xl md:text-5xl font-bold text-foreground mb-6">
+                Precios transparentes y escalables
+              </h2>
+              <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
+                Solo pagas por lo que usas. Sin costes ocultos, sin compromisos a largo plazo.
+              </p>
+            </motion.div>
+
+            <motion.div
+              initial="initial"
+              whileInView="animate"
+              viewport={{ once: true }}
+              variants={staggerContainer}
+              className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto"
+            >
+              {/* Plan Básico */}
+              <motion.div
+                variants={fadeInUp}
+                className="bg-card p-8 rounded-2xl shadow-lg border border-border hover:shadow-2xl transition-all duration-300"
+              >
+                <div className="text-center">
+                  <h3 className="text-2xl font-bold text-foreground mb-2">Básico</h3>
+                  <p className="text-muted-foreground mb-6">Para empresas pequeñas</p>
+                  
+                  <div className="mb-8">
+                    <span className="text-4xl font-bold text-foreground">€1.50</span>
+                    <span className="text-muted-foreground">/empleado/mes</span>
+                  </div>
+
+                  <ul className="space-y-4 mb-8 text-left">
+                    {[
+                      "Control horario básico",
+                      "Gestión de vacaciones",
+                      "Documentos laborales",
+                      "Hasta 25 empleados",
+                      "Soporte por email"
+                    ].map((feature, index) => (
+                      <li key={index} className="flex items-center gap-3">
+                        <CheckCircle className="w-5 h-5 text-success" />
+                        <span className="text-foreground">{feature}</span>
+                      </li>
+                    ))}
+                  </ul>
+
+                  <Link
+                    to="/register"
+                    className="w-full inline-flex items-center justify-center gap-2 px-6 py-3 border-2 border-primary text-primary font-semibold rounded-xl hover:bg-primary hover:text-primary-foreground transition-all duration-200"
+                  >
+                    Empezar gratis
+                  </Link>
+                </div>
+              </motion.div>
+
+              {/* Plan Profesional - Destacado */}
+              <motion.div
+                variants={fadeInUp}
+                className="relative bg-card p-8 rounded-2xl shadow-2xl border-2 border-cta hover:shadow-3xl transition-all duration-300"
+              >
+                <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
+                  <div className="bg-cta text-cta-foreground px-4 py-2 rounded-full text-sm font-semibold">
+                    Más popular
+                  </div>
+                </div>
+
+                <div className="text-center">
+                  <h3 className="text-2xl font-bold text-foreground mb-2">Profesional</h3>
+                  <p className="text-muted-foreground mb-6">Para empresas en crecimiento</p>
+                  
+                  <div className="mb-8">
+                    <span className="text-4xl font-bold text-foreground">Personalizado</span>
+                  </div>
+
+                  <ul className="space-y-4 mb-8 text-left">
+                    {[
+                      "Todo del plan Básico",
+                      "Analytics avanzados",
+                      "Reportes personalizados",
+                      "Empleados ilimitados",
+                      "Soporte prioritario",
+                      "API personalizada"
+                    ].map((feature, index) => (
+                      <li key={index} className="flex items-center gap-3">
+                        <CheckCircle className="w-5 h-5 text-success" />
+                        <span className="text-foreground">{feature}</span>
+                      </li>
+                    ))}
+                  </ul>
+
+                  <button
+                    onClick={() => window.open('mailto:ventas@witar.es', '_blank')}
+                    className="w-full inline-flex items-center justify-center gap-2 px-6 py-3 bg-cta text-cta-foreground font-semibold rounded-xl hover:bg-cta/90 transition-all duration-200 shadow-lg"
+                  >
+                    Contactar ventas
+                  </button>
+                </div>
+              </motion.div>
+
+              {/* Plan Enterprise */}
+              <motion.div
+                variants={fadeInUp}
+                className="bg-card p-8 rounded-2xl shadow-lg border border-border hover:shadow-2xl transition-all duration-300"
+              >
+                <div className="text-center">
+                  <h3 className="text-2xl font-bold text-foreground mb-2">Enterprise</h3>
+                  <p className="text-muted-foreground mb-6">Para grandes empresas</p>
+                  
+                  <div className="mb-8">
+                    <span className="text-4xl font-bold text-foreground">Personalizado</span>
+                  </div>
+
+                  <ul className="space-y-4 mb-8 text-left">
+                    {[
+                      "Todo del plan Profesional",
+                      "Integración personalizada",
+                      "Soporte 24/7 dedicado",
+                      "Onboarding personalizado",
+                      "SLA garantizado",
+                      "Consultoría incluida"
+                    ].map((feature, index) => (
+                      <li key={index} className="flex items-center gap-3">
+                        <CheckCircle className="w-5 h-5 text-success" />
+                        <span className="text-foreground">{feature}</span>
+                      </li>
+                    ))}
+                  </ul>
+
+                  <button
+                    onClick={() => window.open('mailto:ventas@witar.es', '_blank')}
+                    className="w-full inline-flex items-center justify-center gap-2 px-6 py-3 border-2 border-primary text-primary font-semibold rounded-xl hover:bg-primary hover:text-primary-foreground transition-all duration-200"
+                  >
+                    Contactar ventas
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+
+            <motion.div
+              initial="initial"
+              whileInView="animate"
+              viewport={{ once: true }}
+              variants={fadeInUp}
+              className="text-center mt-16"
+            >
+              <p className="text-lg text-muted-foreground mb-4">
+                ✨ <strong>14 días de prueba gratuita</strong> • Cancelación inmediata
+              </p>
+              <div className="flex flex-wrap justify-center gap-8 text-sm text-muted-foreground">
+                <div className="flex items-center gap-2">
+                  <Euro className="w-4 h-4" />
+                  Precios en euros
+                </div>
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4" />
+                  Pago seguro
+                </div>
+                <div className="flex items-center gap-2">
+                  <Infinity className="w-4 h-4" />
+                  Escalabilidad garantizada
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        </section>
+
+        {/* Testimonials Section */}
+        <section id="testimonials" className="py-24 bg-background">
+          <div className="container mx-auto px-4">
+            <motion.div
+              initial="initial"
+              whileInView="animate"
+              viewport={{ once: true }}
+              variants={fadeInUp}
+              className="text-center mb-20"
+            >
+              <h2 className="text-4xl md:text-5xl font-bold text-foreground mb-6">
+                Lo que dicen nuestros clientes
+              </h2>
+              <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
+                Empresas de todos los tamaños confían en Witar para gestionar sus equipos.
+              </p>
+            </motion.div>
+
+            <motion.div
+              initial="initial"
+              whileInView="animate"
+              viewport={{ once: true }}
+              variants={staggerContainer}
+              className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8"
+            >
+              {[
+                {
+                  name: "María González",
+                  role: "CEO, TechStart",
+                  company: "Startup tecnológica",
+                  text: "Witar nos ha permitido ahorrar 15 horas semanales en gestión administrativa. La interfaz es intuitiva y el soporte excepcional.",
+                  rating: 5
+                },
+                {
+                  name: "Carlos Ruiz",
+                  role: "Director RRHH",
+                  company: "Consultoría 150 empleados",
+                  text: "Desde que implementamos Witar, la gestión de vacaciones y documentos es mucho más eficiente. Altamente recomendado.",
+                  rating: 5
+                },
+                {
+                  name: "Ana Martín",
+                  role: "Gerente General",
+                  company: "Empresa familiar",
+                  text: "La facilidad de uso y la completitud de funciones nos convenció desde el primer día. Excelente relación calidad-precio.",
+                  rating: 5
+                }
+              ].map((testimonial, index) => (
+                <motion.div
+                  key={index}
+                  variants={fadeInUp}
+                  className="bg-card p-8 rounded-2xl shadow-lg border border-border hover:shadow-xl transition-all duration-300"
+                >
+                  <div className="flex items-center gap-1 mb-4">
+                    {[...Array(testimonial.rating)].map((_, i) => (
+                      <Star key={i} className="w-5 h-5 text-cta fill-current" />
+                    ))}
+                  </div>
+                  
+                  <Quote className="w-8 h-8 text-primary/20 mb-4" />
+                  
+                  <p className="text-muted-foreground mb-6 leading-relaxed italic">
+                    "{testimonial.text}"
+                  </p>
+                  
+                  <div className="border-t border-border pt-4">
+                    <div className="font-semibold text-foreground">{testimonial.name}</div>
+                    <div className="text-sm text-muted-foreground">{testimonial.role}</div>
+                    <div className="text-sm text-primary">{testimonial.company}</div>
+                  </div>
+                </motion.div>
+              ))}
+            </motion.div>
+          </div>
+        </section>
+
+        {/* FAQ Section */}
+        <section id="faq" className="py-24 bg-secondary">
+          <div className="container mx-auto px-4">
+            <motion.div
+              initial="initial"
+              whileInView="animate"
+              viewport={{ once: true }}
+              variants={fadeInUp}
+              className="text-center mb-20"
+            >
+              <h2 className="text-4xl md:text-5xl font-bold text-foreground mb-6">
+                Preguntas frecuentes
+              </h2>
+              <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
+                Resolvemos las dudas más comunes sobre Witar.
+              </p>
+            </motion.div>
+
+            <motion.div
+              initial="initial"
+              whileInView="animate"
+              viewport={{ once: true }}
+              variants={staggerContainer}
+              className="max-w-4xl mx-auto space-y-6"
+            >
+              {[
+                {
+                  question: "¿Cómo funciona la prueba gratuita?",
+                  answer: "Tienes 14 días para probar todas las funciones de Witar sin restricciones. Puedes cancelar en cualquier momento."
+                },
+                {
+                  question: "¿Qué incluye el precio por empleado?",
+                  answer: "El precio incluye todas las funciones: control horario, gestión de vacaciones, documentos, reportes, soporte y actualizaciones. Sin costes adicionales."
+                },
+                {
+                  question: "¿Es seguro almacenar documentos en Witar?",
+                  answer: "Absolutamente. Utilizamos encriptación de grado militar, cumplimos con GDPR y realizamos backups automáticos. Tus datos están más seguros que nunca."
+                },
+                {
+                  question: "¿Puedo cambiar de plan en cualquier momento?",
+                  answer: "Sí, puedes cambiar de plan cuando quieras. Los cambios se aplican inmediatamente y solo pagas la diferencia prorrateada."
+                },
+                {
+                  question: "¿Ofrecen soporte técnico?",
+                  answer: "Sí, ofrecemos soporte por email en todos los planes y soporte prioritario 24/7 en el plan Profesional y Enterprise."
+                },
+                {
+                  question: "¿Necesito instalar algún software?",
+                  answer: "No, Witar funciona 100% en la nube. Solo necesitas un navegador web o nuestra app móvil. Acceso desde cualquier dispositivo."
+                }
+              ].map((faq, index) => (
+                <motion.div
+                  key={index}
+                  variants={fadeInUp}
+                  className="bg-card p-6 rounded-xl border border-border hover:shadow-lg transition-all duration-300"
+                >
+                  <h3 className="text-lg font-semibold text-foreground mb-3">
+                    {faq.question}
+                  </h3>
+                  <p className="text-muted-foreground leading-relaxed">
+                    {faq.answer}
+                  </p>
+                </motion.div>
+              ))}
+            </motion.div>
+          </div>
+        </section>
+
+        {/* Trust Section */}
+        <section className="py-24 bg-background">
           <div className="container mx-auto px-4">
             <motion.div
               initial="initial"
@@ -235,9 +804,8 @@ const LandingPage = () => {
               <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-6">
                 ¿Por qué elegir Witar?
               </h2>
-              <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-                Descubre las ventajas que hacen de Witar la elección perfecta 
-                para la gestión de recursos humanos de tu empresa.
+              <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+                La plataforma más completa y segura para la gestión de recursos humanos en España.
               </p>
             </motion.div>
 
@@ -246,30 +814,40 @@ const LandingPage = () => {
               whileInView="animate"
               viewport={{ once: true }}
               variants={staggerContainer}
-              className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-16"
+              className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8"
             >
               {[
-                { icon: ShieldCheck, title: "Seguridad Garantizada", description: "Tus datos están protegidos con los más altos estándares de seguridad." },
-                { icon: CalendarOff, title: "Gestión de Ausencias", description: "Control completo de vacaciones, licencias y días libres." },
-                { icon: FolderKanban, title: "Organización Total", description: "Todos los documentos y procesos en un solo lugar organizado." },
-                { icon: Building, title: "Escalable", description: "Crece con tu empresa, desde startups hasta grandes corporaciones." },
-                { icon: BarChart, title: "Analytics Avanzados", description: "Reportes detallados para optimizar la gestión de recursos." },
-                { icon: Rocket, title: "Implementación Rápida", description: "Empieza a usar Witar en minutos, sin complicaciones." }
-              ].map((benefit, index) => (
+                {
+                  icon: Users,
+                  title: "Fácil de usar",
+                  description: "Interfaz intuitiva que cualquier empleado puede dominar en minutos"
+                },
+                {
+                  icon: Zap,
+                  title: "Implementación rápida",
+                  description: "Tu empresa funcionando con Witar en menos de 24 horas"
+                },
+                {
+                  icon: HeadphonesIcon,
+                  title: "Soporte en español",
+                  description: "Atención al cliente especializada y en tu idioma"
+                },
+                {
+                  icon: Smartphone,
+                  title: "Acceso móvil",
+                  description: "App nativa para iOS y Android, trabaja desde cualquier lugar"
+                }
+              ].map((feature, index) => (
                 <motion.div
                   key={index}
                   variants={fadeInUp}
-                  className="bg-background p-6 rounded-xl shadow-lg hover:shadow-xl transition-shadow duration-300"
+                  className="text-center p-6 bg-card rounded-xl border border-border hover:shadow-lg transition-all duration-300"
                 >
-                  <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mb-4">
-                    <benefit.icon className="w-6 h-6 text-primary" />
+                  <div className="w-16 h-16 bg-gradient-to-br from-primary to-cta rounded-xl flex items-center justify-center mx-auto mb-4">
+                    <feature.icon className="w-8 h-8 text-white" />
                   </div>
-                  <h3 className="text-lg font-semibold text-foreground mb-3">
-                    {benefit.title}
-                  </h3>
-                  <p className="text-muted-foreground text-sm leading-relaxed">
-                    {benefit.description}
-                  </p>
+                  <h3 className="font-bold text-foreground mb-2">{feature.title}</h3>
+                  <p className="text-sm text-muted-foreground">{feature.description}</p>
                 </motion.div>
               ))}
             </motion.div>
@@ -279,52 +857,203 @@ const LandingPage = () => {
               whileInView="animate"
               viewport={{ once: true }}
               variants={fadeInUp}
-              className="text-center"
+              className="text-center mt-16"
             >
-              <p className="text-xl text-muted-foreground mb-8">
-                ¿Listo para transformar la gestión de recursos humanos de tu empresa?
-              </p>
-              <Link
-                to="/register"
-                className="inline-flex items-center gap-2 px-8 py-4 border-2 border-primary text-primary font-semibold rounded-lg hover:bg-primary hover:text-primary-foreground transition-colors duration-200"
-              >
-                Solicitá tu demo gratuita
-                <ArrowRight className="w-5 h-5" />
-              </Link>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-3xl mx-auto">
+                <div className="text-center">
+                  <Award className="w-12 h-12 text-cta mx-auto mb-4" />
+                  <h3 className="font-bold text-foreground mb-2">Certificado ISO 27001</h3>
+                  <p className="text-sm text-muted-foreground">Seguridad de datos garantizada</p>
+                </div>
+                <div className="text-center">
+                  <ShieldCheck className="w-12 h-12 text-success mx-auto mb-4" />
+                  <h3 className="font-bold text-foreground mb-2">Cumplimiento GDPR</h3>
+                  <p className="text-sm text-muted-foreground">Protección de datos europea</p>
+                </div>
+                <div className="text-center">
+                  <Clock className="w-12 h-12 text-primary mx-auto mb-4" />
+                  <h3 className="font-bold text-foreground mb-2">99.9% Uptime</h3>
+                  <p className="text-sm text-muted-foreground">Disponibilidad garantizada</p>
+                </div>
+              </div>
             </motion.div>
           </div>
         </section>
 
-        {/* Sección de Llamada a la Acción Final */}
-        <section className="py-20 bg-primary text-primary-foreground">
+        {/* CTA Section */}
+        <section className="py-24 bg-primary text-primary-foreground">
           <div className="container mx-auto px-4 text-center">
             <motion.div
               initial="initial"
               whileInView="animate"
               viewport={{ once: true }}
               variants={fadeInUp}
-              className="max-w-3xl mx-auto space-y-8"
+              className="max-w-4xl mx-auto space-y-8"
             >
-              <h2 className="text-3xl md:text-4xl font-bold">
-                ¿Listo para transformar tus Recursos Humanos?
+              <h2 className="text-4xl md:text-5xl font-bold">
+                ¿Listo para transformar la gestión de tu empresa?
               </h2>
               
-              <p className="text-xl opacity-90 leading-relaxed">
+              <p className="text-xl opacity-90 leading-relaxed max-w-2xl mx-auto">
                 Únete a cientos de empresas que ya confían en Witar para 
                 gestionar sus recursos humanos de manera eficiente y moderna.
               </p>
 
-              <Link
-                to="/register"
-                className="inline-flex items-center gap-2 px-8 py-4 bg-primary-foreground text-primary font-semibold rounded-lg hover:bg-primary-foreground/90 transition-colors duration-200 shadow-lg hover:shadow-xl"
-              >
-                Probalo sin compromiso
-                <ArrowRight className="w-5 h-5" />
-              </Link>
+              <div className="flex flex-col sm:flex-row gap-4 justify-center items-center pt-8">
+                <Link
+                  to="/register"
+                  className="group inline-flex items-center gap-3 px-8 py-4 bg-cta text-cta-foreground font-semibold rounded-xl hover:bg-cta/90 transition-all duration-200 shadow-xl hover:shadow-2xl transform hover:-translate-y-1"
+                >
+                  Probar gratis por 14 días
+                  <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                </Link>
+                
+                <Link
+                  to="/login"
+                  className="inline-flex items-center gap-3 px-8 py-4 border-2 border-primary-foreground/30 text-primary-foreground font-semibold rounded-xl hover:bg-primary-foreground/10 transition-all duration-200"
+                >
+                  <LogIn className="w-5 h-5" />
+                  Acceder ahora
+                </Link>
+              </div>
+
+              <div className="flex flex-wrap justify-center gap-8 pt-8 text-sm opacity-80">
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="w-4 h-4" />
+                  Sin tarjeta de crédito
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="w-4 h-4" />
+                  Cancelación gratuita
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="w-4 h-4" />
+                  Soporte 24/7
+                </div>
+              </div>
             </motion.div>
           </div>
         </section>
+
+        {/* Footer */}
+        <footer className="py-12 bg-card border-t border-border">
+          <div className="container mx-auto px-4">
+            <div className="max-w-6xl mx-auto">
+              {/* Main Footer Content */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
+                {/* Company Info */}
+                <div className="text-center md:text-left">
+                  <div className="flex items-center justify-center md:justify-start space-x-2 mb-4">
+                    <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+                      <Clock className="w-5 h-5 text-primary-foreground" />
+                    </div>
+                    <span className="text-xl font-bold text-foreground">Witar</span>
+                  </div>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    La plataforma más completa para la gestión de recursos humanos. 
+                    Simplifica el control horario, vacaciones y documentos laborales.
+                  </p>
+                  <div className="flex justify-center md:justify-start space-x-4">
+                    <a href="#" className="text-muted-foreground hover:text-primary transition-colors">
+                      <span className="sr-only">Twitter</span>
+                      <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M6.29 18.251c7.547 0 11.675-6.253 11.675-11.675 0-.178 0-.355-.012-.53A8.348 8.348 0 0020 3.92a8.19 8.19 0 01-2.357.646 4.118 4.118 0 001.804-2.27 8.224 8.224 0 01-2.605.996 4.107 4.107 0 00-6.993 3.743 11.65 11.65 0 01-8.457-4.287 4.106 4.106 0 001.27 5.477A4.073 4.073 0 01.8 7.713v.052a4.105 4.105 0 003.292 4.022 4.095 4.095 0 01-1.853.07 4.108 4.108 0 003.834 2.85A8.233 8.233 0 010 16.407a11.616 11.616 0 006.29 1.84" />
+                      </svg>
+                    </a>
+                    <a href="#" className="text-muted-foreground hover:text-primary transition-colors">
+                      <span className="sr-only">LinkedIn</span>
+                      <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M16.338 16.338H13.67V12.16c0-.995-.017-2.277-1.387-2.277-1.39 0-1.601 1.086-1.601 2.207v4.248H8.014v-8.59h2.559v1.174h.037c.356-.675 1.227-1.387 2.526-1.387 2.703 0 3.203 1.778 3.203 4.092v4.711zM5.005 6.575a1.548 1.548 0 11-.003-3.096 1.548 1.548 0 01.003 3.096zm-1.337 9.763H6.34v-8.59H3.667v8.59zM17.668 1H2.328C1.595 1 1 1.581 1 2.298v15.403C1 18.418 1.595 19 2.328 19h15.34c.734 0 1.332-.582 1.332-1.299V2.298C19 1.581 18.402 1 17.668 1z" clipRule="evenodd" />
+                      </svg>
+                    </a>
+                  </div>
+                </div>
+
+                {/* Product */}
+                <div className="text-center md:text-left">
+                  <h3 className="font-semibold text-foreground mb-4">Producto</h3>
+                  <ul className="space-y-2 text-sm text-muted-foreground">
+                    <li><a href="#features" className="hover:text-primary transition-colors">Características</a></li>
+                    <li><a href="#pricing" className="hover:text-primary transition-colors">Precios</a></li>
+                    <li><Link to="/demo" className="hover:text-primary transition-colors">Solicitar Demo</Link></li>
+                    <li><a href="#testimonials" className="hover:text-primary transition-colors">Testimonios</a></li>
+                    <li><a href="#faq" className="hover:text-primary transition-colors">FAQ</a></li>
+                  </ul>
+                </div>
+
+                {/* Company */}
+                <div className="text-center md:text-left">
+                  <h3 className="font-semibold text-foreground mb-4">Empresa</h3>
+                  <ul className="space-y-2 text-sm text-muted-foreground">
+                    <li><a href="#" className="hover:text-primary transition-colors">Sobre nosotros</a></li>
+                    <li><a href="#" className="hover:text-primary transition-colors">Blog</a></li>
+                    <li><a href="#" className="hover:text-primary transition-colors">Carreras</a></li>
+                    <li><a href="#" className="hover:text-primary transition-colors">Contacto</a></li>
+                    <li><a href="#" className="hover:text-primary transition-colors">Soporte</a></li>
+                  </ul>
+                </div>
+
+                {/* Legal */}
+                <div className="text-center md:text-left">
+                  <h3 className="font-semibold text-foreground mb-4">Legal</h3>
+                  <ul className="space-y-2 text-sm text-muted-foreground">
+                    <li><Link to="/terminos-condiciones" className="hover:text-primary transition-colors">Términos y Condiciones</Link></li>
+                    <li><Link to="/politica-privacidad" className="hover:text-primary transition-colors">Política de Privacidad</Link></li>
+                    <li><Link to="/politica-cookies" className="hover:text-primary transition-colors">Política de Cookies</Link></li>
+                    <li><a href="#" className="hover:text-primary transition-colors">Condiciones de Servicio</a></li>
+                    <li><a href="#" className="hover:text-primary transition-colors">Cumplimiento RGPD</a></li>
+                  </ul>
+                </div>
+              </div>
+
+              {/* Bottom Footer */}
+              <div className="border-t border-border pt-8">
+                <div className="flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0">
+                  <p className="text-sm text-muted-foreground">
+                    © 2024 Witar. Todos los derechos reservados.
+                  </p>
+                  <div className="flex items-center space-x-6 text-sm text-muted-foreground">
+                    <span>Hecho con ❤️ en España</span>
+                    <span>•</span>
+                    <span>ISO 27001 Certificado</span>
+                    <span>•</span>
+                    <span>RGPD Compliant</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </footer>
       </div>
+
+      <style>{`
+        @keyframes blob {
+          0% {
+            transform: translate(0px, 0px) scale(1);
+          }
+          33% {
+            transform: translate(30px, -50px) scale(1.1);
+          }
+          66% {
+            transform: translate(-20px, 20px) scale(0.9);
+          }
+          100% {
+            transform: translate(0px, 0px) scale(1);
+          }
+        }
+        .animate-blob {
+          animation: blob 7s infinite;
+        }
+        .animation-delay-2000 {
+          animation-delay: 2s;
+        }
+        .animation-delay-4000 {
+          animation-delay: 4s;
+        }
+        .animation-delay-1000 {
+          animation-delay: 1s;
+        }
+      `}</style>
     </>
   );
 };

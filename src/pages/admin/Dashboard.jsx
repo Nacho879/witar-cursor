@@ -10,7 +10,8 @@ import {
   Plus,
   UserCheck,
   UserX,
-  Clock3
+  Clock3,
+  BarChart3
 } from 'lucide-react';
 
 export default function AdminDashboard() {
@@ -538,6 +539,44 @@ export default function AdminDashboard() {
               Operativa
             </span>
           </div>
+        </div>
+      </div>
+
+      {/* Acciones Administrativas */}
+      <div className="card p-4 lg:p-6">
+        <h2 className="text-lg lg:text-xl font-semibold text-foreground mb-4">Acciones Administrativas</h2>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <button
+            onClick={() => window.location.href = '/admin/employees'}
+            className="p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-900/30 transition-colors text-center"
+          >
+            <Users className="w-8 h-8 text-indigo-600 mx-auto mb-2" />
+            <span className="text-sm font-medium text-indigo-700 dark:text-indigo-300">Gestionar Empleados</span>
+          </button>
+          
+          <button
+            onClick={() => window.location.href = '/admin/invitations'}
+            className="p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg hover:bg-yellow-100 dark:hover:bg-yellow-900/30 transition-colors text-center"
+          >
+            <Mail className="w-8 h-8 text-yellow-600 mx-auto mb-2" />
+            <span className="text-sm font-medium text-yellow-700 dark:text-yellow-300">Invitaciones</span>
+          </button>
+          
+          <button
+            onClick={() => window.location.href = '/admin/departments'}
+            className="p-4 bg-teal-50 dark:bg-teal-900/20 rounded-lg hover:bg-teal-100 dark:hover:bg-teal-900/30 transition-colors text-center"
+          >
+            <Building className="w-8 h-8 text-teal-600 mx-auto mb-2" />
+            <span className="text-sm font-medium text-teal-700 dark:text-teal-300">Departamentos</span>
+          </button>
+          
+          <button
+            onClick={() => window.location.href = '/admin/reports'}
+            className="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors text-center"
+          >
+            <BarChart3 className="w-8 h-8 text-red-600 mx-auto mb-2" />
+            <span className="text-sm font-medium text-red-700 dark:text-red-300">Reportes</span>
+          </button>
         </div>
       </div>
 

@@ -1,7 +1,7 @@
 import { loadStripe } from '@stripe/stripe-js';
 
-// Cargar Stripe con la clave pública
-export const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
+// Cargar Stripe con la clave pública de producción
+export const stripePromise = loadStripe('pk_live_51RdYTBLF7mZnvxIRlS2yzeYnvI7JFoJaTpbx8bWSagkq0WjKWlnSJcp4UjVG0Pw7WbfvrgToccOPmJGTihYyYto200IbQQ7qZX');
 
 // Configuración de Stripe
 export const stripeConfig = {

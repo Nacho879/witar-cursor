@@ -111,7 +111,7 @@ export default function Profile() {
           if (!managerError && managerRole) {
             const { data: managerProfile, error: managerProfileError } = await supabase
               .from('user_profiles')
-              .select('full_name, email')
+              .select('full_name')
               .eq('user_id', managerRole.user_id)
               .single();
 
@@ -617,7 +617,7 @@ export default function Profile() {
                           {managerInfo.full_name}
                         </p>
                         <p className="text-sm text-gray-500 dark:text-gray-400">
-                          {managerInfo.email}
+                          {userProfile?.email || 'No especificado'}
                         </p>
                       </div>
                     </div>

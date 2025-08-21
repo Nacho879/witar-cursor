@@ -24,7 +24,7 @@ export default function TimeEntryEditRequestsTable({ userRole }) {
     try {
       setLoading(true);
       
-      const query = supabase
+      let query = supabase
         .from('time_entry_edit_requests')
         .select(`
           *,
