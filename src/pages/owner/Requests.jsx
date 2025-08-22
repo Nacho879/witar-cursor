@@ -133,14 +133,14 @@ export default function Requests() {
         // Obtener datos de la solicitud antes de actualizar
         const { data: request } = await supabase
           .from('requests')
-          .select('*, user_company_roles!requests_user_id_fkey(company_id)')
+          .select('*')
           .eq('id', requestId)
           .single();
 
         if (request) {
           requestData = request;
           employeeUserId = request.user_id;
-          companyId = request.user_company_roles?.company_id;
+          companyId = request.company_id;
         }
 
         const { error } = await supabase
@@ -185,7 +185,13 @@ export default function Requests() {
         await sendNotificationToEmployee(employeeUserId, companyId, newStatus, requestData, comments, requestType);
       }
 
-      await loadRequestsData(companyId);
+      // Solo recargar si tenemos un companyId válido
+      if (companyId) {
+        await loadRequestsData(companyId);
+      } else {
+        // Si no tenemos companyId, recargar usando el estado actual
+        await loadRequests();
+      }
     } catch (error) {
       console.error('Error updating request status:', error);
     }
