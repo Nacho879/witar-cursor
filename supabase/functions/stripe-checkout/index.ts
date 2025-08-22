@@ -6,14 +6,31 @@ const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') ?? '', {
   apiVersion: '2024-12-18.acacia',
 })
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+// Configuración de CORS más segura
+const allowedOrigins = [
+  'https://www.witar.es',
+  'https://witar.es',
+  'https://witar-cursor.vercel.app',
+  'http://localhost:5173', // Para desarrollo local
+  'http://localhost:3000'  // Para desarrollo local
+];
+
+function getCorsHeaders(origin: string | null) {
+  const isAllowedOrigin = origin && allowedOrigins.includes(origin);
+  
+  return {
+    'Access-Control-Allow-Origin': isAllowedOrigin ? origin : allowedOrigins[0],
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Max-Age': '86400',
+  };
 }
 
 serve(async (req) => {
+  const origin = req.headers.get('Origin');
+  
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return new Response('ok', { headers: getCorsHeaders(origin) })
   }
 
   try {
@@ -25,7 +42,7 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ error: 'No authorization header' }),
         {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          headers: { ...getCorsHeaders(origin), 'Content-Type': 'application/json' },
           status: 401,
         }
       )
@@ -49,7 +66,7 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ error: 'Unauthorized' }),
         {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          headers: { ...getCorsHeaders(origin), 'Content-Type': 'application/json' },
           status: 401,
         }
       )
@@ -67,137 +84,115 @@ serve(async (req) => {
       throw new Error('Missing required parameter: companyId')
     }
     
-    if (employeeCount === undefined || employeeCount === null || employeeCount < 0) {
-      throw new Error('Missing or invalid required parameter: employeeCount (must be >= 0)')
+    if (employeeCount === undefined || employeeCount === null ||
+        employeeCount < 0 || employeeCount > 1000) {
+      throw new Error('Invalid employeeCount parameter')
     }
 
-    // Verificar que la empresa existe
-    const { data: company, error: companyError } = await supabase
-      .from('companies')
-      .select('id, name')
-      .eq('id', companyId)
+    // Verificar que el usuario pertenece a la empresa
+    const { data: userRole, error: roleError } = await supabase
+      .from('user_company_roles')
+      .select('role')
+      .eq('user_id', user.id)
+      .eq('company_id', companyId)
+      .eq('is_active', true)
       .single()
 
-    if (companyError || !company) {
-      throw new Error('Company not found')
+    if (roleError || !userRole) {
+      throw new Error('User not authorized for this company')
     }
 
-    console.log('Company found:', company.name)
-
-    // Usar un billing employee count mínimo de 1
-    const billingEmployeeCount = Math.max(employeeCount, 1)
-    console.log('Billing employee count:', billingEmployeeCount)
-
-    // Buscar o crear el producto Witar
-    let product
-    try {
-      const products = await stripe.products.list({ limit: 100 })
-      product = products.data.find(p => p.name === 'Plan Witar')
-      
-      if (!product) {
-        console.log('Creating new Witar product')
-        product = await stripe.products.create({
-          name: 'Plan Witar',
-          description: 'Plan de gestión de recursos humanos',
-        })
-      } else {
-        console.log('Using existing Witar product:', product.id)
-      }
-    } catch (error) {
-      console.error('Error with product:', error)
-      throw new Error('Error creating/finding product')
+    // Solo owners y admins pueden crear suscripciones
+    if (!['owner', 'admin'].includes(userRole.role)) {
+      throw new Error('Only owners and admins can create subscriptions')
     }
 
-    // Buscar o crear el precio
-    let price
-    try {
-      const prices = await stripe.prices.list({ 
-        product: product.id,
-        limit: 100 
+    // Calcular precio basado en número de empleados
+    const pricePerEmployee = 1.50; // €1.50 por empleado
+    const totalPrice = employeeCount * pricePerEmployee * 100; // Convertir a centavos
+
+    // Buscar o crear producto en Stripe
+    let product;
+    const { data: products } = await stripe.products.list({ limit: 100 })
+    product = products.data.find(p => p.name === 'Witar Plan')
+
+    if (!product) {
+      product = await stripe.products.create({
+        name: 'Witar Plan',
+        description: 'Plan de gestión de recursos humanos por empleado',
       })
-      price = prices.data.find(p => 
-        p.unit_amount === 150 && 
-        p.currency === 'eur' && 
-        p.recurring?.interval === 'month'
-      )
-      
-      if (!price) {
-        console.log('Creating new price for Witar product')
-        price = await stripe.prices.create({
-          product: product.id,
-          unit_amount: 150, // 1.50€ en centavos
-          currency: 'eur',
-          recurring: {
-            interval: 'month',
-          },
-        })
-      } else {
-        console.log('Using existing price:', price.id)
-      }
-    } catch (error) {
-      console.error('Error with price:', error)
-      throw new Error('Error creating/finding price')
     }
 
-    console.log('Creating checkout session...')
-    
+    // Buscar o crear precio en Stripe
+    let price;
+    const { data: prices } = await stripe.prices.list({
+      product: product.id,
+      active: true,
+    })
+
+    price = prices.find(p => p.unit_amount === totalPrice && p.currency === 'eur')
+
+    if (!price) {
+      price = await stripe.prices.create({
+        product: product.id,
+        unit_amount: totalPrice,
+        currency: 'eur',
+        recurring: {
+          interval: 'month',
+        },
+      })
+    }
+
     // Crear sesión de checkout
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       line_items: [
         {
           price: price.id,
-          quantity: billingEmployeeCount,
+          quantity: 1,
         },
       ],
       mode: 'subscription',
-      success_url: `${req.headers.get('origin')}/owner/billing?success=true&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${req.headers.get('origin')}/owner/billing?canceled=true`,
+      success_url: `${Deno.env.get('FRONTEND_URL') || 'https://www.witar.es'}/owner/billing?success=true&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${Deno.env.get('FRONTEND_URL') || 'https://www.witar.es'}/owner/billing?canceled=true`,
       metadata: {
         companyId,
         employeeCount: employeeCount.toString(),
-        billingEmployeeCount: billingEmployeeCount.toString(),
-      },
-      subscription_data: {
-        metadata: {
-          companyId,
-          employeeCount: employeeCount.toString(),
-          billingEmployeeCount: billingEmployeeCount.toString(),
-        },
+        billingEmployeeCount: employeeCount.toString(),
       },
     })
 
-    console.log('Checkout session created:', session.id)
-
-    // Actualizar la empresa con el ID de la sesión
+    // Actualizar empresa con session ID
     const { error: updateError } = await supabase
       .from('companies')
-      .update({ 
+      .update({
         stripe_session_id: session.id,
-        subscription_status: 'pending'
+        employee_limit: Math.max(employeeCount, 25), // Mínimo 25 empleados
+        updated_at: new Date().toISOString()
       })
       .eq('id', companyId)
 
     if (updateError) {
       console.error('Error updating company:', updateError)
-      // No lanzamos error aquí porque la sesión ya se creó
     }
 
-    console.log('Company updated successfully')
-
     return new Response(
-      JSON.stringify({ sessionId: session.id, url: session.url }),
+      JSON.stringify({
+        url: session.url,
+        session_id: session.id,
+      }),
       {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        headers: { ...getCorsHeaders(origin), 'Content-Type': 'application/json' },
         status: 200,
       }
     )
+
   } catch (error) {
     console.error('Error in stripe-checkout:', error)
     return new Response(
       JSON.stringify({ error: error.message }),
       {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        headers: { ...getCorsHeaders(origin), 'Content-Type': 'application/json' },
         status: 400,
       }
     )
