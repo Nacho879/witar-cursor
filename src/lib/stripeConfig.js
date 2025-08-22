@@ -6,7 +6,12 @@ let stripePromise = null;
 // Función para cargar Stripe solo cuando sea necesario
 export function getStripe() {
   if (!stripePromise) {
-    stripePromise = loadStripe('pk_live_51RdYTBLF7mZnvxIRlS2yzeYnvI7JFoJaTpbx8bWSagkq0WjKWlnSJcp4UjVG0Pw7WbfvrgToccOPmJGTihYyYto200IbQQ7qZX');
+    const stripeKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
+    if (!stripeKey) {
+      console.error('VITE_STRIPE_PUBLISHABLE_KEY no está configurada');
+      return null;
+    }
+    stripePromise = loadStripe(stripeKey);
   }
   return stripePromise;
 }
