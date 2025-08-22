@@ -58,17 +58,40 @@
 :root { --radius: 12px; }
 html, body, #root { height: 100%; }
 
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: hsl(var(--muted));
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground));
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--foreground));
+}
+
 @layer components {
-  .card { @apply bg-card border border-border rounded-2xl shadow-soft; }
-  .btn { @apply inline-flex items-center justify-center rounded-xl font-semibold transition-shadow; }
-  .btn-primary { @apply bg-primary text-primary-foreground hover:shadow-soft px-4 py-2; }
-  .btn-secondary { @apply bg-secondary text-foreground px-4 py-2; }
-  .btn-ghost { @apply bg-transparent border border-border text-foreground px-4 py-2; }
-  .input { @apply w-full rounded-xl border border-input bg-background px-3 py-2 outline-none focus:ring-4 focus:ring-ring/20; }
-  .badge { @apply inline-flex items-center rounded-full px-2 py-1 text-xs bg-secondary text-foreground; }
+  .card { @apply bg-card border border-border rounded-2xl shadow-soft transition-all duration-300 hover:shadow-lg; }
+  .btn { @apply inline-flex items-center justify-center rounded-xl font-semibold transition-all duration-200 hover:scale-105 active:scale-95; }
+  .btn-primary { @apply bg-primary text-primary-foreground hover:shadow-soft hover:bg-primary/90 px-4 py-2; }
+  .btn-secondary { @apply bg-secondary text-foreground hover:bg-secondary/80 px-4 py-2; }
+  .btn-ghost { @apply bg-transparent border border-border text-foreground hover:bg-secondary px-4 py-2; }
+  .input { @apply w-full rounded-xl border border-input bg-background px-3 py-2 outline-none focus:ring-4 focus:ring-ring/20 transition-all duration-200; }
+  .badge { @apply inline-flex items-center rounded-full px-2 py-1 text-xs bg-secondary text-foreground transition-colors duration-200; }
   .table { @apply w-full border-separate border-spacing-0 text-sm; }
   .th { @apply text-left bg-muted text-foreground/80 px-4 py-3 border-b border-border; }
-  .td { @apply px-4 py-3 border-t border-border; }
+  .td { @apply px-4 py-3 border-t border-border transition-colors duration-200 hover:bg-muted/50; }
   
   /* Grid pattern for hero section */
   .bg-grid-slate-200 {
@@ -76,5 +99,42 @@ html, body, #root { height: 100%; }
       linear-gradient(to right, rgb(226 232 240) 1px, transparent 1px),
       linear-gradient(to bottom, rgb(226 232 240) 1px, transparent 1px);
     background-size: 24px 24px;
+  }
+
+  /* Loading animations */
+  .animate-pulse-slow {
+    animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  .animate-bounce-slow {
+    animation: bounce 2s infinite;
+  }
+
+  /* Hover effects */
+  .hover-lift {
+    transition: transform 0.2s ease-in-out;
+  }
+  
+  .hover-lift:hover {
+    transform: translateY(-2px);
+  }
+
+  /* Focus styles */
+  .focus-ring {
+    @apply focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background;
+  }
+
+  /* Glass effect */
+  .glass {
+    @apply bg-card/80 backdrop-blur-md border border-border/50;
+  }
+
+  /* Gradient backgrounds */
+  .gradient-primary {
+    background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--primary-dark)) 100%);
+  }
+
+  .gradient-cta {
+    background: linear-gradient(135deg, hsl(var(--cta)) 0%, hsl(var(--destructive)) 100%);
   }
 }
