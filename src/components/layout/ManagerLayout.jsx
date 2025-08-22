@@ -87,7 +87,7 @@ export default function ManagerLayout({ children }) {
           </a>
           <a 
             className='px-3 py-2 rounded hover:bg-secondary flex items-center gap-2 transition-colors' 
-            href='/manager/documents-management'
+                            href='/manager/documents'
             onClick={() => setSidebarOpen(false)}
           >
             <Download className='w-4 h-4' />

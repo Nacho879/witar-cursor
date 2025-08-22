@@ -24,11 +24,8 @@ import {
   X,
   AlertCircle,
   Settings,
-  BarChart3,
-  Shield,
-  Key
+  Shield
 } from 'lucide-react';
-import TimeEntryEditRequestModal from '@/components/TimeEntryEditRequestModal';
 
 export default function AdminProfile() {
   const [profile, setProfile] = React.useState(null);
@@ -39,26 +36,16 @@ export default function AdminProfile() {
   const [message, setMessage] = React.useState('');
   const [uploadingAvatar, setUploadingAvatar] = React.useState(false);
   const [stats, setStats] = React.useState({
-    // Estadísticas personales
-    daysWorked: 0,
-    totalHours: 0,
-    personalRequestsCount: 0,
-    personalDocumentsCount: 0,
-    // Estadísticas empresariales
     totalEmployees: 0,
-    totalManagers: 0,
     totalDepartments: 0,
-    pendingInvitations: 0,
-    pendingRequests: 0,
-    totalTimeEntries: 0
+    totalRequests: 0,
+    totalDocuments: 0
   });
   const [editForm, setEditForm] = React.useState({
     full_name: '',
     phone: '',
     position: ''
   });
-  const [showTimeEditModal, setShowTimeEditModal] = React.useState(false);
-  const [selectedTimeEntry, setSelectedTimeEntry] = React.useState(null);
 
   React.useEffect(() => {
     loadProfileData();
@@ -80,100 +67,32 @@ export default function AdminProfile() {
 
       if (!userRole) return;
 
-      // Cargar estadísticas personales y empresariales
-      const [
-        // Estadísticas personales
-        personalTimeResult,
-        personalRequestsResult,
-        personalDocumentsResult,
-        // Estadísticas empresariales
-        employeesResult,
-        managersResult,
-        departmentsResult,
-        invitationsResult,
-        requestsResult,
-        timeEntriesResult
-      ] = await Promise.all([
-        // Estadísticas personales
-        supabase
-          .from('time_entries')
-          .select('*')
-          .eq('user_id', user.id)
-          .eq('company_id', userRole.company_id),
-        supabase
-          .from('requests')
-          .select('*')
-          .eq('user_id', user.id)
-          .eq('company_id', userRole.company_id),
-        supabase
-          .from('documents')
-          .select('*')
-          .eq('user_id', user.id)
-          .eq('company_id', userRole.company_id),
-        // Estadísticas empresariales
+      // Cargar estadísticas de la empresa
+      const [employeesResult, departmentsResult, requestsResult, documentsResult] = await Promise.all([
         supabase
           .from('user_company_roles')
-          .select('*', { count: 'exact', head: true })
+          .select('*', { count: 'exact' })
           .eq('company_id', userRole.company_id)
-          .eq('role', 'employee')
-          .eq('is_active', true),
-        supabase
-          .from('user_company_roles')
-          .select('*', { count: 'exact', head: true })
-          .eq('company_id', userRole.company_id)
-          .eq('role', 'manager')
           .eq('is_active', true),
         supabase
           .from('departments')
-          .select('*', { count: 'exact', head: true })
+          .select('*', { count: 'exact' })
           .eq('company_id', userRole.company_id),
         supabase
-          .from('invitations')
-          .select('*', { count: 'exact', head: true })
-          .eq('company_id', userRole.company_id)
-          .eq('status', 'pending'),
-        supabase
           .from('requests')
-          .select('*', { count: 'exact', head: true })
-          .eq('company_id', userRole.company_id)
-          .eq('status', 'pending'),
+          .select('*', { count: 'exact' })
+          .eq('company_id', userRole.company_id),
         supabase
-          .from('time_entries')
-          .select('*', { count: 'exact', head: true })
+          .from('documents')
+          .select('*', { count: 'exact' })
           .eq('company_id', userRole.company_id)
       ]);
 
-      // Calcular estadísticas personales
-      const personalTimeEntries = personalTimeResult.data || [];
-      const personalRequests = personalRequestsResult.data || [];
-      const personalDocuments = personalDocumentsResult.data || [];
-
-      const uniqueDays = new Set(personalTimeEntries.map(entry => 
-        new Date(entry.entry_time).toDateString()
-      )).size;
-
-      const totalHours = personalTimeEntries.reduce((total, entry) => {
-        if (entry.entry_type === 'clock_out' && entry.clock_in_time) {
-          const clockIn = new Date(entry.clock_in_time);
-          const clockOut = new Date(entry.entry_time);
-          return total + (clockOut - clockIn) / (1000 * 60 * 60);
-        }
-        return total;
-      }, 0);
-
       setStats({
-        // Estadísticas personales
-        daysWorked: uniqueDays,
-        totalHours: Math.round(totalHours * 100) / 100,
-        personalRequestsCount: personalRequests.length,
-        personalDocumentsCount: personalDocuments.length,
-        // Estadísticas empresariales
         totalEmployees: employeesResult.count || 0,
-        totalManagers: managersResult.count || 0,
         totalDepartments: departmentsResult.count || 0,
-        pendingInvitations: invitationsResult.count || 0,
-        pendingRequests: requestsResult.count || 0,
-        totalTimeEntries: timeEntriesResult.count || 0
+        totalRequests: requestsResult.count || 0,
+        totalDocuments: documentsResult.count || 0
       });
     } catch (error) {
       console.error('Error loading stats:', error);
@@ -219,12 +138,37 @@ export default function AdminProfile() {
     }
   }
 
-
+  function handleQuickAction(action) {
+    switch (action) {
+      case 'employees':
+        window.location.href = '/admin/employees';
+        break;
+      case 'departments':
+        window.location.href = '/admin/departments';
+        break;
+      case 'requests':
+        window.location.href = '/admin/requests';
+        break;
+      case 'documents':
+        window.location.href = '/admin/documents';
+        break;
+      case 'time_entries':
+        window.location.href = '/admin/time-entries';
+        break;
+      case 'settings':
+        window.location.href = '/admin/settings';
+        break;
+      default:
+        break;
+    }
+  }
 
   async function loadProfileData() {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
+
+      console.log('🔄 Iniciando carga de datos del usuario...');
 
       // Cargar perfil del usuario
       const { data: profileData, error: profileError } = await supabase
@@ -233,6 +177,8 @@ export default function AdminProfile() {
         .eq('user_id', user.id)
         .single();
 
+      console.log('📋 Resultado perfil:', { profileData, error: profileError });
+
       if (!profileError && profileData) {
         setProfile(profileData);
         setEditForm({
@@ -240,10 +186,33 @@ export default function AdminProfile() {
           phone: profileData.phone || '',
           position: profileData.position || ''
         });
+      } else if (!profileData) {
+        // Crear perfil si no existe
+        console.log('🔄 Creando perfil automáticamente...');
+        const { data: newProfile, error: createError } = await supabase
+          .from('user_profiles')
+          .insert({
+            user_id: user.id,
+            full_name: user.email?.split('@')[0] || 'Administrador',
+            phone: '',
+            position: 'Administrador'
+          })
+          .select()
+          .single();
+
+        if (!createError && newProfile) {
+          console.log('✅ Perfil creado:', newProfile);
+          setProfile(newProfile);
+          setEditForm({
+            full_name: newProfile.full_name || '',
+            phone: newProfile.phone || '',
+            position: newProfile.position || ''
+          });
+        }
       }
 
       // Obtener información laboral completa del admin
-      const { data: adminRole } = await supabase
+      const { data: adminRole, error: roleError } = await supabase
         .from('user_company_roles')
         .select(`
           id, 
@@ -272,6 +241,8 @@ export default function AdminProfile() {
         .eq('is_active', true)
         .single();
 
+      console.log('👤 Resultado rol:', { adminRole, error: roleError });
+
       if (adminRole) {
         // Obtener el email del admin usando la Edge Function
         const { data: emailData, error: emailError } = await supabase.functions.invoke('get-user-emails', {
@@ -286,6 +257,43 @@ export default function AdminProfile() {
           joined_at: adminRole.joined_at,
           email: emailData?.emails?.[0]?.email || 'No disponible'
         });
+
+        console.log('🏢 Información de empresa establecida:', {
+          company: adminRole.companies,
+          department: adminRole.departments,
+          role: adminRole.role,
+          joined_at: adminRole.joined_at,
+          email: emailData?.emails?.[0]?.email
+        });
+      } else if (!adminRole) {
+        // Crear rol si no existe
+        console.log('🔄 Creando rol automáticamente...');
+        // Buscar primera empresa disponible
+        const { data: companies } = await supabase
+          .from('companies')
+          .select('id')
+          .limit(1);
+
+        if (companies && companies.length > 0) {
+          const { data: newRole, error: createRoleError } = await supabase
+            .from('user_company_roles')
+            .insert({
+              user_id: user.id,
+              company_id: companies[0].id,
+              role: 'admin',
+              is_active: true,
+              joined_at: new Date().toISOString()
+            })
+            .select()
+            .single();
+
+          if (!createRoleError && newRole) {
+            console.log('✅ Rol creado:', newRole);
+            // Recargar datos después de crear el rol
+            await loadProfileData();
+            return;
+          }
+        }
       }
     } catch (error) {
       console.error('Error loading profile data:', error);
@@ -347,36 +355,20 @@ export default function AdminProfile() {
               <div className="h-4 bg-gray-200 rounded w-1/2 mb-4"></div>
               <div className="h-8 bg-gray-200 rounded w-1/3"></div>
             </div>
-                  </div>
+          </div>
+        </div>
       </div>
-
-      {/* Time Entry Edit Request Modal */}
-      <TimeEntryEditRequestModal
-        isOpen={showTimeEditModal}
-        onClose={() => {
-          setShowTimeEditModal(false);
-          setSelectedTimeEntry(null);
-        }}
-        timeEntry={selectedTimeEntry}
-        onRequestSubmitted={() => {
-          setShowTimeEditModal(false);
-          setSelectedTimeEntry(null);
-          // Recargar estadísticas
-          loadStats();
-        }}
-      />
-    </div>
-  );
-}
+    );
+  }
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Mi Perfil</h1>
-          <p className="text-muted-foreground mt-1">
-            Gestiona tu información personal y administrativa
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Mi Perfil</h1>
+          <p className="text-gray-600 dark:text-gray-400 mt-1">
+            Gestiona tu información personal y profesional como Administrador
           </p>
         </div>
       </div>
@@ -405,118 +397,106 @@ export default function AdminProfile() {
         </div>
       )}
 
-      {/* Quick Actions - Personal */}
-      <div className="card p-6">
-        <h2 className="text-xl font-semibold text-foreground mb-4">Acciones Personales</h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      {/* Quick Actions */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">Acciones Rápidas</h2>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
           <button
-            onClick={() => handleQuickAction('my_time_entries')}
+            onClick={() => handleQuickAction('employees')}
             className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors text-center"
           >
-            <Clock className="w-8 h-8 text-blue-600 mx-auto mb-2" />
-            <span className="text-sm font-medium text-blue-700 dark:text-blue-300">Mis Fichajes</span>
+            <Users className="w-8 h-8 text-blue-600 mx-auto mb-2" />
+            <span className="text-sm font-medium text-blue-700 dark:text-blue-300">Empleados</span>
           </button>
           
           <button
-            onClick={() => handleQuickAction('my_requests')}
+            onClick={() => handleQuickAction('departments')}
             className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/30 transition-colors text-center"
           >
-            <FileText className="w-8 h-8 text-green-600 mx-auto mb-2" />
-            <span className="text-sm font-medium text-green-700 dark:text-green-300">Mis Solicitudes</span>
+            <Building className="w-8 h-8 text-green-600 mx-auto mb-2" />
+            <span className="text-sm font-medium text-green-700 dark:text-green-300">Departamentos</span>
           </button>
           
           <button
-            onClick={() => handleQuickAction('my_documents')}
+            onClick={() => handleQuickAction('requests')}
             className="p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-colors text-center"
           >
-            <Download className="w-8 h-8 text-purple-600 mx-auto mb-2" />
-            <span className="text-sm font-medium text-purple-700 dark:text-purple-300">Mis Documentos</span>
+            <FileText className="w-8 h-8 text-purple-600 mx-auto mb-2" />
+            <span className="text-sm font-medium text-purple-700 dark:text-purple-300">Solicitudes</span>
           </button>
           
           <button
-            onClick={() => handleQuickAction('upload_documents')}
+            onClick={() => handleQuickAction('time_entries')}
             className="p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg hover:bg-orange-100 dark:hover:bg-orange-900/30 transition-colors text-center"
           >
-            <Upload className="w-8 h-8 text-orange-600 mx-auto mb-2" />
-            <span className="text-sm font-medium text-orange-700 dark:text-orange-300">Subir Documentos</span>
+            <Clock className="w-8 h-8 text-orange-600 mx-auto mb-2" />
+            <span className="text-sm font-medium text-orange-700 dark:text-orange-300">Fichajes</span>
+          </button>
+          
+          <button
+            onClick={() => handleQuickAction('documents')}
+            className="p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg hover:bg-yellow-100 dark:hover:bg-yellow-900/30 transition-colors text-center"
+          >
+            <Download className="w-8 h-8 text-yellow-600 mx-auto mb-2" />
+            <span className="text-sm font-medium text-yellow-700 dark:text-yellow-300">Documentos</span>
+          </button>
+          
+          <button
+            onClick={() => handleQuickAction('settings')}
+            className="p-4 bg-gray-50 dark:bg-gray-900/20 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900/30 transition-colors text-center"
+          >
+            <Settings className="w-8 h-8 text-gray-600 mx-auto mb-2" />
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Configuración</span>
           </button>
         </div>
       </div>
 
-
-
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-        {/* Estadísticas Personales */}
-        <div className="card p-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Mis Días Trabajados</p>
-              <p className="text-3xl font-bold text-foreground">{stats.daysWorked}</p>
+              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Empleados</p>
+              <p className="text-3xl font-bold text-gray-900 dark:text-white">{stats.totalEmployees}</p>
             </div>
-            <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-              <Calendar className="w-6 h-6 text-blue-600" />
+            <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center">
+              <Users className="w-6 h-6 text-blue-600 dark:text-blue-400" />
             </div>
           </div>
         </div>
 
-        <div className="card p-6">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Mis Horas Totales</p>
-              <p className="text-3xl font-bold text-foreground">{stats.totalHours}h</p>
+              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Departamentos</p>
+              <p className="text-3xl font-bold text-gray-900 dark:text-white">{stats.totalDepartments}</p>
             </div>
-            <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
-              <Clock className="w-6 h-6 text-green-600" />
+            <div className="w-12 h-12 bg-green-100 dark:bg-green-900/30 rounded-lg flex items-center justify-center">
+              <Building className="w-6 h-6 text-green-600 dark:text-green-400" />
             </div>
           </div>
         </div>
 
-        <div className="card p-6">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Mis Solicitudes</p>
-              <p className="text-3xl font-bold text-foreground">{stats.personalRequestsCount}</p>
+              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Solicitudes</p>
+              <p className="text-3xl font-bold text-gray-900 dark:text-white">{stats.totalRequests}</p>
             </div>
-            <div className="w-12 h-12 bg-yellow-100 rounded-lg flex items-center justify-center">
-              <FileText className="w-6 h-6 text-yellow-600" />
+            <div className="w-12 h-12 bg-yellow-100 dark:bg-yellow-900/30 rounded-lg flex items-center justify-center">
+              <FileText className="w-6 h-6 text-yellow-600 dark:text-yellow-400" />
             </div>
           </div>
         </div>
 
-        <div className="card p-6">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Mis Documentos</p>
-              <p className="text-3xl font-bold text-foreground">{stats.personalDocumentsCount}</p>
+              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Documentos</p>
+              <p className="text-3xl font-bold text-gray-900 dark:text-white">{stats.totalDocuments}</p>
             </div>
-            <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
-              <Download className="w-6 h-6 text-purple-600" />
-            </div>
-          </div>
-        </div>
-
-        {/* Estadísticas Empresariales */}
-        <div className="card p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Total Empleados</p>
-              <p className="text-3xl font-bold text-foreground">{stats.totalEmployees}</p>
-            </div>
-            <div className="w-12 h-12 bg-indigo-100 rounded-lg flex items-center justify-center">
-              <Users className="w-6 h-6 text-indigo-600" />
-            </div>
-          </div>
-        </div>
-
-        <div className="card p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Invitaciones Pendientes</p>
-              <p className="text-3xl font-bold text-foreground">{stats.pendingInvitations}</p>
-            </div>
-            <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
-              <Mail className="w-6 h-6 text-orange-600" />
+            <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900/30 rounded-lg flex items-center justify-center">
+              <Download className="w-6 h-6 text-purple-600 dark:text-purple-400" />
             </div>
           </div>
         </div>
@@ -688,7 +668,7 @@ export default function AdminProfile() {
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
             <div className="p-6 border-b border-gray-200 dark:border-gray-700">
               <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-                Información Administrativa
+                Información Laboral
               </h2>
             </div>
             
@@ -709,24 +689,24 @@ export default function AdminProfile() {
 
                   <div className="flex items-center gap-3">
                     <div className="p-2 bg-green-100 dark:bg-green-900/30 rounded-lg">
-                      <Shield className="w-5 h-5 text-green-600 dark:text-green-400" />
+                      <Users className="w-5 h-5 text-green-600 dark:text-green-400" />
                     </div>
                     <div>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">Rol</p>
-                      <p className="font-medium text-gray-900 dark:text-white capitalize">
-                        {companyInfo?.role || 'No especificado'}
+                      <p className="text-sm text-gray-600 dark:text-gray-400">Departamento</p>
+                      <p className="font-medium text-gray-900 dark:text-white">
+                        {companyInfo?.department?.name || 'Sin departamento'}
                       </p>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-3">
                     <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
-                      <Users className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                      <Shield className="w-5 h-5 text-purple-600 dark:text-purple-400" />
                     </div>
                     <div>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">Departamento</p>
-                      <p className="font-medium text-gray-900 dark:text-white">
-                        {companyInfo?.department?.name || 'Sin departamento'}
+                      <p className="text-sm text-gray-600 dark:text-gray-400">Cargo</p>
+                      <p className="font-medium text-gray-900 dark:text-white capitalize">
+                        {companyInfo?.role || 'No especificado'}
                       </p>
                     </div>
                   </div>
@@ -747,24 +727,24 @@ export default function AdminProfile() {
 
                   <div className="flex items-center gap-3">
                     <div className="p-2 bg-red-100 dark:bg-red-900/30 rounded-lg">
-                      <Key className="w-5 h-5 text-red-600 dark:text-red-400" />
+                      <Users className="w-5 h-5 text-red-600 dark:text-red-400" />
                     </div>
                     <div>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">Permisos</p>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">Empleados a Cargo</p>
                       <p className="font-medium text-gray-900 dark:text-white">
-                        Acceso completo administrativo
+                        {stats.totalEmployees} empleados
                       </p>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-3">
                     <div className="p-2 bg-indigo-100 dark:bg-indigo-900/30 rounded-lg">
-                      <Settings className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                      <Building className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
                     </div>
                     <div>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">Responsabilidades</p>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">Departamentos</p>
                       <p className="font-medium text-gray-900 dark:text-white">
-                        Gestión de empleados, invitaciones y reportes
+                        {stats.totalDepartments} departamentos
                       </p>
                     </div>
                   </div>
