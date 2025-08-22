@@ -14,8 +14,7 @@ export default function AcceptInvitation() {
 
   const token = searchParams.get('token');
   
-  console.log('URL search params:', Object.fromEntries(searchParams.entries()));
-  console.log('Extracted token:', token);
+  // Token extraído de URL params
 
   React.useEffect(() => {
     if (token) {
@@ -28,7 +27,6 @@ export default function AcceptInvitation() {
 
   async function verifyInvitation() {
     try {
-      console.log('Verifying invitation with token:', token);
       
       // Primero obtener la invitación sin join
       const { data: invitation, error: invitationError } = await supabase
@@ -38,7 +36,7 @@ export default function AcceptInvitation() {
         .eq('status', 'pending')
         .single();
 
-      console.log('Invitation query result:', { invitation, error: invitationError });
+
 
       if (invitationError || !invitation) {
         console.error('Invitation not found:', invitationError);
@@ -71,7 +69,7 @@ export default function AcceptInvitation() {
         companies: company || { name: 'Empresa no encontrada' }
       };
 
-      console.log('Full invitation data:', fullInvitation);
+
       setInvitation(fullInvitation);
       setLoading(false);
     } catch (error) {

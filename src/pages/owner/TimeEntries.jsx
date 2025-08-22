@@ -204,7 +204,7 @@ export default function TimeEntries() {
           };
         });
 
-        console.log('Time entries loaded:', enrichedTimeEntries.length, 'of', count, 'total');
+    
         setTimeEntries(enrichedTimeEntries);
         calculateStats(enrichedTimeEntries);
       } else {
@@ -339,7 +339,7 @@ export default function TimeEntries() {
     // Por ahora, solo contamos el número de eventos
     let totalHours = 0; // TODO: Implementar cálculo de horas agrupando por sesiones
 
-    console.log('Stats calculated:', { total, active, completed, totalHours });
+
     setStats({ total, active, completed, totalHours });
   }
 

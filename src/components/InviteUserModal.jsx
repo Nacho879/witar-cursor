@@ -61,9 +61,7 @@ export default function InviteUserModal({ isOpen, onClose, companyId, department
     setMessage('');
 
     try {
-      console.log('Starting invitation process...');
-      console.log('Company ID:', companyId);
-      console.log('Form data:', { firstName, lastName, email, role, departmentId, supervisorId });
+          // Iniciando proceso de invitación
 
       // Verificar que tenemos companyId
       if (!companyId) {
@@ -83,16 +81,12 @@ export default function InviteUserModal({ isOpen, onClose, companyId, department
         throw new Error('Usuario no autenticado');
       }
 
-      console.log('Current user:', user.id);
-
       // Generar token único
       const token = crypto.randomUUID();
-      console.log('Generated token:', token);
 
       // Calcular fecha de expiración (7 días)
       const expiresAt = new Date();
       expiresAt.setDate(expiresAt.getDate() + 7);
-      console.log('Expires at:', expiresAt.toISOString());
 
       // Datos de la invitación
       const invitationData = {
@@ -109,7 +103,7 @@ export default function InviteUserModal({ isOpen, onClose, companyId, department
         status: 'pending'
       };
 
-      console.log('Invitation data to insert:', invitationData);
+
 
       // Crear la invitación
       const { data, error } = await supabase
@@ -123,7 +117,7 @@ export default function InviteUserModal({ isOpen, onClose, companyId, department
         throw error;
       }
 
-      console.log('Invitation created successfully:', data);
+
 
       // Enviar email con credenciales temporales
       const { data: emailData, error: emailError } = await supabase.functions.invoke('send-invitation-email', {

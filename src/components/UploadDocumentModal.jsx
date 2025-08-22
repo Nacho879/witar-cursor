@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { X, Upload, FileText, Folder, Users, AlertCircle, CheckCircle } from 'lucide-react';
+import { validateDocumentTitle, validateUploadedFile, generateSafeFileName } from '@/lib/securityUtils';
 
 export default function UploadDocumentModal({ isOpen, onClose, onDocumentUploaded }) {
   const [loading, setLoading] = React.useState(false);
@@ -73,28 +74,10 @@ export default function UploadDocumentModal({ isOpen, onClose, onDocumentUploade
   function handleFileChange(e) {
     const selectedFile = e.target.files[0];
     if (selectedFile) {
-      // Validar tamaño (máximo 10MB)
-      if (selectedFile.size > 10 * 1024 * 1024) {
-        setMessage('Error: El archivo no puede exceder 10MB');
-        setFile(null);
-        return;
-      }
-
-      // Validar tipos de archivo permitidos
-      const allowedTypes = [
-        'application/pdf',
-        'application/msword',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'application/vnd.ms-excel',
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'text/plain',
-        'image/jpeg',
-        'image/png',
-        'image/gif'
-      ];
-
-      if (!allowedTypes.includes(selectedFile.type)) {
-        setMessage('Error: Tipo de archivo no permitido. Solo se permiten PDF, Word, Excel, texto e imágenes');
+      // Validar archivo usando utilidades de seguridad
+      const fileValidation = validateUploadedFile(selectedFile);
+      if (!fileValidation.isValid) {
+        setMessage(`Error: ${fileValidation.errors.join(', ')}`);
         setFile(null);
         return;
       }
@@ -105,18 +88,10 @@ export default function UploadDocumentModal({ isOpen, onClose, onDocumentUploade
   }
 
   function validateForm() {
-    if (!title.trim()) {
-      setMessage('Error: El título es obligatorio');
-      return false;
-    }
-
-    if (title.trim().length < 3) {
-      setMessage('Error: El título debe tener al menos 3 caracteres');
-      return false;
-    }
-
-    if (title.trim().length > 100) {
-      setMessage('Error: El título no puede exceder 100 caracteres');
+    // Validar título usando utilidades de seguridad
+    const titleValidation = validateDocumentTitle(title);
+    if (!titleValidation.isValid) {
+      setMessage(`Error: ${titleValidation.errors.join(', ')}`);
       return false;
     }
 
@@ -151,9 +126,8 @@ export default function UploadDocumentModal({ isOpen, onClose, onDocumentUploade
         return;
       }
 
-      // Generar nombre único para el archivo
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
+      // Generar nombre seguro para el archivo
+      const fileName = generateSafeFileName(file.name);
       const filePath = `documents/${companyId}/${fileName}`;
 
       // Subir archivo a Supabase Storage

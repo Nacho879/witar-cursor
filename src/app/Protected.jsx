@@ -63,10 +63,10 @@ export default function Protected({ roles, children }) {
         setOk(true);
         setUserRole(userRoles.role);
         setUserCompany(userRoles.companies);
-        // Guardar información en localStorage para uso posterior
-        localStorage.setItem('userRole', userRoles.role);
-        localStorage.setItem('userCompany', JSON.stringify(userRoles.companies));
-        localStorage.setItem('sb-access-token', session.access_token);
+        // Guardar información en sessionStorage para uso posterior (más seguro)
+        sessionStorage.setItem('userRole', userRoles.role);
+        sessionStorage.setItem('userCompany', JSON.stringify(userRoles.companies));
+        // NO guardar access_token - Supabase maneja la sesión automáticamente
       } else {
         setOk(false);
         setLoading(false);

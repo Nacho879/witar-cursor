@@ -51,9 +51,9 @@ export default function Login() {
           return;
         }
 
-        // Guardar información en localStorage
-        localStorage.setItem('sb-access-token', data.session.access_token);
-        localStorage.setItem('userRole', userRole.role);
+        // Guardar información en sessionStorage (más seguro que localStorage)
+        sessionStorage.setItem('userRole', userRole.role);
+        // NO guardar access_token - Supabase maneja la sesión automáticamente
 
         // Redirigir según el rol
         switch (userRole.role) {

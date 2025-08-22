@@ -536,6 +536,10 @@ export default function FloatingTimeClock() {
   async function handleSignOut() {
     try {
       setLoading(true);
+      
+      // Limpiar sessionStorage antes de cerrar sesión
+      sessionStorage.clear();
+      
       await supabase.auth.signOut();
       window.location.href = '/login';
     } catch (error) {

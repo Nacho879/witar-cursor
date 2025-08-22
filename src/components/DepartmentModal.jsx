@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { X, Building, Users, AlertCircle, CheckCircle } from 'lucide-react';
+import { validateDepartmentName } from '@/lib/securityUtils';
 
 export default function DepartmentModal({ isOpen, onClose, department = null, onDepartmentSaved }) {
   const [loading, setLoading] = React.useState(false);
@@ -96,18 +97,10 @@ export default function DepartmentModal({ isOpen, onClose, department = null, on
   }
 
   function validateForm() {
-    if (!name.trim()) {
-      setMessage('Error: El nombre del departamento es obligatorio');
-      return false;
-    }
-
-    if (name.trim().length < 2) {
-      setMessage('Error: El nombre debe tener al menos 2 caracteres');
-      return false;
-    }
-
-    if (name.trim().length > 50) {
-      setMessage('Error: El nombre no puede exceder 50 caracteres');
+    // Validar nombre usando utilidades de seguridad
+    const nameValidation = validateDepartmentName(name);
+    if (!nameValidation.isValid) {
+      setMessage(`Error: ${nameValidation.errors.join(', ')}`);
       return false;
     }
 
@@ -131,6 +124,14 @@ export default function DepartmentModal({ isOpen, onClose, department = null, on
         return;
       }
 
+      // Obtener validación del nombre
+      const nameValidation = validateDepartmentName(name);
+      if (!nameValidation.isValid) {
+        setMessage(`Error: ${nameValidation.errors.join(', ')}`);
+        setLoading(false);
+        return;
+      }
+
       let result;
       let oldManagerId = null;
 
@@ -142,7 +143,7 @@ export default function DepartmentModal({ isOpen, onClose, department = null, on
         const { data, error } = await supabase
           .from('departments')
           .update({
-            name: name.trim(),
+            name: nameValidation.sanitized,
             description: description.trim() || null,
             manager_id: managerId || null,
             updated_at: new Date().toISOString()
@@ -159,7 +160,7 @@ export default function DepartmentModal({ isOpen, onClose, department = null, on
           .from('departments')
           .insert({
             company_id: companyId,
-            name: name.trim(),
+            name: nameValidation.sanitized,
             description: description.trim() || null,
             manager_id: managerId || null,
             status: 'active'

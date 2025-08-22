@@ -26,6 +26,9 @@ export default function OwnerLayout({ children }){
 
   const handleLogout = async () => {
     try {
+      // Limpiar sessionStorage antes de cerrar sesión
+      sessionStorage.clear();
+      
       const { error } = await supabase.auth.signOut();
       if (error) {
         console.error('Error signing out:', error);
