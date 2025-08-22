@@ -53,7 +53,7 @@ export default function CreateRequestModal({ isOpen, onClose, onRequestCreated }
           icon: Calendar,
           color: 'text-blue-600 bg-blue-100'
         };
-      case 'permission':
+      case 'personal_leave':
         return {
           title: 'Solicitud de Permiso',
           description: 'Solicita un permiso por horas',
@@ -90,7 +90,7 @@ export default function CreateRequestModal({ isOpen, onClose, onRequestCreated }
       return false;
     }
 
-    if (requestType === 'permission') {
+    if (requestType === 'personal_leave') {
       if (!startTime || !endTime) {
         setMessage('Error: Para permisos, las horas son obligatorias');
         return false;
@@ -132,7 +132,7 @@ export default function CreateRequestModal({ isOpen, onClose, onRequestCreated }
       let duration_hours = 0;
       let duration_days = 0;
 
-      if (requestType === 'permission') {
+      if (requestType === 'personal_leave') {
         // Para permisos, calcular horas
         const start = new Date(`${startDate}T${startTime}`);
         const end = new Date(`${startDate}T${endTime}`);
@@ -152,7 +152,7 @@ export default function CreateRequestModal({ isOpen, onClose, onRequestCreated }
           company_id: companyId,
           request_type: requestType,
           start_date: startDate,
-          end_date: requestType === 'permission' ? startDate : endDate,
+          end_date: requestType === 'personal_leave' ? startDate : endDate,
           reason: reason.trim(),
           notes: description.trim() || null, // Usar notes en lugar de description
           status: 'pending'
@@ -224,7 +224,7 @@ export default function CreateRequestModal({ isOpen, onClose, onRequestCreated }
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {[
                 { value: 'vacation', label: 'Vacaciones', icon: Calendar, color: 'text-blue-600 bg-blue-100' },
-                { value: 'permission', label: 'Permiso', icon: Clock, color: 'text-green-600 bg-green-100' },
+                { value: 'personal_leave', label: 'Permiso', icon: Clock, color: 'text-green-600 bg-green-100' },
                 { value: 'sick_leave', label: 'Baja Médica', icon: AlertCircle, color: 'text-red-600 bg-red-100' },
                 { value: 'other', label: 'Otro', icon: FileText, color: 'text-purple-600 bg-purple-100' }
               ].map((type) => {
@@ -262,7 +262,7 @@ export default function CreateRequestModal({ isOpen, onClose, onRequestCreated }
               />
             </div>
 
-            {requestType === 'permission' ? (
+            {requestType === 'personal_leave' ? (
               <div>
                 <label className="block text-sm font-medium mb-2">Fecha de Fin</label>
                 <input
@@ -288,7 +288,7 @@ export default function CreateRequestModal({ isOpen, onClose, onRequestCreated }
           </div>
 
           {/* Time Selection (only for permissions) */}
-          {requestType === 'permission' && (
+          {requestType === 'personal_leave' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium mb-2">Hora de Inicio</label>
