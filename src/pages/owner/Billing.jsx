@@ -1,7 +1,6 @@
 import * as React from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { BillingService } from '@/lib/billingService';
-import { loadStripe } from '@stripe/stripe-js';
 import { 
   CreditCard, 
   Users, 

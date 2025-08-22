@@ -1,7 +1,15 @@
 import { loadStripe } from '@stripe/stripe-js';
 
-// Cargar Stripe con la clave pública de producción
-export const stripePromise = loadStripe('pk_live_51RdYTBLF7mZnvxIRlS2yzeYnvI7JFoJaTpbx8bWSagkq0WjKWlnSJcp4UjVG0Pw7WbfvrgToccOPmJGTihYyYto200IbQQ7qZX');
+// Variable para almacenar la instancia de Stripe (lazy loading)
+let stripePromise = null;
+
+// Función para cargar Stripe solo cuando sea necesario
+export function getStripe() {
+  if (!stripePromise) {
+    stripePromise = loadStripe('pk_live_51RdYTBLF7mZnvxIRlS2yzeYnvI7JFoJaTpbx8bWSagkq0WjKWlnSJcp4UjVG0Pw7WbfvrgToccOPmJGTihYyYto200IbQQ7qZX');
+  }
+  return stripePromise;
+}
 
 // Configuración de Stripe
 export const stripeConfig = {

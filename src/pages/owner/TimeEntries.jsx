@@ -24,7 +24,8 @@ import {
   BarChart3,
   Users,
   TrendingUp,
-  Activity
+  Activity,
+  X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -40,10 +41,15 @@ export default function TimeEntries() {
     search: '',
     selectedEmployees: [],
     selectedDepartments: [],
-    dateFrom: '',
-    dateTo: '',
+    dateFrom: new Date().toISOString().split('T')[0], // Hoy por defecto
+    dateTo: new Date().toISOString().split('T')[0],   // Hoy por defecto
     status: 'all'
   });
+
+  // Estados para paginación
+  const [currentPage, setCurrentPage] = React.useState(1);
+  const [itemsPerPage] = React.useState(50);
+  const [totalItems, setTotalItems] = React.useState(0);
   
   // Estados para la interfaz
   const [showFilters, setShowFilters] = React.useState(false);
@@ -68,6 +74,13 @@ export default function TimeEntries() {
     }
   }, [companyId]);
 
+  // Recargar datos cuando cambien las fechas o la página
+  React.useEffect(() => {
+    if (companyId) {
+      loadTimeEntries(companyId, filters.dateFrom, filters.dateTo, currentPage);
+    }
+  }, [companyId, filters.dateFrom, filters.dateTo, currentPage]);
+
   async function loadTimeEntriesData() {
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -82,7 +95,7 @@ export default function TimeEntries() {
 
         if (userRole) {
           setCompanyId(userRole.company_id);
-          await loadTimeEntries(userRole.company_id);
+          await loadTimeEntries(userRole.company_id, filters.dateFrom, filters.dateTo, currentPage);
         }
       }
     } catch (error) {
@@ -92,54 +105,177 @@ export default function TimeEntries() {
     }
   }
 
-  async function loadTimeEntries(companyId) {
+  async function loadTimeEntries(companyId, dateFrom = null, dateTo = null, page = 1) {
     try {
-      const { data, error } = await supabase
+      setLoading(true);
+      
+      // Construir la consulta base
+      let query = supabase
         .from('time_entries')
-        .select(`
-          *,
-          user_profiles (
-            full_name,
-            avatar_url
-          ),
-          user_company_roles (
-            role,
-            departments (
-              name
-            )
-          )
-        `)
-        .eq('company_id', companyId)
-        .order('entry_time', { ascending: false });
+        .select('*', { count: 'exact' })
+        .eq('company_id', companyId);
 
-      if (!error && data) {
-        setTimeEntries(data);
-        calculateStats(data);
+      // Aplicar filtros de fecha si se proporcionan
+      if (dateFrom) {
+        const fromDate = new Date(dateFrom);
+        fromDate.setHours(0, 0, 0, 0);
+        query = query.gte('entry_time', fromDate.toISOString());
+      }
+
+      if (dateTo) {
+        const toDate = new Date(dateTo);
+        toDate.setHours(23, 59, 59, 999);
+        query = query.lte('entry_time', toDate.toISOString());
+      }
+
+      // Aplicar paginación
+      const from = (page - 1) * itemsPerPage;
+      const to = from + itemsPerPage - 1;
+      query = query.range(from, to).order('entry_time', { ascending: false });
+
+      // Ejecutar la consulta
+      const { data: timeEntries, error: timeEntriesError, count } = await query;
+
+      if (timeEntriesError) {
+        console.error('Error loading time entries:', timeEntriesError);
+        return;
+      }
+
+      // Actualizar el total de elementos
+      setTotalItems(count || 0);
+
+      if (timeEntries && timeEntries.length > 0) {
+        // Obtener los user_ids únicos
+        const userIds = [...new Set(timeEntries.map(entry => entry.user_id))];
+
+        // Obtener perfiles de usuario
+        const { data: profiles, error: profilesError } = await supabase
+          .from('user_profiles')
+          .select('user_id, full_name, avatar_url')
+          .in('user_id', userIds);
+
+        if (profilesError) {
+          console.error('Error loading user profiles:', profilesError);
+        }
+
+        // Obtener roles de usuario
+        const { data: roles, error: rolesError } = await supabase
+          .from('user_company_roles')
+          .select('user_id, role, department_id')
+          .eq('company_id', companyId)
+          .in('user_id', userIds)
+          .eq('is_active', true);
+
+        if (rolesError) {
+          console.error('Error loading user roles:', rolesError);
+        }
+
+        // Obtener departamentos si hay roles con department_id
+        let departments = [];
+        if (roles && roles.some(role => role.department_id)) {
+          const departmentIds = [...new Set(roles.map(role => role.department_id).filter(Boolean))];
+          const { data: deps, error: depsError } = await supabase
+            .from('departments')
+            .select('id, name')
+            .in('id', departmentIds);
+
+          if (!depsError && deps) {
+            departments = deps;
+          }
+        }
+
+        // Combinar los datos
+        const enrichedTimeEntries = timeEntries.map(entry => {
+          const profile = profiles?.find(p => p.user_id === entry.user_id);
+          const role = roles?.find(r => r.user_id === entry.user_id);
+          const department = departments.find(d => d.id === role?.department_id);
+
+          return {
+            ...entry,
+            user_profiles: profile || null,
+            user_company_roles: role ? {
+              ...role,
+              departments: department || null
+            } : null,
+            // Agregar campos directos para facilitar el filtrado
+            employee_name: profile?.full_name || 'Empleado',
+            department_name: department?.name || 'Sin departamento',
+            department_id: role?.department_id || null
+          };
+        });
+
+        console.log('Time entries loaded:', enrichedTimeEntries.length, 'of', count, 'total');
+        setTimeEntries(enrichedTimeEntries);
+        calculateStats(enrichedTimeEntries);
+      } else {
+        setTimeEntries([]);
+        calculateStats([]);
       }
     } catch (error) {
       console.error('Error loading time entries:', error);
+    } finally {
+      setLoading(false);
     }
   }
 
   async function loadEmployees() {
     try {
-      const { data, error } = await supabase
+      // Obtener roles de usuario
+      const { data: roles, error: rolesError } = await supabase
         .from('user_company_roles')
-        .select(`
-          user_id,
-          role,
-          user_profiles (
-            full_name
-          ),
-          departments (
-            name
-          )
-        `)
+        .select('user_id, role, department_id')
         .eq('company_id', companyId)
         .eq('is_active', true);
 
-      if (!error && data) {
-        setEmployees(data);
+      if (rolesError) {
+        console.error('Error loading user roles:', rolesError);
+        return;
+      }
+
+      if (roles && roles.length > 0) {
+        // Obtener los user_ids únicos
+        const userIds = [...new Set(roles.map(role => role.user_id))];
+
+        // Obtener perfiles de usuario
+        const { data: profiles, error: profilesError } = await supabase
+          .from('user_profiles')
+          .select('user_id, full_name')
+          .in('user_id', userIds);
+
+        if (profilesError) {
+          console.error('Error loading user profiles:', profilesError);
+        }
+
+        // Obtener departamentos si hay roles con department_id
+        let departments = [];
+        if (roles.some(role => role.department_id)) {
+          const departmentIds = [...new Set(roles.map(role => role.department_id).filter(Boolean))];
+          const { data: deps, error: depsError } = await supabase
+            .from('departments')
+            .select('id, name')
+            .in('id', departmentIds);
+
+          if (!depsError && deps) {
+            departments = deps;
+          }
+        }
+
+        // Combinar los datos
+        const enrichedEmployees = roles.map(role => {
+          const profile = profiles?.find(p => p.user_id === role.user_id);
+          const department = departments.find(d => d.id === role.department_id);
+
+          return {
+            user_id: role.user_id,
+            role: role.role,
+            user_profiles: profile || null,
+            departments: department || null
+          };
+        });
+
+        setEmployees(enrichedEmployees);
+      } else {
+        setEmployees([]);
       }
     } catch (error) {
       console.error('Error loading employees:', error);
@@ -162,30 +298,61 @@ export default function TimeEntries() {
     }
   }
 
+  // Función helper para determinar si un fichaje está completado
+  function isEntryCompleted(entry) {
+    // Un fichaje está completado si es un evento de salida
+    // Los eventos de entrada y inicio de pausa están "en curso"
+    return entry.entry_type === 'clock_out' || entry.entry_type === 'break_end';
+  }
+
+  // Función helper para obtener el texto del tipo de evento
+  function getEntryTypeText(entry) {
+    switch (entry.entry_type) {
+      case 'clock_in':
+        return 'Entrada';
+      case 'clock_out':
+        return 'Salida';
+      case 'break_start':
+        return 'Inicio Pausa';
+      case 'break_end':
+        return 'Fin Pausa';
+      default:
+        return 'N/A';
+    }
+  }
+
+  // Función helper para determinar si un evento está "en curso" (necesita una salida)
+  function isEntryInProgress(entry) {
+    // Un evento está en progreso si es una entrada o inicio de pausa
+    // que aún no tiene su correspondiente salida
+    return entry.entry_type === 'clock_in' || entry.entry_type === 'break_start';
+  }
+
   function calculateStats(entries) {
     const total = entries.length;
-    const active = entries.filter(entry => !entry.clock_out).length;
-    const completed = total - active;
     
-    let totalHours = 0;
-    entries.forEach(entry => {
-      if (entry.clock_in && entry.clock_out) {
-        const duration = new Date(entry.clock_out) - new Date(entry.clock_in);
-        totalHours += duration / (1000 * 60 * 60);
-      }
-    });
+    // Usar las funciones helper para contar correctamente
+    const active = entries.filter(entry => isEntryInProgress(entry)).length;
+    const completed = entries.filter(entry => isEntryCompleted(entry)).length;
+    
+    // Para esta estructura, calcular horas totales requeriría agrupar entries por sesión
+    // Por ahora, solo contamos el número de eventos
+    let totalHours = 0; // TODO: Implementar cálculo de horas agrupando por sesiones
 
+    console.log('Stats calculated:', { total, active, completed, totalHours });
     setStats({ total, active, completed, totalHours });
   }
 
   function getFilteredEntries() {
     let filtered = [...timeEntries];
-
-    // Filtro por búsqueda
-    if (filters.search) {
+    
+    // Filtro por búsqueda (búsqueda en tiempo real)
+    if (filters.search.trim()) {
+      const searchTerm = filters.search.toLowerCase().trim();
       filtered = filtered.filter(entry => 
-        entry.user_profiles?.full_name?.toLowerCase().includes(filters.search.toLowerCase()) ||
-        entry.user_company_roles?.departments?.name?.toLowerCase().includes(filters.search.toLowerCase())
+        entry.employee_name?.toLowerCase().includes(searchTerm) ||
+        entry.department_name?.toLowerCase().includes(searchTerm) ||
+        entry.user_company_roles?.role?.toLowerCase().includes(searchTerm)
       );
     }
 
@@ -199,29 +366,16 @@ export default function TimeEntries() {
     // Filtro por departamentos seleccionados
     if (filters.selectedDepartments.length > 0) {
       filtered = filtered.filter(entry => 
-        filters.selectedDepartments.includes(entry.user_company_roles?.departments?.id)
+        filters.selectedDepartments.includes(entry.department_id)
       );
     }
 
-    // Filtro por fecha
-    if (filters.dateFrom) {
-      filtered = filtered.filter(entry => 
-        new Date(entry.entry_time) >= new Date(filters.dateFrom)
-      );
-    }
-
-    if (filters.dateTo) {
-      filtered = filtered.filter(entry => 
-        new Date(entry.entry_time) <= new Date(filters.dateTo)
-      );
-    }
-
-    // Filtro por estado
+    // Filtro por estado (las fechas ya se aplican en la consulta de la BD)
     if (filters.status !== 'all') {
       if (filters.status === 'active') {
-        filtered = filtered.filter(entry => !entry.clock_out);
+        filtered = filtered.filter(entry => isEntryInProgress(entry));
       } else if (filters.status === 'completed') {
-        filtered = filtered.filter(entry => entry.clock_out);
+        filtered = filtered.filter(entry => isEntryCompleted(entry));
       }
     }
 
@@ -229,30 +383,39 @@ export default function TimeEntries() {
   }
 
   function getStatusBadge(entry) {
-    if (!entry.clock_out) {
+    // Determinar el estado basado en el tipo de evento
+    const isInProgress = isEntryInProgress(entry);
+    const isCompleted = isEntryCompleted(entry);
+
+    if (isInProgress) {
       return (
         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
           <div className="w-2 h-2 bg-green-400 rounded-full mr-1.5 animate-pulse"></div>
           En curso
         </span>
       );
+    } else if (isCompleted) {
+      return (
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+          <CheckCircle className="w-3 h-3 mr-1" />
+          Completado
+        </span>
+      );
+    } else {
+      return (
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+          <Clock className="w-3 h-3 mr-1" />
+          Evento
+        </span>
+      );
     }
-    return (
-      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-        <CheckCircle className="w-3 h-3 mr-1" />
-        Completado
-      </span>
-    );
   }
 
   function formatDuration(entry) {
-    if (!entry.clock_in || !entry.clock_out) return '—';
-    
-    const duration = new Date(entry.clock_out) - new Date(entry.clock_in);
-    const hours = Math.floor(duration / (1000 * 60 * 60));
-    const minutes = Math.floor((duration % (1000 * 60 * 60)) / (1000 * 60));
-    
-    return `${hours}h ${minutes}m`;
+    // Para esta estructura, cada entry es un evento individual
+    // No podemos calcular duración con un solo registro
+    // Esto se calcularía agrupando entries por sesión de trabajo
+    return '—';
   }
 
   function formatTime(dateString) {
@@ -276,17 +439,17 @@ export default function TimeEntries() {
       const filteredEntries = getFilteredEntries();
       
       // Crear CSV
-      const headers = ['Empleado', 'Departamento', 'Fecha', 'Entrada', 'Salida', 'Duración', 'Estado', 'Ubicación'];
+      const headers = ['Empleado', 'Departamento', 'Fecha', 'Hora', 'Tipo', 'Estado', 'Ubicación'];
       const csvContent = [
         headers.join(','),
         ...filteredEntries.map(entry => [
-          entry.user_profiles?.full_name || 'N/A',
-          entry.user_company_roles?.departments?.name || 'N/A',
+          entry.employee_name || 'N/A',
+          entry.department_name || 'N/A',
           formatDate(entry.entry_time),
-          formatTime(entry.clock_in || entry.entry_time),
-          entry.clock_out ? formatTime(entry.clock_out) : '—',
-          formatDuration(entry),
-          entry.clock_out ? 'Completado' : 'En curso',
+          formatTime(entry.entry_time),
+          getEntryTypeText(entry),
+          isEntryInProgress(entry) ? 'En curso' : 
+          isEntryCompleted(entry) ? 'Completado' : 'Evento',
           entry.location_lat && entry.location_lng ? 'Sí' : 'No'
         ].join(','))
       ].join('\n');
@@ -313,10 +476,11 @@ export default function TimeEntries() {
       search: '',
       selectedEmployees: [],
       selectedDepartments: [],
-      dateFrom: '',
-      dateTo: '',
+      dateFrom: new Date().toISOString().split('T')[0], // Hoy por defecto
+      dateTo: new Date().toISOString().split('T')[0],   // Hoy por defecto
       status: 'all'
     });
+    setCurrentPage(1);
   }
 
   const filteredEntries = getFilteredEntries();
@@ -433,7 +597,110 @@ export default function TimeEntries() {
         </div>
       </div>
 
-      {/* Filters */}
+      {/* Search Bar - Always Visible */}
+      <div className="card p-4">
+        <div className="flex flex-col sm:flex-row gap-4 items-end">
+          {/* Búsqueda principal */}
+          <div className="flex-1">
+            <label className="block text-sm font-medium text-foreground mb-2">
+              Buscar empleados o departamentos
+            </label>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="Buscar por nombre de empleado o departamento..."
+                value={filters.search}
+                onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+                className="input w-full pl-10"
+              />
+            </div>
+          </div>
+
+          {/* Filtros rápidos */}
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className={`btn flex items-center gap-2 ${
+                showFilters ? 'btn-primary' : 'btn-secondary'
+              }`}
+            >
+              <Filter className="w-4 h-4" />
+              <span className="hidden sm:inline">Filtros</span>
+            </button>
+            <button
+              onClick={clearFilters}
+              className="btn btn-outline flex items-center gap-2"
+            >
+              <X className="w-4 h-4" />
+              <span className="hidden sm:inline">Limpiar</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Filtros activos */}
+        {(filters.selectedEmployees.length > 0 || 
+          filters.selectedDepartments.length > 0 || 
+          filters.status !== 'all' || 
+          filters.dateFrom || 
+          filters.dateTo) && (
+          <div className="mt-4 flex flex-wrap gap-2">
+            {filters.selectedEmployees.length > 0 && (
+              <div className="flex items-center gap-1 bg-primary/10 text-primary px-2 py-1 rounded-full text-sm">
+                <span>{filters.selectedEmployees.length} empleado(s)</span>
+                <button
+                  onClick={() => setFilters({ ...filters, selectedEmployees: [] })}
+                  className="ml-1 hover:bg-primary/20 rounded-full p-0.5"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            )}
+            {filters.selectedDepartments.length > 0 && (
+              <div className="flex items-center gap-1 bg-primary/10 text-primary px-2 py-1 rounded-full text-sm">
+                <span>{filters.selectedDepartments.length} departamento(s)</span>
+                <button
+                  onClick={() => setFilters({ ...filters, selectedDepartments: [] })}
+                  className="ml-1 hover:bg-primary/20 rounded-full p-0.5"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            )}
+            {filters.status !== 'all' && (
+              <div className="flex items-center gap-1 bg-primary/10 text-primary px-2 py-1 rounded-full text-sm">
+                <span>Estado: {filters.status === 'active' ? 'En curso' : 'Completados'}</span>
+                <button
+                  onClick={() => setFilters({ ...filters, status: 'all' })}
+                  className="ml-1 hover:bg-primary/20 rounded-full p-0.5"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            )}
+            {(filters.dateFrom || filters.dateTo) && (
+              <div className="flex items-center gap-1 bg-primary/10 text-primary px-2 py-1 rounded-full text-sm">
+                <span>
+                  {filters.dateFrom && filters.dateTo 
+                    ? `${filters.dateFrom} - ${filters.dateTo}`
+                    : filters.dateFrom 
+                    ? `Desde ${filters.dateFrom}`
+                    : `Hasta ${filters.dateTo}`
+                  }
+                </span>
+                <button
+                  onClick={() => setFilters({ ...filters, dateFrom: '', dateTo: '' })}
+                  className="ml-1 hover:bg-primary/20 rounded-full p-0.5"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Advanced Filters */}
       <AnimatePresence>
         {showFilters && (
           <motion.div
@@ -442,41 +709,37 @@ export default function TimeEntries() {
             exit={{ opacity: 0, height: 0 }}
             className="card p-4 sm:p-6"
           >
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {/* Búsqueda */}
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">
-                  Buscar
-                </label>
-                <input
-                  type="text"
-                  placeholder="Empleado o departamento..."
-                  value={filters.search}
-                  onChange={(e) => setFilters({ ...filters, search: e.target.value })}
-                  className="input w-full"
-                />
-              </div>
-
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {/* Empleados */}
               <div>
                 <label className="block text-sm font-medium text-foreground mb-2">
-                  Empleados
+                  Empleados específicos
                 </label>
-                <select
-                  multiple
-                  value={filters.selectedEmployees}
-                  onChange={(e) => setFilters({ 
-                    ...filters, 
-                    selectedEmployees: Array.from(e.target.selectedOptions, option => option.value)
-                  })}
-                  className="input w-full"
-                >
+                <div className="space-y-2 max-h-40 overflow-y-auto border rounded-lg p-2">
                   {employees.map(emp => (
-                    <option key={emp.user_id} value={emp.user_id}>
-                      {emp.user_profiles?.full_name || 'Empleado'}
-                    </option>
+                    <label key={emp.user_id} className="flex items-center gap-2 cursor-pointer hover:bg-secondary/50 p-1 rounded">
+                      <input
+                        type="checkbox"
+                        checked={filters.selectedEmployees.includes(emp.user_id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setFilters({
+                              ...filters,
+                              selectedEmployees: [...filters.selectedEmployees, emp.user_id]
+                            });
+                          } else {
+                            setFilters({
+                              ...filters,
+                              selectedEmployees: filters.selectedEmployees.filter(id => id !== emp.user_id)
+                            });
+                          }
+                        }}
+                        className="rounded"
+                      />
+                      <span className="text-sm">{emp.user_profiles?.full_name || 'Empleado'}</span>
+                    </label>
                   ))}
-                </select>
+                </div>
               </div>
 
               {/* Departamentos */}
@@ -484,78 +747,73 @@ export default function TimeEntries() {
                 <label className="block text-sm font-medium text-foreground mb-2">
                   Departamentos
                 </label>
-                <select
-                  multiple
-                  value={filters.selectedDepartments}
-                  onChange={(e) => setFilters({ 
-                    ...filters, 
-                    selectedDepartments: Array.from(e.target.selectedOptions, option => option.value)
-                  })}
-                  className="input w-full"
-                >
+                <div className="space-y-2 max-h-40 overflow-y-auto border rounded-lg p-2">
                   {departments.map(dept => (
-                    <option key={dept.id} value={dept.id}>
-                      {dept.name}
-                    </option>
+                    <label key={dept.id} className="flex items-center gap-2 cursor-pointer hover:bg-secondary/50 p-1 rounded">
+                      <input
+                        type="checkbox"
+                        checked={filters.selectedDepartments.includes(dept.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setFilters({
+                              ...filters,
+                              selectedDepartments: [...filters.selectedDepartments, dept.id]
+                            });
+                          } else {
+                            setFilters({
+                              ...filters,
+                              selectedDepartments: filters.selectedDepartments.filter(id => id !== dept.id)
+                            });
+                          }
+                        }}
+                        className="rounded"
+                      />
+                      <span className="text-sm">{dept.name}</span>
+                    </label>
                   ))}
-                </select>
+                </div>
               </div>
 
-              {/* Estado */}
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">
-                  Estado
-                </label>
-                <select
-                  value={filters.status}
-                  onChange={(e) => setFilters({ ...filters, status: e.target.value })}
-                  className="input w-full"
-                >
-                  <option value="all">Todos</option>
-                  <option value="active">En curso</option>
-                  <option value="completed">Completados</option>
-                </select>
-              </div>
+              {/* Estado y Fechas */}
+              <div className="space-y-4">
+                {/* Estado */}
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-2">
+                    Estado del fichaje
+                  </label>
+                  <select
+                    value={filters.status}
+                    onChange={(e) => setFilters({ ...filters, status: e.target.value })}
+                    className="input w-full"
+                  >
+                    <option value="all">Todos los eventos</option>
+                    <option value="active">Solo en curso (entradas/pausas)</option>
+                    <option value="completed">Solo completados (salidas/fin pausas)</option>
+                  </select>
+                </div>
 
-              {/* Fechas */}
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">
-                  Desde
-                </label>
-                <input
-                  type="date"
-                  value={filters.dateFrom}
-                  onChange={(e) => setFilters({ ...filters, dateFrom: e.target.value })}
-                  className="input w-full"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">
-                  Hasta
-                </label>
-                <input
-                  type="date"
-                  value={filters.dateTo}
-                  onChange={(e) => setFilters({ ...filters, dateTo: e.target.value })}
-                  className="input w-full"
-                />
-              </div>
-
-              {/* Botones */}
-              <div className="sm:col-span-2 flex items-end gap-2">
-                <button
-                  onClick={clearFilters}
-                  className="btn btn-secondary flex-1"
-                >
-                  Limpiar
-                </button>
-                <button
-                  onClick={() => setShowFilters(false)}
-                  className="btn btn-primary flex-1"
-                >
-                  Aplicar
-                </button>
+                {/* Fechas */}
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-2">
+                    Rango de fechas
+                  </label>
+                  <div className="space-y-2">
+                    <input
+                      type="date"
+                      placeholder="Desde"
+                      value={filters.dateFrom}
+                      onChange={(e) => setFilters({ ...filters, dateFrom: e.target.value })}
+                      className="input w-full"
+                    />
+                    <input
+                      type="date"
+                      placeholder="Hasta"
+                      value={filters.dateTo}
+                      onChange={(e) => setFilters({ ...filters, dateTo: e.target.value })}
+                      className="input w-full"
+                    />
+                  </div>
+                </div>
               </div>
             </div>
           </motion.div>
@@ -564,6 +822,85 @@ export default function TimeEntries() {
 
       {/* Time Entries Table */}
       <div className="card overflow-hidden">
+        {/* Table Header with Results Info */}
+        <div className="p-4 border-b border-border bg-secondary/30">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <h3 className="text-lg font-semibold text-foreground">
+                Registros de Fichaje
+              </h3>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <span>Mostrando {filteredEntries.length} registros del {filters.dateFrom} al {filters.dateTo}</span>
+                {(filters.search || filters.selectedEmployees.length > 0 || filters.selectedDepartments.length > 0 || filters.status !== 'all') && (
+                  <span className="px-2 py-1 bg-primary/10 text-primary rounded-full text-xs">
+                    Filtrado
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {/* Quick Date Range Buttons */}
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => {
+                    const today = new Date().toISOString().split('T')[0];
+                    setFilters(prev => ({ ...prev, dateFrom: today, dateTo: today }));
+                    setCurrentPage(1);
+                  }}
+                  className="btn btn-outline btn-sm"
+                >
+                  Hoy
+                </button>
+                <button
+                  onClick={() => {
+                    const today = new Date();
+                    const yesterday = new Date(today);
+                    yesterday.setDate(today.getDate() - 1);
+                    setFilters(prev => ({ 
+                      ...prev, 
+                      dateFrom: yesterday.toISOString().split('T')[0], 
+                      dateTo: yesterday.toISOString().split('T')[0] 
+                    }));
+                    setCurrentPage(1);
+                  }}
+                  className="btn btn-outline btn-sm"
+                >
+                  Ayer
+                </button>
+                <button
+                  onClick={() => {
+                    const today = new Date();
+                    const weekAgo = new Date(today);
+                    weekAgo.setDate(today.getDate() - 7);
+                    setFilters(prev => ({ 
+                      ...prev, 
+                      dateFrom: weekAgo.toISOString().split('T')[0], 
+                      dateTo: today.toISOString().split('T')[0] 
+                    }));
+                    setCurrentPage(1);
+                  }}
+                  className="btn btn-outline btn-sm"
+                >
+                  Última semana
+                </button>
+              </div>
+              
+              <button
+                onClick={exportToCSV}
+                disabled={exportLoading || filteredEntries.length === 0}
+                className="btn btn-outline btn-sm flex items-center gap-2"
+              >
+                {exportLoading ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Download className="w-4 h-4" />
+                )}
+                Exportar
+              </button>
+            </div>
+          </div>
+        </div>
+        
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-secondary">
@@ -571,9 +908,8 @@ export default function TimeEntries() {
                 <th className="th text-left">Empleado</th>
                 <th className="th text-left">Departamento</th>
                 <th className="th text-left">Fecha</th>
-                <th className="th text-left">Entrada</th>
-                <th className="th text-left">Salida</th>
-                <th className="th text-left">Duración</th>
+                <th className="th text-left">Hora</th>
+                <th className="th text-left">Tipo</th>
                 <th className="th text-left">Estado</th>
                 <th className="th text-left">Ubicación</th>
                 <th className="th text-left">Acciones</th>
@@ -582,10 +918,28 @@ export default function TimeEntries() {
             <tbody className="divide-y divide-border">
               {filteredEntries.length === 0 ? (
                 <tr>
-                  <td colSpan="9" className="td text-center py-8">
-                    <div className="flex flex-col items-center gap-2">
-                      <Clock className="w-12 h-12 text-muted-foreground" />
-                      <p className="text-muted-foreground">No se encontraron fichajes</p>
+                  <td colSpan="8" className="td text-center py-12">
+                    <div className="flex flex-col items-center gap-4">
+                      <Clock className="w-16 h-16 text-muted-foreground" />
+                      <div className="text-center">
+                        <h3 className="text-lg font-medium text-foreground mb-2">
+                          {timeEntries.length === 0 ? 'No hay fichajes registrados' : 'No se encontraron resultados'}
+                        </h3>
+                        <p className="text-muted-foreground mb-4">
+                          {timeEntries.length === 0 
+                            ? 'Aún no se han registrado fichajes en el sistema.'
+                            : 'Intenta ajustar los filtros de búsqueda para encontrar los registros que buscas.'
+                          }
+                        </p>
+                        {timeEntries.length > 0 && (
+                          <button
+                            onClick={clearFilters}
+                            className="btn btn-primary btn-sm"
+                          >
+                            Limpiar filtros
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </td>
                 </tr>
@@ -617,7 +971,7 @@ export default function TimeEntries() {
                     </td>
                     <td className="td">
                       <span className="text-sm">
-                        {entry.user_company_roles?.departments?.name || 'Sin departamento'}
+                        {entry.department_name || 'Sin departamento'}
                       </span>
                     </td>
                     <td className="td">
@@ -625,17 +979,12 @@ export default function TimeEntries() {
                     </td>
                     <td className="td">
                       <span className="text-sm font-mono">
-                        {formatTime(entry.clock_in || entry.entry_time)}
+                        {formatTime(entry.entry_time)}
                       </span>
                     </td>
                     <td className="td">
-                      <span className="text-sm font-mono">
-                        {entry.clock_out ? formatTime(entry.clock_out) : '—'}
-                      </span>
-                    </td>
-                    <td className="td">
-                      <span className="text-sm font-mono">
-                        {formatDuration(entry)}
+                      <span className="text-sm">
+                        {getEntryTypeText(entry)}
                       </span>
                     </td>
                     <td className="td">
@@ -710,10 +1059,10 @@ export default function TimeEntries() {
                 </div>
                 <div>
                   <h4 className="text-xl font-semibold text-foreground">
-                    {selectedEntry.user_profiles?.full_name || 'Empleado'}
+                    {selectedEntry.employee_name || 'Empleado'}
                   </h4>
                   <p className="text-muted-foreground">
-                    {selectedEntry.user_company_roles?.departments?.name || 'Sin departamento'}
+                    {selectedEntry.department_name || 'Sin departamento'}
                   </p>
                   <p className="text-sm text-muted-foreground">
                     {selectedEntry.user_company_roles?.role || 'N/A'}
@@ -735,7 +1084,7 @@ export default function TimeEntries() {
                       Entrada
                     </label>
                     <p className="text-foreground font-mono">
-                      {formatTime(selectedEntry.clock_in || selectedEntry.entry_time)}
+                      {formatTime(selectedEntry.entry_time)}
                     </p>
                   </div>
                   <div>
@@ -743,7 +1092,9 @@ export default function TimeEntries() {
                       Salida
                     </label>
                     <p className="text-foreground font-mono">
-                      {selectedEntry.clock_out ? formatTime(selectedEntry.clock_out) : '—'}
+                      {selectedEntry.entry_type === 'clock_out' || selectedEntry.entry_type === 'break_end' 
+                        ? formatTime(selectedEntry.entry_time) 
+                        : '—'}
                     </p>
                   </div>
                   <div>
@@ -813,6 +1164,36 @@ export default function TimeEntries() {
                   </div>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Pagination Controls */}
+      {totalItems > itemsPerPage && (
+        <div className="card p-4">
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-muted-foreground">
+              Mostrando {((currentPage - 1) * itemsPerPage) + 1} a {Math.min(currentPage * itemsPerPage, totalItems)} de {totalItems} registros
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+                className="btn btn-outline btn-sm"
+              >
+                Anterior
+              </button>
+              <span className="text-sm text-muted-foreground">
+                Página {currentPage} de {Math.ceil(totalItems / itemsPerPage)}
+              </span>
+              <button
+                onClick={() => setCurrentPage(prev => Math.min(Math.ceil(totalItems / itemsPerPage), prev + 1))}
+                disabled={currentPage >= Math.ceil(totalItems / itemsPerPage)}
+                className="btn btn-outline btn-sm"
+              >
+                Siguiente
+              </button>
             </div>
           </div>
         </div>

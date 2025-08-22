@@ -199,26 +199,7 @@ export default function Employees() {
     }
   }
 
-  async function toggleLocationRequirement() {
-    try {
-      if (!companyId) return;
 
-      const newValue = !companySettings?.require_location;
-      
-      const { error } = await supabase
-        .from('company_settings')
-        .upsert({
-          company_id: companyId,
-          require_location: newValue
-        });
-
-      if (!error) {
-        setCompanySettings(prev => ({ ...prev, require_location: newValue }));
-      }
-    } catch (error) {
-      console.error('Error toggling location requirement:', error);
-    }
-  }
 
   async function toggleEmployeeLocationRequirement(userId) {
     try {
@@ -227,19 +208,47 @@ export default function Employees() {
       const currentValue = employeeLocationSettings[userId] || false;
       const newValue = !currentValue;
       
-      const { error } = await supabase
+      // Primero intentar actualizar si existe
+      const { data: existingRecord, error: selectError } = await supabase
         .from('user_location_settings')
-        .upsert({
-          company_id: companyId,
-          user_id: userId,
-          require_location: newValue
-        });
+        .select('id')
+        .eq('company_id', companyId)
+        .eq('user_id', userId)
+        .single();
+
+      if (selectError && selectError.code !== 'PGRST116') {
+        console.error('Error checking existing record:', selectError);
+        return;
+      }
+
+      let error;
+      if (existingRecord) {
+        // Actualizar registro existente
+        const { error: updateError } = await supabase
+          .from('user_location_settings')
+          .update({ require_location: newValue })
+          .eq('company_id', companyId)
+          .eq('user_id', userId);
+        error = updateError;
+      } else {
+        // Insertar nuevo registro
+        const { error: insertError } = await supabase
+          .from('user_location_settings')
+          .insert({
+            company_id: companyId,
+            user_id: userId,
+            require_location: newValue
+          });
+        error = insertError;
+      }
 
       if (!error) {
         setEmployeeLocationSettings(prev => ({
           ...prev,
           [userId]: newValue
         }));
+      } else {
+        console.error('Error updating location settings:', error);
       }
     } catch (error) {
       console.error('Error toggling employee location requirement:', error);
@@ -461,29 +470,6 @@ export default function Employees() {
         <div className="p-4 lg:p-6 border-b border-border">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-semibold text-foreground">Empleados</h3>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">Ubicación:</span>
-              <button
-                onClick={toggleLocationRequirement}
-                className={`flex items-center gap-2 px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
-                  companySettings?.require_location
-                    ? 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400'
-                    : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
-                }`}
-              >
-                {companySettings?.require_location ? (
-                  <>
-                    <ToggleRight className="w-4 h-4" />
-                    Activada
-                  </>
-                ) : (
-                  <>
-                    <ToggleLeft className="w-4 h-4" />
-                    Desactivada
-                  </>
-                )}
-              </button>
-            </div>
           </div>
         </div>
         <div className="p-4 lg:p-6">

@@ -344,13 +344,16 @@ export default function AdminTimeEntries() {
     
     // Buscar el último fichaje con ubicación
     const entriesWithLocation = todayEntries.filter(entry => 
-      entry.location_data && 
-      Object.keys(entry.location_data).length > 0
+      entry.location_lat && entry.location_lng
     );
     if (entriesWithLocation.length === 0) return null;
     
     const lastEntryWithLocation = entriesWithLocation[entriesWithLocation.length - 1];
-    return lastEntryWithLocation.location_data;
+    return {
+      latitude: lastEntryWithLocation.location_lat,
+      longitude: lastEntryWithLocation.location_lng,
+      timestamp: lastEntryWithLocation.entry_time
+    };
   }
 
   function showLocationModal(locationData) {
@@ -652,7 +655,7 @@ export default function AdminTimeEntries() {
             <tbody>
               {filteredEmployees.length === 0 ? (
                 <tr>
-                  <td colSpan="6" className="td text-center text-muted-foreground">
+                  <td colSpan="7" className="td text-center text-muted-foreground">
                     No hay empleados para mostrar
                   </td>
                 </tr>
@@ -777,6 +780,17 @@ export default function AdminTimeEntries() {
                     </p>
                     <p className="text-sm">
                       <strong>Longitud:</strong> {selectedLocation.longitude}
+                    </p>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-2">
+                    Fecha y Hora
+                  </label>
+                  <div className="bg-secondary p-3 rounded-lg">
+                    <p className="text-sm">
+                      {selectedLocation.timestamp ? new Date(selectedLocation.timestamp).toLocaleString('es-ES') : 'N/A'}
                     </p>
                   </div>
                 </div>

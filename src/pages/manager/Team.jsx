@@ -17,7 +17,8 @@ import {
   Square,
   MapPin,
   ToggleLeft,
-  ToggleRight
+  ToggleRight,
+  Lock
 } from 'lucide-react';
 
 export default function Team() {
@@ -198,42 +199,8 @@ export default function Team() {
     }
   }
 
-  async function toggleEmployeeLocationRequirement(userId) {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data: managerRole } = await supabase
-        .from('user_company_roles')
-        .select('company_id')
-        .eq('user_id', user.id)
-        .eq('role', 'manager')
-        .eq('is_active', true)
-        .single();
-
-      if (!managerRole) return;
-
-      const currentValue = employeeLocationSettings[userId] || false;
-      const newValue = !currentValue;
-      
-      const { error } = await supabase
-        .from('user_location_settings')
-        .upsert({
-          company_id: managerRole.company_id,
-          user_id: userId,
-          require_location: newValue
-        });
-
-      if (!error) {
-        setEmployeeLocationSettings(prev => ({
-          ...prev,
-          [userId]: newValue
-        }));
-      }
-    } catch (error) {
-      console.error('Error toggling employee location requirement:', error);
-    }
-  }
+  // Los managers no pueden modificar la configuración de GPS
+  // Esta funcionalidad está restringida a owners y admins
 
   async function loadTeamStats(members, companyId) {
     try {
@@ -480,6 +447,16 @@ export default function Team() {
         </div>
       </div>
 
+      {/* Info Note */}
+      <div className="card p-4 bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800">
+        <div className="flex items-center gap-2">
+          <Lock className="w-4 h-4 text-blue-600" />
+          <p className="text-sm text-blue-800 dark:text-blue-200">
+            <strong>Nota:</strong> La configuración de GPS solo puede ser modificada por administradores y propietarios de la empresa.
+          </p>
+        </div>
+      </div>
+
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="card p-6">
@@ -651,26 +628,23 @@ export default function Team() {
                         <MapPin className="w-4 h-4 text-muted-foreground" />
                         <span className="text-muted-foreground">Ubicación:</span>
                       </div>
-                      <button
-                        onClick={() => toggleEmployeeLocationRequirement(member.user_id)}
-                        className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-colors ${
-                          employeeLocationSettings[member.user_id]
-                            ? 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400'
-                            : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
-                        }`}
-                      >
+                      <div className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium ${
+                        employeeLocationSettings[member.user_id]
+                          ? 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400'
+                          : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
+                      }`}>
                         {employeeLocationSettings[member.user_id] ? (
                           <>
                             <ToggleRight className="w-3 h-3" />
-                            ON
+                            Activada
                           </>
                         ) : (
                           <>
                             <ToggleLeft className="w-3 h-3" />
-                            OFF
+                            Desactivada
                           </>
                         )}
-                      </button>
+                      </div>
                     </div>
                   </div>
 
