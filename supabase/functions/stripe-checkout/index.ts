@@ -114,7 +114,7 @@ serve(async (req) => {
     // Buscar o crear producto en Stripe
     let product;
     const { data: products } = await stripe.products.list({ limit: 100 })
-    product = products.data.find(p => p.name === 'Witar Plan')
+    product = products?.data?.find(p => p.name === 'Witar Plan')
 
     if (!product) {
       product = await stripe.products.create({
@@ -130,7 +130,7 @@ serve(async (req) => {
       active: true,
     })
 
-    price = prices.find(p => p.unit_amount === totalPrice && p.currency === 'eur')
+    price = prices?.find(p => p.unit_amount === totalPrice && p.currency === 'eur')
 
     if (!price) {
       price = await stripe.prices.create({
@@ -190,7 +190,10 @@ serve(async (req) => {
   } catch (error) {
     console.error('Error in stripe-checkout:', error)
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ 
+        error: error.message || 'Unknown error occurred',
+        details: error.toString()
+      }),
       {
         headers: { ...getCorsHeaders(origin), 'Content-Type': 'application/json' },
         status: 400,
