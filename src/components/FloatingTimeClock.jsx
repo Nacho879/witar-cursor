@@ -669,9 +669,6 @@ export default function FloatingTimeClock() {
                 <span className="text-xs font-semibold text-gray-700 dark:text-gray-300 leading-tight">
                   {userProfile?.full_name || 'Usuario'}
                 </span>
-                <span className="text-xs text-gray-500 dark:text-gray-400 leading-tight mt-0.5">
-                  {userRole === 'employee' ? 'Empleado' : userRole === 'manager' ? 'Manager' : userRole === 'admin' ? 'Administrador' : 'Usuario'}
-                </span>
               </div>
               <ChevronDown className="w-3 h-3 sm:w-4 sm:h-4 text-gray-600 dark:text-gray-400 flex-shrink-0" />
             </button>
