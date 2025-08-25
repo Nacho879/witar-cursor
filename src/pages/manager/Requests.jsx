@@ -377,8 +377,6 @@ export default function Requests() {
 
   async function applyTimeEntryChanges(requestId) {
     try {
-  
-      
       // Obtener la solicitud aprobada
       const { data: request } = await supabase
         .from('time_entry_edit_requests')
@@ -387,61 +385,16 @@ export default function Requests() {
         .single();
 
       if (!request) {
-
+        console.error('❌ No se encontró la solicitud:', requestId);
         return;
       }
 
+      console.log('🔧 Aplicando cambios para solicitud:', request.request_type, requestId);
 
-
-      const updateData = {};
-
-      // Aplicar cambios según el tipo de solicitud
-      if (request.request_type === 'edit_time' && request.proposed_entry_time) {
-        updateData.entry_time = request.proposed_entry_time;
-      }
-
-      if (request.request_type === 'edit_type' && request.proposed_entry_type) {
-        updateData.entry_type = request.proposed_entry_type;
-      }
-
-      if (request.proposed_notes !== undefined) {
-        updateData.notes = request.proposed_notes;
-      }
-
-      // Actualizar el fichaje
-      if (Object.keys(updateData).length > 0) {
-
-        const { error } = await supabase
-          .from('time_entries')
-          .update(updateData)
-          .eq('id', request.time_entry_id);
-
-        if (error) {
-          console.error('❌ Error actualizando fichaje:', error);
-          throw error;
-        }
-      }
-
-      // Si es eliminar fichaje, eliminarlo
+      // Si es eliminar fichaje, eliminarlo PRIMERO
       if (request.request_type === 'delete_entry') {
+        console.log('🗑️ Eliminando fichaje:', request.time_entry_id);
         
-        // Primero verificar que el fichaje existe
-        const { data: existingEntry, error: checkError } = await supabase
-          .from('time_entries')
-          .select('id, entry_type, entry_time, user_id')
-          .eq('id', request.time_entry_id)
-          .maybeSingle(); // Cambiar de .single() a .maybeSingle()
-
-        if (checkError) {
-          console.error('❌ Error verificando fichaje:', checkError);
-          throw checkError;
-        }
-
-        if (!existingEntry) {
-          return;
-        }
-
-
         const { error } = await supabase
           .from('time_entries')
           .delete()
@@ -452,22 +405,48 @@ export default function Requests() {
           throw error;
         }
         
-        
-        // Verificar que realmente se eliminó
-        const { data: verifyDeletion, error: verifyError } = await supabase
+        console.log('✅ Fichaje eliminado correctamente');
+        return; // Salir después de eliminar
+      }
+
+      // Para otros tipos de solicitudes, actualizar el fichaje
+      const updateData = {};
+
+      // Aplicar cambios según el tipo de solicitud
+      if (request.request_type === 'edit_time' && request.proposed_entry_time) {
+        updateData.entry_time = request.proposed_entry_time;
+        console.log('⏰ Actualizando hora:', request.proposed_entry_time);
+      }
+
+      if (request.request_type === 'edit_type' && request.proposed_entry_type) {
+        updateData.entry_type = request.proposed_entry_type;
+        console.log('📝 Actualizando tipo:', request.proposed_entry_type);
+      }
+
+      if (request.proposed_notes !== undefined) {
+        updateData.notes = request.proposed_notes;
+        console.log('📋 Actualizando notas:', request.proposed_notes);
+      }
+
+      // Actualizar el fichaje
+      if (Object.keys(updateData).length > 0) {
+        const { error } = await supabase
           .from('time_entries')
-          .select('id')
-          .eq('id', request.time_entry_id)
-          .maybeSingle(); // Cambiar de .single() a .maybeSingle()
-          
-        if (verifyDeletion) {
-          console.error('❌ El fichaje aún existe después de la eliminación');
-        } else {
+          .update(updateData)
+          .eq('id', request.time_entry_id);
+
+        if (error) {
+          console.error('❌ Error actualizando fichaje:', error);
+          throw error;
         }
+        
+        console.log('✅ Fichaje actualizado correctamente');
       }
 
       // Si es agregar fichaje, crearlo
       if (request.request_type === 'add_entry') {
+        console.log('➕ Agregando nuevo fichaje');
+        
         const newEntry = {
           user_id: request.user_id,
           company_id: request.company_id,
@@ -484,8 +463,9 @@ export default function Requests() {
           console.error('❌ Error agregando fichaje:', error);
           throw error;
         }
+        
+        console.log('✅ Nuevo fichaje agregado correctamente');
       }
-
 
     } catch (error) {
       console.error('❌ Error applying changes:', error);
