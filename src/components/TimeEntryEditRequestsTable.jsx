@@ -209,6 +209,16 @@ export default function TimeEntryEditRequestsTable({ userRole }) {
     }
   }
 
+  function getEntryTypeDisplay(type) {
+    switch (type) {
+      case 'clock_in': return 'Entrada';
+      case 'clock_out': return 'Salida';
+      case 'break_start': return 'Inicio Pausa';
+      case 'break_end': return 'Fin Pausa';
+      default: return type;
+    }
+  }
+
   function getStatusDisplay(status) {
     switch (status) {
       case 'pending': return { text: 'Pendiente', color: 'bg-yellow-100 text-yellow-800', icon: AlertCircle };
@@ -250,54 +260,77 @@ export default function TimeEntryEditRequestsTable({ userRole }) {
 
   return (
     <div className="space-y-6">
-      {/* Filters */}
-      <div className="flex gap-2">
-        <button
-          onClick={() => setFilter('all')}
-          className={`px-3 py-1 rounded-full text-sm font-medium ${
-            filter === 'all' 
-              ? 'bg-blue-100 text-blue-700' 
-              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-          }`}
-        >
-          Todas
-        </button>
-        <button
-          onClick={() => setFilter('pending')}
-          className={`px-3 py-1 rounded-full text-sm font-medium ${
-            filter === 'pending' 
-              ? 'bg-yellow-100 text-yellow-700' 
-              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-          }`}
-        >
-          Pendientes
-        </button>
-        <button
-          onClick={() => setFilter('approved')}
-          className={`px-3 py-1 rounded-full text-sm font-medium ${
-            filter === 'approved' 
-              ? 'bg-green-100 text-green-700' 
-              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-          }`}
-        >
-          Aprobadas
-        </button>
-        <button
-          onClick={() => setFilter('rejected')}
-          className={`px-3 py-1 rounded-full text-sm font-medium ${
-            filter === 'rejected' 
-              ? 'bg-red-100 text-red-700' 
-              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-          }`}
-        >
-          Rechazadas
-        </button>
+      {/* Header con estadísticas */}
+      <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+            Solicitudes de Edición de Fichajes
+          </h3>
+          <div className="flex items-center gap-4 text-sm">
+            <span className="text-gray-600 dark:text-gray-400">
+              Total: <span className="font-semibold">{requests.length}</span>
+            </span>
+            <span className="text-yellow-600">
+              Pendientes: <span className="font-semibold">{requests.filter(r => r.status === 'pending').length}</span>
+            </span>
+            <span className="text-green-600">
+              Aprobadas: <span className="font-semibold">{requests.filter(r => r.status === 'approved').length}</span>
+            </span>
+            <span className="text-red-600">
+              Rechazadas: <span className="font-semibold">{requests.filter(r => r.status === 'rejected').length}</span>
+            </span>
+          </div>
+        </div>
+
+        {/* Filters mejorados */}
+        <div className="flex gap-2">
+          <button
+            onClick={() => setFilter('all')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              filter === 'all' 
+                ? 'bg-blue-500 text-white' 
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300'
+            }`}
+          >
+            Todas ({requests.length})
+          </button>
+          <button
+            onClick={() => setFilter('pending')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              filter === 'pending' 
+                ? 'bg-yellow-500 text-white' 
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300'
+            }`}
+          >
+            Pendientes ({requests.filter(r => r.status === 'pending').length})
+          </button>
+          <button
+            onClick={() => setFilter('approved')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              filter === 'approved' 
+                ? 'bg-green-500 text-white' 
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300'
+            }`}
+          >
+            Aprobadas ({requests.filter(r => r.status === 'approved').length})
+          </button>
+          <button
+            onClick={() => setFilter('rejected')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              filter === 'rejected' 
+                ? 'bg-red-500 text-white' 
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300'
+            }`}
+          >
+            Rechazadas ({requests.filter(r => r.status === 'rejected').length})
+          </button>
+        </div>
       </div>
 
-      {/* Requests List */}
-      <div className="space-y-4">
+      {/* Requests List mejorada */}
+      <div className="space-y-3">
         {requests.length === 0 ? (
-          <div className="text-center py-8">
+          <div className="text-center py-12 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
             <Clock className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
             <p className="text-muted-foreground">
               No hay solicitudes de edición de fichajes
@@ -309,76 +342,129 @@ export default function TimeEntryEditRequestsTable({ userRole }) {
             const StatusIcon = statusInfo.icon;
 
             return (
-              <div key={request.id} className="card p-6">
+              <div key={request.id} className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6 hover:shadow-md transition-shadow">
+                {/* Header con información principal */}
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                      <Edit className="w-5 h-5 text-blue-600" />
+                    <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${
+                      request.request_type === 'delete_entry' ? 'bg-red-100 dark:bg-red-900/20' :
+                      request.request_type === 'add_entry' ? 'bg-green-100 dark:bg-green-900/20' :
+                      'bg-blue-100 dark:bg-blue-900/20'
+                    }`}>
+                      {request.request_type === 'delete_entry' ? (
+                        <XCircle className="w-6 h-6 text-red-600 dark:text-red-400" />
+                      ) : request.request_type === 'add_entry' ? (
+                        <Clock className="w-6 h-6 text-green-600 dark:text-green-400" />
+                      ) : (
+                        <Edit className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+                      )}
                     </div>
                     <div>
-                      <h3 className="font-semibold text-foreground">
+                      <h3 className="font-semibold text-gray-900 dark:text-white text-lg">
                         {request.user_profiles?.full_name || 'Usuario'}
                       </h3>
-                      <p className="text-sm text-muted-foreground">
+                      <p className="text-sm text-gray-500 dark:text-gray-400">
                         {request.user_email || 'Email no disponible'}
+                      </p>
+                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                        Solicitado el {formatDateTime(request.created_at)}
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${statusInfo.color}`}>
-                      <StatusIcon className="w-3 h-3" />
+                  <div className="flex flex-col items-end gap-2">
+                    <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium ${statusInfo.color}`}>
+                      <StatusIcon className="w-4 h-4" />
                       {statusInfo.text}
+                    </span>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                      ID: {request.id.slice(0, 8)}...
                     </span>
                   </div>
                 </div>
 
-                {/* Request Details */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
-                  {/* Current Entry */}
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <h4 className="font-medium text-gray-900 mb-2">Fichaje Actual</h4>
+                {/* Tipo de solicitud destacado */}
+                <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Tipo de solicitud:</span>
+                    <span className={`px-2 py-1 rounded text-sm font-semibold ${
+                      request.request_type === 'delete_entry' ? 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400' :
+                      request.request_type === 'add_entry' ? 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400' :
+                      'bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400'
+                    }`}>
+                      {getRequestTypeDisplay(request.request_type)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Detalles del fichaje */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+                  {/* Fichaje Actual */}
+                  <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                    <h4 className="font-medium text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+                      <Clock className="w-4 h-4" />
+                      Fichaje Actual
+                    </h4>
                     <div className="space-y-2 text-sm">
-                      <div>
-                        <span className="text-gray-600">Tipo:</span>
-                        <span className="ml-2 font-medium">{request.current_entry_type}</span>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600 dark:text-gray-400">Tipo:</span>
+                        <span className="font-medium text-gray-900 dark:text-white">
+                          {getEntryTypeDisplay(request.current_entry_type)}
+                        </span>
                       </div>
-                      <div>
-                        <span className="text-gray-600">Fecha:</span>
-                        <span className="ml-2 font-medium">{formatDateTime(request.current_entry_time)}</span>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600 dark:text-gray-400">Fecha:</span>
+                        <span className="font-medium text-gray-900 dark:text-white">
+                          {formatDateTime(request.current_entry_time)}
+                        </span>
                       </div>
                       {request.current_notes && (
-                        <div>
-                          <span className="text-gray-600">Notas:</span>
-                          <span className="ml-2 font-medium">{request.current_notes}</span>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600 dark:text-gray-400">Notas:</span>
+                          <span className="font-medium text-gray-900 dark:text-white max-w-xs truncate">
+                            {request.current_notes}
+                          </span>
                         </div>
                       )}
                     </div>
                   </div>
 
-                  {/* Proposed Changes */}
-                  <div className="bg-blue-50 rounded-lg p-4">
-                    <h4 className="font-medium text-blue-900 mb-2">Cambios Solicitados</h4>
+                  {/* Cambios Solicitados */}
+                  <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4">
+                    <h4 className="font-medium text-blue-900 dark:text-blue-100 mb-3 flex items-center gap-2">
+                      <Edit className="w-4 h-4" />
+                      Cambios Solicitados
+                    </h4>
                     <div className="space-y-2 text-sm">
-                      <div>
-                        <span className="text-blue-600">Tipo:</span>
-                        <span className="ml-2 font-medium">{getRequestTypeDisplay(request.request_type)}</span>
-                      </div>
-                      {request.proposed_entry_type && (
-                        <div>
-                          <span className="text-blue-600">Nuevo tipo:</span>
-                          <span className="ml-2 font-medium">{request.proposed_entry_type}</span>
+                      {request.request_type === 'delete_entry' ? (
+                        <div className="text-red-600 dark:text-red-400 font-medium">
+                          🗑️ Eliminar este fichaje completamente
                         </div>
-                      )}
-                      {request.proposed_entry_time && (
-                        <div>
-                          <span className="text-blue-600">Nueva fecha:</span>
-                          <span className="ml-2 font-medium">{formatDateTime(request.proposed_entry_time)}</span>
-                        </div>
+                      ) : (
+                        <>
+                          {request.proposed_entry_type && (
+                            <div className="flex justify-between">
+                              <span className="text-blue-600 dark:text-blue-400">Nuevo tipo:</span>
+                              <span className="font-medium text-blue-900 dark:text-blue-100">
+                                {getEntryTypeDisplay(request.proposed_entry_type)}
+                              </span>
+                            </div>
+                          )}
+                          {request.proposed_entry_time && (
+                            <div className="flex justify-between">
+                              <span className="text-blue-600 dark:text-blue-400">Nueva fecha:</span>
+                              <span className="font-medium text-blue-900 dark:text-blue-100">
+                                {formatDateTime(request.proposed_entry_time)}
+                              </span>
+                            </div>
+                          )}
+                        </>
                       )}
                       {request.proposed_notes && (
-                        <div>
-                          <span className="text-blue-600">Nuevas notas:</span>
-                          <span className="ml-2 font-medium">{request.proposed_notes}</span>
+                        <div className="flex justify-between">
+                          <span className="text-blue-600 dark:text-blue-400">Nuevas notas:</span>
+                          <span className="font-medium text-blue-900 dark:text-blue-100 max-w-xs truncate">
+                            {request.proposed_notes}
+                          </span>
                         </div>
                       )}
                     </div>
