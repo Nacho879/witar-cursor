@@ -952,14 +952,22 @@ export default function FloatingTimeClock() {
 
       {/* Iconos flotantes */}
       <div className="absolute -top-2 -right-2 flex gap-1">
+        {/* Icono de reloj para fichajes */}
         <div className="w-6 h-6 bg-white dark:bg-gray-800 rounded-full shadow-lg flex items-center justify-center border border-gray-200 dark:border-gray-700">
           <Clock className="w-3 h-3 text-gray-600 dark:text-gray-400" />
         </div>
-        <div className="w-6 h-6 bg-white dark:bg-gray-800 rounded-full shadow-lg flex items-center justify-center border border-gray-200 dark:border-gray-700">
-          <svg className="w-3 h-3 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z" />
-          </svg>
-        </div>
+        
+        {/* Icono de solicitudes nuevas */}
+        {notifications.filter(n => n.type === 'request' && !n.read_at).length > 0 && (
+          <div className="w-6 h-6 bg-orange-500 rounded-full shadow-lg flex items-center justify-center border-2 border-white dark:border-gray-800 relative">
+            <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full text-xs text-white flex items-center justify-center font-bold">
+              {notifications.filter(n => n.type === 'request' && !n.read_at).length}
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );

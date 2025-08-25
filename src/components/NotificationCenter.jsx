@@ -155,9 +155,11 @@ export default function NotificationCenter() {
       case 'time_clock':
         return <Clock className="w-4 h-4 text-blue-600" />;
       case 'request':
+        return <FileText className="w-4 h-4 text-orange-600" />;
       case 'request_approved':
+        return <CheckCircle className="w-4 h-4 text-green-600" />;
       case 'request_rejected':
-        return <Calendar className="w-4 h-4 text-green-600" />;
+        return <AlertCircle className="w-4 h-4 text-red-600" />;
       case 'time_edit_request':
         return <Edit className="w-4 h-4 text-orange-600" />;
       case 'employee':
@@ -178,27 +180,27 @@ export default function NotificationCenter() {
   function getNotificationColor(type) {
     switch (type) {
       case 'time_clock':
-        return 'border-l-blue-500 bg-blue-50';
+        return 'border-l-blue-500 bg-blue-50 dark:bg-blue-900/10';
       case 'request':
-        return 'border-l-purple-500 bg-purple-50';
+        return 'border-l-orange-500 bg-orange-50 dark:bg-orange-900/10';
       case 'request_approved':
-        return 'border-l-green-500 bg-green-50';
+        return 'border-l-green-500 bg-green-50 dark:bg-green-900/10';
       case 'request_rejected':
-        return 'border-l-red-500 bg-red-50';
+        return 'border-l-red-500 bg-red-50 dark:bg-red-900/10';
       case 'time_edit_request':
-        return 'border-l-orange-500 bg-orange-50';
+        return 'border-l-orange-500 bg-orange-50 dark:bg-orange-900/10';
       case 'employee':
-        return 'border-l-green-500 bg-green-50';
+        return 'border-l-purple-500 bg-purple-50 dark:bg-purple-900/10';
       case 'document':
-        return 'border-l-orange-500 bg-orange-50';
+        return 'border-l-orange-500 bg-orange-50 dark:bg-orange-900/10';
       case 'invitation':
-        return 'border-l-indigo-500 bg-indigo-50';
+        return 'border-l-indigo-500 bg-indigo-50 dark:bg-indigo-900/10';
       case 'company':
-        return 'border-l-gray-500 bg-gray-50';
+        return 'border-l-gray-500 bg-gray-50 dark:bg-gray-900/10';
       case 'warning':
-        return 'border-l-red-500 bg-red-50';
+        return 'border-l-red-500 bg-red-50 dark:bg-red-900/10';
       default:
-        return 'border-l-gray-500 bg-gray-50';
+        return 'border-l-gray-500 bg-gray-50 dark:bg-gray-900/10';
     }
   }
 
@@ -234,7 +236,17 @@ export default function NotificationCenter() {
         <div className="absolute right-0 top-full mt-2 w-80 bg-background border border-border rounded-lg shadow-lg z-50">
           {/* Header */}
           <div className="flex items-center justify-between p-4 border-b border-border">
-            <h3 className="font-semibold text-foreground">Notificaciones</h3>
+            <div className="flex items-center gap-2">
+              <h3 className="font-semibold text-foreground">Notificaciones</h3>
+              {notifications.filter(n => n.type === 'request' && !n.read_at).length > 0 && (
+                <div className="flex items-center gap-1 px-2 py-1 bg-orange-100 dark:bg-orange-900/20 rounded-full">
+                  <FileText className="w-3 h-3 text-orange-600 dark:text-orange-400" />
+                  <span className="text-xs font-medium text-orange-600 dark:text-orange-400">
+                    {notifications.filter(n => n.type === 'request' && !n.read_at).length} nueva{notifications.filter(n => n.type === 'request' && !n.read_at).length > 1 ? 's' : ''}
+                  </span>
+                </div>
+              )}
+            </div>
             <div className="flex items-center gap-2">
               {unreadCount > 0 && (
                 <button
