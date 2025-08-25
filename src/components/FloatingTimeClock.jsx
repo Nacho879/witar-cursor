@@ -669,7 +669,7 @@ export default function FloatingTimeClock() {
                 <span className="text-xs font-semibold text-gray-700 dark:text-gray-300 leading-tight">
                   {userProfile?.full_name || 'Usuario'}
                 </span>
-                <span className="text-xs text-gray-500 dark:text-gray-400 leading-tight">
+                <span className="text-xs text-gray-500 dark:text-gray-400 leading-tight mt-0.5">
                   {userRole === 'employee' ? 'Empleado' : userRole === 'manager' ? 'Manager' : userRole === 'admin' ? 'Administrador' : 'Usuario'}
                 </span>
               </div>
@@ -698,8 +698,8 @@ export default function FloatingTimeClock() {
                       <p className="font-semibold text-gray-900 dark:text-white text-sm">
                         {userProfile?.full_name || 'Usuario'}
                       </p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">
-                        {userRole === 'employee' ? 'Empleado' : 'Manager'}
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                        {userRole === 'employee' ? 'Empleado' : userRole === 'manager' ? 'Manager' : userRole === 'admin' ? 'Administrador' : 'Usuario'}
                       </p>
                     </div>
                   </div>
