@@ -255,8 +255,7 @@ export default function FloatingTimeClock() {
           user_id: user.id,
           company_id: userRole?.company_id,
           entry_type: 'clock_in',
-          entry_time: new Date().toISOString(),
-          id: `offline_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+          entry_time: new Date().toISOString()
         };
 
         try {
@@ -612,12 +611,16 @@ export default function FloatingTimeClock() {
     try {
       const offlineEntries = JSON.parse(localStorage.getItem('witar_offline_entries') || '[]');
       offlineEntries.push({
-        ...timeEntry,
+        user_id: timeEntry.user_id,
+        company_id: timeEntry.company_id,
+        entry_type: timeEntry.entry_type,
+        entry_time: timeEntry.entry_time,
+        notes: timeEntry.notes || null,
         offline: true,
         created_at: new Date().toISOString()
       });
       localStorage.setItem('witar_offline_entries', JSON.stringify(offlineEntries));
-      console.log('💾 Fichaje guardado offline:', timeEntry.id);
+      console.log('💾 Fichaje guardado offline:', timeEntry.entry_type);
     } catch (error) {
       console.error('Error guardando offline:', error);
     }
@@ -640,11 +643,11 @@ export default function FloatingTimeClock() {
               company_id: entry.company_id,
               entry_type: entry.entry_type,
               entry_time: entry.entry_time,
-              notes: entry.notes
+              notes: entry.notes || null
             });
 
           if (!error) {
-            console.log('✅ Fichaje sincronizado:', entry.id);
+            console.log('✅ Fichaje sincronizado:', entry.entry_type);
           } else {
             console.error('❌ Error sincronizando fichaje:', error);
           }
