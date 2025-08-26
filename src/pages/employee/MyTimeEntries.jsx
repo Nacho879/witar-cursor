@@ -811,24 +811,31 @@ export default function MyTimeEntries() {
 
       {/* Filters */}
       <div className="card p-6">
-        <div className="flex flex-col lg:flex-row gap-4">
+        <div className="mb-4">
+          <h3 className="text-lg font-semibold text-foreground mb-2">Filtros de Búsqueda</h3>
+          <p className="text-sm text-muted-foreground">
+            Selecciona el período de tiempo que deseas consultar
+          </p>
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
           {/* Tipo de filtro */}
-          <div className="flex-1">
-            <label className="block text-sm font-medium mb-2">Tipo de Filtro</label>
+          <div>
+            <label className="block text-sm font-medium mb-2">Período</label>
             <select
               value={filterType}
               onChange={(e) => handleFilterTypeChange(e.target.value)}
-              className="input"
+              className="input w-full"
             >
-              <option value="day">Día</option>
-              <option value="week">Semana</option>
-              <option value="month">Mes</option>
-              <option value="custom">Personalizado</option>
+              <option value="day">Día específico</option>
+              <option value="week">Esta semana</option>
+              <option value="month">Este mes</option>
+              <option value="custom">Rango personalizado</option>
             </select>
           </div>
 
           {/* Fecha base */}
-          <div className="flex-1">
+          <div>
             <label className="block text-sm font-medium mb-2">
               {filterType === 'custom' ? 'Fecha de inicio' : 'Fecha'}
             </label>
@@ -842,56 +849,86 @@ export default function MyTimeEntries() {
                   setSelectedDate(e.target.value);
                 }
               }}
-              className="input"
+              className="input w-full"
             />
           </div>
 
           {/* Fecha final para personalizado */}
           {filterType === 'custom' && (
-            <div className="flex-1">
+            <div>
               <label className="block text-sm font-medium mb-2">Fecha final</label>
               <input
                 type="date"
                 value={customEndDate}
                 onChange={(e) => setCustomEndDate(e.target.value)}
-                className="input"
+                className="input w-full"
+                min={customStartDate}
               />
             </div>
           )}
 
-          {/* Buscar */}
-          <div className="flex-1">
-            <label className="block text-sm font-medium mb-2">Buscar</label>
+          {/* Buscar por tipo */}
+          <div>
+            <label className="block text-sm font-medium mb-2">Buscar por tipo</label>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <input
                 type="text"
-                placeholder="Buscar por tipo..."
+                placeholder="Entrada, Salida, Pausa..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="input pl-10"
+                className="input w-full pl-10"
               />
             </div>
           </div>
+        </div>
 
-          {/* Botones */}
-          <div className="flex items-end gap-2">
+        {/* Botones de acción */}
+        <div className="flex flex-col sm:flex-row gap-3 justify-between items-start sm:items-center">
+          <div className="flex gap-2">
             <button
               onClick={loadTimeEntries}
-              className="btn btn-primary"
+              className="btn btn-primary flex items-center gap-2"
             >
-              Actualizar
+              <Search className="w-4 h-4" />
+              Buscar Fichajes
             </button>
             <button
-              onClick={exportToPDF}
-              disabled={exportLoading || timeEntries.length === 0}
-              className="btn btn-secondary flex items-center gap-2"
+              onClick={() => {
+                setSearchTerm('');
+                setFilterType('day');
+                setSelectedDate(new Date().toISOString().split('T')[0]);
+                setCustomStartDate('');
+                setCustomEndDate('');
+              }}
+              className="btn btn-outline"
             >
-              <Download className="w-4 h-4" />
-              {exportLoading ? 'Generando...' : 'Exportar PDF'}
+              Limpiar Filtros
             </button>
           </div>
+          
+          <button
+            onClick={exportToPDF}
+            disabled={exportLoading || timeEntries.length === 0}
+            className="btn btn-secondary flex items-center gap-2"
+          >
+            <Download className="w-4 h-4" />
+            {exportLoading ? 'Generando...' : 'Exportar PDF'}
+          </button>
         </div>
+
+        {/* Información del filtro activo */}
+        {filterType === 'custom' && customStartDate && customEndDate && (
+          <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+            <div className="flex items-center gap-2 text-sm text-blue-700 dark:text-blue-300">
+              <Calendar className="w-4 h-4" />
+              <span>
+                Mostrando fichajes del <strong>{new Date(customStartDate).toLocaleDateString('es-ES')}</strong> 
+                al <strong>{new Date(customEndDate).toLocaleDateString('es-ES')}</strong>
+              </span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Time Entries Calendar View */}
