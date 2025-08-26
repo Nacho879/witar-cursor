@@ -750,28 +750,44 @@ const LandingPage = () => {
             >
               {[
                 {
-                  question: "¿Cómo funciona la prueba gratuita?",
-                  answer: "Tienes 14 días para probar todas las funciones de Witar sin restricciones. Puedes cancelar en cualquier momento."
+                  question: "¿Cómo funciona el sistema de fichajes?",
+                  answer: "El sistema es muy sencillo: los empleados pueden fichar entrada/salida y pausas desde cualquier dispositivo. Los managers pueden ver en tiempo real el estado de su equipo y aprobar solicitudes de modificación."
                 },
                 {
-                  question: "¿Qué incluye el precio por empleado?",
-                  answer: "El precio incluye todas las funciones: control horario, gestión de vacaciones, documentos, reportes, soporte y actualizaciones. Sin costes adicionales."
+                  question: "¿Qué pasa si un empleado olvida fichar?",
+                  answer: "Los empleados pueden solicitar la adición de fichajes faltantes. Los managers revisan y aprueban estas solicitudes, manteniendo un control total sobre las modificaciones."
                 },
                 {
-                  question: "¿Es seguro almacenar documentos en Witar?",
-                  answer: "Absolutamente. Utilizamos encriptación de grado militar, cumplimos con GDPR y realizamos backups automáticos. Tus datos están más seguros que nunca."
+                  question: "¿Puedo modificar un fichaje ya registrado?",
+                  answer: "Sí, pero siempre a través del sistema de solicitudes. Los empleados solicitan cambios, los managers los revisan y aprueban/rechazan. Todo queda registrado para auditoría."
                 },
                 {
-                  question: "¿Puedo cambiar de plan en cualquier momento?",
-                  answer: "Sí, puedes cambiar de plan cuando quieras. Los cambios se aplican inmediatamente y solo pagas la diferencia prorrateada."
+                  question: "¿El sistema funciona sin conexión a internet?",
+                  answer: "Sí, puedes fichar sin conexión. Los datos se sincronizan automáticamente cuando recuperas la conexión. Nunca perderás información."
                 },
                 {
-                  question: "¿Ofrecen soporte técnico?",
-                  answer: "Sí, ofrecemos soporte por email en todos los planes y soporte prioritario 24/7 en el plan Profesional y Enterprise."
+                  question: "¿Cómo sé si un empleado está trabajando?",
+                  answer: "El sistema muestra en tiempo real el estado de cada empleado: trabajando, en pausa, o fuera de servicio. Los managers tienen una vista completa de su equipo."
                 },
                 {
-                  question: "¿Necesito instalar algún software?",
-                  answer: "No, Witar funciona 100% en la nube. Solo necesitas un navegador web o nuestra app móvil. Acceso desde cualquier dispositivo."
+                  question: "¿Qué tipos de reportes puedo generar?",
+                  answer: "Horas trabajadas, pausas, tardanzas, ausencias, productividad por empleado, comparativas entre períodos, y exportación a Excel/PDF para contabilidad."
+                },
+                {
+                  question: "¿Es legal para cumplir con la normativa española?",
+                  answer: "Sí, Witar cumple con el Real Decreto-Ley 8/2019 sobre control horario. Registra entrada, salida y pausas, mantiene historial de 4 años, y genera reportes para inspección de trabajo."
+                },
+                {
+                  question: "¿Puedo configurar horarios flexibles?",
+                  answer: "Sí, puedes configurar horarios personalizados por empleado, tolerancias de llegada/salida, y diferentes tipos de jornada. El sistema se adapta a tu empresa."
+                },
+                {
+                  question: "¿Qué pasa con la privacidad de los empleados?",
+                  answer: "Los empleados solo ven sus propios fichajes. Los managers ven solo su equipo. Los datos están encriptados y cumplimos con GDPR. Cada usuario tiene acceso controlado."
+                },
+                {
+                  question: "¿Puedo integrar Witar con mi nómina?",
+                  answer: "Sí, puedes exportar las horas trabajadas en formatos compatibles con los principales sistemas de nómina. También ofrecemos integraciones directas con software contable."
                 }
               ].map((faq, index) => (
                 <motion.div
