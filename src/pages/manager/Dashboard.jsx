@@ -96,9 +96,9 @@ export default function ManagerDashboard() {
         .select('*')
         .eq('user_id', userId)
         .eq('company_id', companyId)
-        .gte('created_at', startOfDay.toISOString())
-        .lte('created_at', endOfDay.toISOString())
-        .order('created_at', { ascending: true });
+        .gte('entry_time', startOfDay.toISOString())
+        .lte('entry_time', endOfDay.toISOString())
+        .order('entry_time', { ascending: true });
 
       if (!timeEntries || timeEntries.length === 0) {
         return {
@@ -119,10 +119,10 @@ export default function ManagerDashboard() {
       // Buscar la última actividad
       const lastEntry = timeEntries[timeEntries.length - 1];
       const now = new Date();
-      const lastActivityTime = new Date(lastEntry.created_at);
+      const lastActivityTime = new Date(lastEntry.entry_time);
 
       // Determinar estado basado en la última entrada
-      if (lastEntry.entry_type === 'clock_in') {
+      if (lastEntry.entry_type === 'clock_in' || lastEntry.entry_type === 'resume') {
         status = 'working';
         currentSession = {
           start: lastActivityTime,
@@ -143,9 +143,9 @@ export default function ManagerDashboard() {
       let breakStart = null;
 
       for (const entry of timeEntries) {
-        const entryTime = new Date(entry.created_at);
+        const entryTime = new Date(entry.entry_time);
 
-        if (entry.entry_type === 'clock_in') {
+        if (entry.entry_type === 'clock_in' || entry.entry_type === 'resume') {
           workStart = entryTime;
         } else if (entry.entry_type === 'clock_out' && workStart) {
           totalWorkTime += (entryTime - workStart) / (1000 * 60 * 60); // Convertir a horas
