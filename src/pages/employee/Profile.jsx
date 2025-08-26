@@ -18,9 +18,15 @@ import {
   CheckCircle,
   AlertCircle,
   Upload,
-  Lock
+  Lock,
+  FileDown,
+  FileSpreadsheet
 } from 'lucide-react';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
 
 export default function Profile() {
   const [userProfile, setUserProfile] = useState(null);
@@ -33,6 +39,8 @@ export default function Profile() {
   const [message, setMessage] = useState('');
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
+  const [downloadLoading, setDownloadLoading] = useState(false);
+  const [showDownloadModal, setShowDownloadModal] = useState(false);
   const [stats, setStats] = useState({
     daysWorked: 0,
     totalHours: 0,
@@ -331,11 +339,210 @@ export default function Profile() {
         window.location.href = '/employee/my-documents';
         break;
       case 'download':
-        // Implementar descarga de datos
-        alert('Función de descarga próximamente');
+        setShowDownloadModal(true);
         break;
       default:
         break;
+    }
+  }
+
+  async function downloadPersonalData(format) {
+    setDownloadLoading(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setMessage('Error: Usuario no autenticado');
+        return;
+      }
+
+      // Cargar todos los datos del usuario
+      const [profileData, timeEntriesData, requestsData, documentsData] = await Promise.all([
+        supabase
+          .from('user_profiles')
+          .select('*')
+          .eq('user_id', user.id)
+          .single(),
+        supabase
+          .from('time_entries')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('entry_time', { ascending: false })
+          .limit(100),
+        supabase
+          .from('requests')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+          .limit(50),
+        supabase
+          .from('documents')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+          .limit(50)
+      ]);
+
+      if (format === 'pdf') {
+        await generatePDFReport(user, profileData.data, timeEntriesData.data, requestsData.data, documentsData.data);
+      } else if (format === 'excel') {
+        await generateExcelReport(user, profileData.data, timeEntriesData.data, requestsData.data, documentsData.data);
+      }
+
+      setMessage('Datos descargados correctamente');
+      setShowDownloadModal(false);
+    } catch (error) {
+      console.error('Error descargando datos:', error);
+      setMessage('Error al descargar los datos');
+    } finally {
+      setDownloadLoading(false);
+    }
+  }
+
+  async function generatePDFReport(user, profile, timeEntries, requests, documents) {
+    const doc = new jsPDF();
+    
+    // Título
+    doc.setFontSize(20);
+    doc.text('Reporte de Datos Personales', 20, 20);
+    doc.setFontSize(12);
+    doc.text(`Generado el: ${format(new Date(), 'dd/MM/yyyy HH:mm', { locale: es })}`, 20, 30);
+    
+    let yPosition = 50;
+
+    // Información Personal
+    doc.setFontSize(16);
+    doc.text('Información Personal', 20, yPosition);
+    yPosition += 10;
+    
+    doc.setFontSize(10);
+    doc.text(`Nombre: ${profile?.full_name || 'No especificado'}`, 20, yPosition);
+    yPosition += 7;
+    doc.text(`Email: ${user.email}`, 20, yPosition);
+    yPosition += 7;
+    doc.text(`Teléfono: ${profile?.phone || 'No especificado'}`, 20, yPosition);
+    yPosition += 7;
+    doc.text(`Dirección: ${profile?.address || 'No especificado'}`, 20, yPosition);
+    yPosition += 15;
+
+    // Estadísticas
+    doc.setFontSize(16);
+    doc.text('Estadísticas', 20, yPosition);
+    yPosition += 10;
+    
+    doc.setFontSize(10);
+    doc.text(`Días trabajados: ${stats.daysWorked}`, 20, yPosition);
+    yPosition += 7;
+    doc.text(`Horas totales: ${stats.totalHours}h`, 20, yPosition);
+    yPosition += 7;
+    doc.text(`Solicitudes: ${stats.requestsCount}`, 20, yPosition);
+    yPosition += 7;
+    doc.text(`Documentos: ${stats.documentsCount}`, 20, yPosition);
+    yPosition += 15;
+
+    // Últimos fichajes
+    if (timeEntries && timeEntries.length > 0) {
+      doc.setFontSize(16);
+      doc.text('Últimos Fichajes', 20, yPosition);
+      yPosition += 10;
+
+      const tableData = timeEntries.slice(0, 10).map(entry => [
+        format(new Date(entry.entry_time), 'dd/MM/yyyy', { locale: es }),
+        format(new Date(entry.entry_time), 'HH:mm', { locale: es }),
+        getEntryTypeDisplay(entry.entry_type).text,
+        entry.notes || '-'
+      ]);
+
+      autoTable(doc, {
+        startY: yPosition,
+        head: [['Fecha', 'Hora', 'Tipo', 'Notas']],
+        body: tableData,
+        theme: 'grid',
+        headStyles: { fillColor: [59, 130, 246] }
+      });
+    }
+
+    // Guardar PDF
+    doc.save(`datos_personales_${user.email}_${format(new Date(), 'yyyy-MM-dd')}.pdf`);
+  }
+
+  async function generateExcelReport(user, profile, timeEntries, requests, documents) {
+    // Crear contenido CSV (simulado Excel)
+    let csvContent = 'data:text/csv;charset=utf-8,';
+    
+    // Información Personal
+    csvContent += 'INFORMACIÓN PERSONAL\n';
+    csvContent += 'Campo,Valor\n';
+    csvContent += `Nombre,${profile?.full_name || 'No especificado'}\n`;
+    csvContent += `Email,${user.email}\n`;
+    csvContent += `Teléfono,${profile?.phone || 'No especificado'}\n`;
+    csvContent += `Dirección,${profile?.address || 'No especificado'}\n`;
+    csvContent += `Fecha de registro,${profile?.created_at ? format(new Date(profile.created_at), 'dd/MM/yyyy', { locale: es }) : 'No especificado'}\n`;
+    csvContent += '\n';
+
+    // Estadísticas
+    csvContent += 'ESTADÍSTICAS\n';
+    csvContent += 'Métrica,Valor\n';
+    csvContent += `Días trabajados,${stats.daysWorked}\n`;
+    csvContent += `Horas totales,${stats.totalHours}\n`;
+    csvContent += `Solicitudes,${stats.requestsCount}\n`;
+    csvContent += `Documentos,${stats.documentsCount}\n`;
+    csvContent += '\n';
+
+    // Fichajes
+    if (timeEntries && timeEntries.length > 0) {
+      csvContent += 'FICHAJES\n';
+      csvContent += 'Fecha,Hora,Tipo,Notas\n';
+      timeEntries.forEach(entry => {
+        csvContent += `${format(new Date(entry.entry_time), 'dd/MM/yyyy', { locale: es })},`;
+        csvContent += `${format(new Date(entry.entry_time), 'HH:mm', { locale: es })},`;
+        csvContent += `${getEntryTypeDisplay(entry.entry_type).text},`;
+        csvContent += `${entry.notes || ''}\n`;
+      });
+      csvContent += '\n';
+    }
+
+    // Solicitudes
+    if (requests && requests.length > 0) {
+      csvContent += 'SOLICITUDES\n';
+      csvContent += 'Fecha,Tipo,Estado,Descripción\n';
+      requests.forEach(request => {
+        csvContent += `${format(new Date(request.created_at), 'dd/MM/yyyy', { locale: es })},`;
+        csvContent += `${request.type || 'N/A'},`;
+        csvContent += `${request.status || 'N/A'},`;
+        csvContent += `${request.description || ''}\n`;
+      });
+      csvContent += '\n';
+    }
+
+    // Documentos
+    if (documents && documents.length > 0) {
+      csvContent += 'DOCUMENTOS\n';
+      csvContent += 'Fecha,Nombre,Tipo,Tamaño\n';
+      documents.forEach(doc => {
+        csvContent += `${format(new Date(doc.created_at), 'dd/MM/yyyy', { locale: es })},`;
+        csvContent += `${doc.name || 'N/A'},`;
+        csvContent += `${doc.type || 'N/A'},`;
+        csvContent += `${doc.size || 'N/A'}\n`;
+      });
+    }
+
+    // Descargar archivo
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `datos_personales_${user.email}_${format(new Date(), 'yyyy-MM-dd')}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+
+  function getEntryTypeDisplay(type) {
+    switch (type) {
+      case 'clock_in': return { text: 'Entrada', icon: '🟢' };
+      case 'clock_out': return { text: 'Salida', icon: '🔴' };
+      case 'break_start': return { text: 'Inicio Pausa', icon: '🟡' };
+      case 'break_end': return { text: 'Fin Pausa', icon: '🔵' };
+      default: return { text: type, icon: '⚪' };
     }
   }
 
@@ -730,6 +937,85 @@ export default function Profile() {
           </div>
         </div>
       </div>
+
+      {/* Download Data Modal */}
+      {showDownloadModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full">
+            {/* Header */}
+            <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/20 rounded-lg flex items-center justify-center">
+                  <Download className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+                    Descargar Datos Personales
+                  </h2>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    Selecciona el formato de descarga
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowDownloadModal(false)}
+                disabled={downloadLoading}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 disabled:opacity-50"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 space-y-4">
+              <div className="text-sm text-gray-600 dark:text-gray-400">
+                <p className="mb-3">Se incluirán los siguientes datos:</p>
+                <ul className="space-y-1 ml-4">
+                  <li>• Información personal</li>
+                  <li>• Estadísticas de trabajo</li>
+                  <li>• Últimos 100 fichajes</li>
+                  <li>• Últimas 50 solicitudes</li>
+                  <li>• Últimos 50 documentos</li>
+                </ul>
+              </div>
+
+              {/* Download Options */}
+              <div className="space-y-3">
+                <button
+                  onClick={() => downloadPersonalData('pdf')}
+                  disabled={downloadLoading}
+                  className="w-full flex items-center justify-center gap-3 p-4 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+                >
+                  <FileDown className="w-5 h-5 text-red-600" />
+                  <div className="text-left">
+                    <div className="font-medium text-gray-900 dark:text-white">Descargar PDF</div>
+                    <div className="text-sm text-gray-500 dark:text-gray-400">Reporte formateado</div>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => downloadPersonalData('excel')}
+                  disabled={downloadLoading}
+                  className="w-full flex items-center justify-center gap-3 p-4 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+                >
+                  <FileSpreadsheet className="w-5 h-5 text-green-600" />
+                  <div className="text-left">
+                    <div className="font-medium text-gray-900 dark:text-white">Descargar Excel (CSV)</div>
+                    <div className="text-sm text-gray-500 dark:text-gray-400">Datos en formato tabla</div>
+                  </div>
+                </button>
+              </div>
+
+              {downloadLoading && (
+                <div className="flex items-center justify-center gap-2 text-blue-600 dark:text-blue-400">
+                  <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                  <span className="text-sm">Generando archivo...</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Change Password Modal */}
       <ChangePasswordModal 
