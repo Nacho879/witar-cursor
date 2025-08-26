@@ -9,6 +9,7 @@ import {
   Download
 } from 'lucide-react';
 import FloatingTimeClock from '@/components/FloatingTimeClock';
+import WitarLogo from '@/components/WitarLogo';
 import * as React from 'react';
 
 export default function ManagerLayout({ children }) {
@@ -34,7 +35,7 @@ export default function ManagerLayout({ children }) {
       `}>
         {/* Header with close button for mobile */}
         <div className='flex items-center justify-between p-4 border-b border-border'>
-          <div className='font-semibold'>Witar — Manager</div>
+          <WitarLogo size="small" />
           <button
             onClick={() => setSidebarOpen(false)}
             className='lg:hidden p-1 rounded hover:bg-secondary'
@@ -147,7 +148,7 @@ export default function ManagerLayout({ children }) {
             >
               <Menu className='w-5 h-5' />
             </button>
-            <div className='font-semibold'>Witar — Manager</div>
+            <WitarLogo size="small" />
           </div>
         )}
 

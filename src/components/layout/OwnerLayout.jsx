@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import InvitationBadge from '@/components/InvitationBadge';
 import FloatingTimeClock from '@/components/FloatingTimeClock';
+import WitarLogo from '@/components/WitarLogo';
 import { InvitationProvider } from '@/contexts/InvitationContext';
 import { supabase } from '@/lib/supabaseClient';
 import { useNavigate } from 'react-router-dom';
@@ -61,7 +62,7 @@ export default function OwnerLayout({ children }){
         `}>
           {/* Header with close button for mobile */}
           <div className='flex items-center justify-between p-4 border-b border-border'>
-            <div className='font-semibold'>Witar — Owner</div>
+            <WitarLogo size="small" />
             <button
               onClick={() => setSidebarOpen(false)}
               className='lg:hidden p-1 rounded hover:bg-secondary'
@@ -186,7 +187,7 @@ export default function OwnerLayout({ children }){
               >
                 <Menu className='w-5 h-5' />
               </button>
-              <div className='font-semibold'>Witar — Owner</div>
+              <WitarLogo size="small" />
             </div>
           )}
 
