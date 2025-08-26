@@ -251,16 +251,37 @@ export default function FloatingTimeClock() {
           .eq('is_active', true)
           .single();
 
-        const { error } = await supabase
-          .from('time_entries')
-          .insert({
-            user_id: user.id,
-            company_id: userRole?.company_id,
-            entry_type: 'clock_in',
-            entry_time: new Date().toISOString()
-          });
+        const timeEntry = {
+          user_id: user.id,
+          company_id: userRole?.company_id,
+          entry_type: 'clock_in',
+          entry_time: new Date().toISOString(),
+          id: `offline_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+        };
 
-        if (!error) {
+        try {
+          // Intentar guardar en la base de datos
+          const { error } = await supabase
+            .from('time_entries')
+            .insert(timeEntry);
+
+          if (!error) {
+            setIsActive(true);
+            setStartTime(Date.now());
+            setElapsedTime(0);
+            setIsPaused(false);
+            setTotalPausedTime(0);
+            setPauseStartTime(null);
+            
+            showToast('✅ Fichaje iniciado correctamente', 'success');
+          } else {
+            throw error;
+          }
+        } catch (dbError) {
+          // Si falla la conexión, guardar offline
+          console.log('🔌 Sin conexión, guardando offline...');
+          saveOfflineTimeEntry(timeEntry);
+          
           setIsActive(true);
           setStartTime(Date.now());
           setElapsedTime(0);
@@ -268,10 +289,7 @@ export default function FloatingTimeClock() {
           setTotalPausedTime(0);
           setPauseStartTime(null);
           
-          // Mostrar notificación de éxito
-          showToast('✅ Fichaje iniciado correctamente', 'success');
-        } else {
-          showToast('❌ Error al iniciar fichaje', 'error');
+          showToast('✅ Fichaje guardado offline', 'info');
         }
       }
     } catch (error) {
@@ -577,7 +595,8 @@ export default function FloatingTimeClock() {
     toast.className = `fixed top-20 right-4 z-50 px-4 py-2 rounded-lg shadow-lg text-white text-sm ${
       type === 'success' ? 'bg-green-500' :
       type === 'error' ? 'bg-red-500' :
-      'bg-blue-500'
+      type === 'info' ? 'bg-blue-500' :
+      'bg-gray-500'
     }`;
     toast.textContent = message;
     
@@ -587,6 +606,78 @@ export default function FloatingTimeClock() {
       document.body.removeChild(toast);
     }, 3000);
   }
+
+  // Funciones para manejo offline
+  function saveOfflineTimeEntry(timeEntry) {
+    try {
+      const offlineEntries = JSON.parse(localStorage.getItem('witar_offline_entries') || '[]');
+      offlineEntries.push({
+        ...timeEntry,
+        offline: true,
+        created_at: new Date().toISOString()
+      });
+      localStorage.setItem('witar_offline_entries', JSON.stringify(offlineEntries));
+      console.log('💾 Fichaje guardado offline:', timeEntry.id);
+    } catch (error) {
+      console.error('Error guardando offline:', error);
+    }
+  }
+
+  async function syncOfflineEntries() {
+    try {
+      const offlineEntries = JSON.parse(localStorage.getItem('witar_offline_entries') || '[]');
+      
+      if (offlineEntries.length === 0) return;
+
+      console.log('🔄 Sincronizando fichajes offline...');
+      
+      for (const entry of offlineEntries) {
+        try {
+          const { error } = await supabase
+            .from('time_entries')
+            .insert({
+              user_id: entry.user_id,
+              company_id: entry.company_id,
+              entry_type: entry.entry_type,
+              entry_time: entry.entry_time,
+              notes: entry.notes
+            });
+
+          if (!error) {
+            console.log('✅ Fichaje sincronizado:', entry.id);
+          } else {
+            console.error('❌ Error sincronizando fichaje:', error);
+          }
+        } catch (error) {
+          console.error('❌ Error sincronizando fichaje:', error);
+        }
+      }
+
+      // Limpiar entradas sincronizadas
+      localStorage.removeItem('witar_offline_entries');
+      showToast('✅ Fichajes offline sincronizados', 'success');
+      
+    } catch (error) {
+      console.error('Error sincronizando offline:', error);
+    }
+  }
+
+  // Verificar conexión y sincronizar al cargar
+  useEffect(() => {
+    const checkConnectionAndSync = async () => {
+      try {
+        // Intentar una operación simple para verificar conexión
+        await supabase.from('time_entries').select('id').limit(1);
+        
+        // Si llega aquí, hay conexión
+        await syncOfflineEntries();
+      } catch (error) {
+        console.log('🔌 Sin conexión a internet');
+      }
+    };
+
+    checkConnectionAndSync();
+  }, []);
 
   function getNotificationIcon(type) {
     switch (type) {
