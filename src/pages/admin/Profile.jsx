@@ -24,8 +24,10 @@ import {
   X,
   AlertCircle,
   Settings,
-  Shield
+  Shield,
+  Lock
 } from 'lucide-react';
+import ChangePasswordModal from '@/components/ChangePasswordModal';
 
 export default function AdminProfile() {
   const [profile, setProfile] = React.useState(null);
@@ -46,6 +48,7 @@ export default function AdminProfile() {
     phone: '',
     position: ''
   });
+  const [showChangePasswordModal, setShowChangePasswordModal] = React.useState(false);
 
   React.useEffect(() => {
     loadProfileData();
@@ -400,7 +403,7 @@ export default function AdminProfile() {
       {/* Quick Actions */}
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
         <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">Acciones Rápidas</h2>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-4">
           <button
             onClick={() => handleQuickAction('employees')}
             className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors text-center"
@@ -447,6 +450,14 @@ export default function AdminProfile() {
           >
             <Settings className="w-8 h-8 text-gray-600 mx-auto mb-2" />
             <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Configuración</span>
+          </button>
+          
+          <button
+            onClick={() => setShowChangePasswordModal(true)}
+            className="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors text-center"
+          >
+            <Lock className="w-8 h-8 text-red-600 mx-auto mb-2" />
+            <span className="text-sm font-medium text-red-700 dark:text-red-300">Cambiar Contraseña</span>
           </button>
         </div>
       </div>
@@ -754,6 +765,12 @@ export default function AdminProfile() {
           </div>
         </div>
       </div>
+
+      {/* Change Password Modal */}
+      <ChangePasswordModal 
+        isOpen={showChangePasswordModal}
+        onClose={() => setShowChangePasswordModal(false)}
+      />
     </div>
   );
 } 

@@ -14,15 +14,18 @@ import {
   Globe,
   Mail,
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  Lock
 } from 'lucide-react';
 import CompanySettingsModal from '@/components/CompanySettingsModal';
+import ChangePasswordModal from '@/components/ChangePasswordModal';
 
 export default function Settings() {
   const [company, setCompany] = React.useState(null);
   const [settings, setSettings] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
   const [showSettingsModal, setShowSettingsModal] = React.useState(false);
+  const [showChangePasswordModal, setShowChangePasswordModal] = React.useState(false);
 
   React.useEffect(() => {
     loadCompanyData();
@@ -132,13 +135,22 @@ export default function Settings() {
             Gestiona la configuración de tu empresa
           </p>
         </div>
-        <button
-          onClick={() => setShowSettingsModal(true)}
-          className="btn btn-primary flex items-center gap-2"
-        >
-          <Edit className="w-4 h-4" />
-          Editar Configuración
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={() => setShowChangePasswordModal(true)}
+            className="btn btn-secondary flex items-center gap-2"
+          >
+            <Lock className="w-4 h-4" />
+            Cambiar Contraseña
+          </button>
+          <button
+            onClick={() => setShowSettingsModal(true)}
+            className="btn btn-primary flex items-center gap-2"
+          >
+            <Edit className="w-4 h-4" />
+            Editar Configuración
+          </button>
+        </div>
       </div>
 
       {/* Company Info */}
@@ -445,6 +457,12 @@ export default function Settings() {
         onClose={() => setShowSettingsModal(false)}
         company={company}
         onSettingsSaved={handleSettingsSaved}
+      />
+
+      {/* Change Password Modal */}
+      <ChangePasswordModal 
+        isOpen={showChangePasswordModal}
+        onClose={() => setShowChangePasswordModal(false)}
       />
     </div>
   );

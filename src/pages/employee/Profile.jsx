@@ -17,8 +17,10 @@ import {
   Clock,
   CheckCircle,
   AlertCircle,
-  Upload
+  Upload,
+  Lock
 } from 'lucide-react';
+import ChangePasswordModal from '@/components/ChangePasswordModal';
 
 export default function Profile() {
   const [userProfile, setUserProfile] = useState(null);
@@ -30,6 +32,7 @@ export default function Profile() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
   const [stats, setStats] = useState({
     daysWorked: 0,
     totalHours: 0,
@@ -684,6 +687,14 @@ export default function Profile() {
                 <Download className="w-5 h-5 text-orange-600" />
                 <span className="text-gray-700 dark:text-gray-300">Descargar datos</span>
               </button>
+              
+              <button 
+                onClick={() => setShowChangePasswordModal(true)}
+                className="w-full flex items-center gap-3 p-3 text-left hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition-colors"
+              >
+                <Lock className="w-5 h-5 text-red-600" />
+                <span className="text-gray-700 dark:text-gray-300">Cambiar contraseña</span>
+              </button>
             </div>
           </div>
 
@@ -719,6 +730,12 @@ export default function Profile() {
           </div>
         </div>
       </div>
+
+      {/* Change Password Modal */}
+      <ChangePasswordModal 
+        isOpen={showChangePasswordModal}
+        onClose={() => setShowChangePasswordModal(false)}
+      />
     </div>
   );
 } 

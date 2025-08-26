@@ -22,9 +22,11 @@ import {
   Upload,
   Save,
   X,
-  AlertCircle
+  AlertCircle,
+  Lock
 } from 'lucide-react';
 import TimeEntryEditRequestModal from '@/components/TimeEntryEditRequestModal';
+import ChangePasswordModal from '@/components/ChangePasswordModal';
 
 export default function ManagerProfile() {
   const [profile, setProfile] = React.useState(null);
@@ -53,6 +55,7 @@ export default function ManagerProfile() {
   });
   const [showTimeEditModal, setShowTimeEditModal] = React.useState(false);
   const [selectedTimeEntry, setSelectedTimeEntry] = React.useState(null);
+  const [showChangePasswordModal, setShowChangePasswordModal] = React.useState(false);
 
   React.useEffect(() => {
     loadProfileData();
@@ -499,7 +502,7 @@ export default function ManagerProfile() {
       {/* Quick Actions */}
       <div className="card p-6">
         <h2 className="text-xl font-semibold text-foreground mb-4">Acciones Rápidas</h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           <button
             onClick={() => handleQuickAction('time_entries')}
             className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors text-center"
@@ -530,6 +533,14 @@ export default function ManagerProfile() {
           >
             <Download className="w-8 h-8 text-orange-600 mx-auto mb-2" />
             <span className="text-sm font-medium text-orange-700 dark:text-orange-300">Documentos</span>
+          </button>
+          
+          <button
+            onClick={() => setShowChangePasswordModal(true)}
+            className="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors text-center"
+          >
+            <Lock className="w-8 h-8 text-red-600 mx-auto mb-2" />
+            <span className="text-sm font-medium text-red-700 dark:text-red-300">Cambiar Contraseña</span>
           </button>
         </div>
       </div>
@@ -840,6 +851,12 @@ export default function ManagerProfile() {
           // Recargar estadísticas
           loadStats();
         }}
+      />
+
+      {/* Change Password Modal */}
+      <ChangePasswordModal 
+        isOpen={showChangePasswordModal}
+        onClose={() => setShowChangePasswordModal(false)}
       />
     </div>
   );
