@@ -750,39 +750,7 @@ export default function MyTimeEntries() {
             Gestiona y visualiza tu historial de fichajes
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => {
-              loadTimeEntries();
-            }}
-            className="btn btn-secondary"
-            title="Recargar datos"
-          >
-            🔄 Recargar
-          </button>
-          <button
-            onClick={async () => {
-              const { data: { user } } = await supabase.auth.getUser();
-              if (user) {
-                const { data, error } = await supabase
-                  .from('time_entries')
-                  .select('id, entry_type, entry_time')
-                  .eq('user_id', user.id)
-                  .order('entry_time', { ascending: false })
-                  .limit(10);
-                
-                if (error) {
-                  console.error('❌ Error verificando fichajes:', error);
-                } else {
-                }
-              }
-            }}
-            className="btn btn-outline"
-            title="Verificar base de datos"
-          >
-            🔍 Verificar BD
-          </button>
-        </div>
+
       </div>
 
       {/* Stats Cards */}
