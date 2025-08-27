@@ -15,7 +15,11 @@ import {
   X,
   Plus,
   AlertCircle,
-  CheckCircle
+  CheckCircle,
+  Folder,
+  FolderOpen,
+  ChevronRight,
+  ChevronDown
 } from 'lucide-react';
 
 export default function AdminMyDocuments() {
@@ -28,6 +32,8 @@ export default function AdminMyDocuments() {
   const [selectedRecipient, setSelectedRecipient] = React.useState('all');
   const [availableUsers, setAvailableUsers] = React.useState([]);
   const [availableDepartments, setAvailableDepartments] = React.useState([]);
+  const [viewMode, setViewMode] = React.useState('list'); // 'list' or 'folders'
+  const [expandedFolders, setExpandedFolders] = React.useState(new Set());
   const [uploadForm, setUploadForm] = React.useState({
     title: '',
     description: '',
@@ -40,7 +46,8 @@ export default function AdminMyDocuments() {
   const [stats, setStats] = React.useState({
     totalDocuments: 0,
     documentsByCategory: {},
-    documentsByRecipient: {}
+    documentsByRecipient: {},
+    totalUsers: 0
   });
 
   React.useEffect(() => {
@@ -94,7 +101,7 @@ export default function AdminMyDocuments() {
           const profile = profiles?.find(p => p.user_id === user.user_id);
           return {
             id: user.user_id,
-            name: profile?.full_name || 'Usuario sin nombre',
+            full_name: profile?.full_name || 'Usuario sin nombre',
             avatar_url: profile?.avatar_url,
             role: user.role,
             department_id: user.department_id
@@ -351,7 +358,61 @@ export default function AdminMyDocuments() {
     return filtered;
   }
 
+  // Función para organizar documentos por usuario (carpetas)
+  function organizeDocumentsByUser(docs) {
+    const folders = {};
+    
+    docs.forEach(doc => {
+      const userId = doc.user_id;
+      const userName = doc.recipient_name;
+      
+      if (!folders[userId]) {
+        folders[userId] = {
+          userId,
+          userName,
+          documents: [],
+          totalDocuments: 0,
+          categories: new Set(),
+          totalSize: 0
+        };
+      }
+      
+      folders[userId].documents.push(doc);
+      folders[userId].totalDocuments++;
+      folders[userId].categories.add(doc.category);
+      folders[userId].totalSize += doc.file_size || 0;
+    });
+    
+    // Convertir Sets a arrays para el renderizado
+    Object.values(folders).forEach(folder => {
+      folder.categories = Array.from(folder.categories);
+    });
+    
+    return folders;
+  }
+
+  // Función para alternar la expansión de una carpeta
+  function toggleFolder(userId) {
+    const newExpanded = new Set(expandedFolders);
+    if (newExpanded.has(userId)) {
+      newExpanded.delete(userId);
+    } else {
+      newExpanded.add(userId);
+    }
+    setExpandedFolders(newExpanded);
+  }
+
+  // Función para obtener el tamaño formateado
+  function formatFileSize(bytes) {
+    if (!bytes) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  }
+
   const filteredDocuments = getFilteredDocuments();
+  const userFolders = organizeDocumentsByUser(filteredDocuments);
 
   if (loading) {
     return (
@@ -412,7 +473,7 @@ export default function AdminMyDocuments() {
         <div className="card p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Destinatarios</p>
+              <p className="text-sm font-medium text-muted-foreground">Usuarios Activos</p>
               <p className="text-3xl font-bold text-foreground">
                 {Object.keys(stats.documentsByRecipient).length}
               </p>
@@ -426,65 +487,79 @@ export default function AdminMyDocuments() {
         <div className="card p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Último Mes</p>
+              <p className="text-sm font-medium text-muted-foreground">Carpetas</p>
               <p className="text-3xl font-bold text-foreground">
-                {documents.filter(doc => {
-                  const docDate = new Date(doc.created_at);
-                  const monthAgo = new Date();
-                  monthAgo.setMonth(monthAgo.getMonth() - 1);
-                  return docDate > monthAgo;
-                }).length}
+                {Object.keys(userFolders).length}
               </p>
             </div>
             <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
-              <Calendar className="w-6 h-6 text-orange-600" />
+              <Folder className="w-6 h-6 text-orange-600" />
             </div>
           </div>
         </div>
       </div>
 
-      {/* Filters */}
+      {/* View Mode Toggle */}
       <div className="card p-6">
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <Search className="w-4 h-4 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Buscar documentos..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <Search className="w-4 h-4 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="Buscar documentos..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="input"
+              />
+            </div>
+            <select
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
               className="input"
-            />
+            >
+              <option value="all">Todas las categorías</option>
+              <option value="contract">Contratos</option>
+              <option value="id">Identificación</option>
+              <option value="certificate">Certificados</option>
+              <option value="other">Otros</option>
+            </select>
+            <select
+              value={selectedRecipient}
+              onChange={(e) => setSelectedRecipient(e.target.value)}
+              className="input"
+            >
+              <option value="all">Todos los destinatarios</option>
+              {Object.keys(stats.documentsByRecipient).map(recipient => (
+                <option key={recipient} value={recipient}>{recipient}</option>
+              ))}
+            </select>
           </div>
-          <select
-            value={selectedCategory}
-            onChange={(e) => setSelectedCategory(e.target.value)}
-            className="input"
-          >
-            <option value="all">Todas las categorías</option>
-            <option value="contract">Contratos</option>
-            <option value="id">Identificación</option>
-            <option value="certificate">Certificados</option>
-            <option value="other">Otros</option>
-          </select>
-          <select
-            value={selectedRecipient}
-            onChange={(e) => setSelectedRecipient(e.target.value)}
-            className="input"
-          >
-            <option value="all">Todos los destinatarios</option>
-            {Object.keys(stats.documentsByRecipient).map(recipient => (
-              <option key={recipient} value={recipient}>{recipient}</option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      {/* Documents List */}
-      <div className="card">
-        <div className="p-6 border-b border-border">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold text-foreground">Documentos Subidos</h3>
+          
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 bg-secondary rounded-lg p-1">
+              <button
+                onClick={() => setViewMode('list')}
+                className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                  viewMode === 'list' 
+                    ? 'bg-background text-foreground shadow-sm' 
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                Lista
+              </button>
+              <button
+                onClick={() => setViewMode('folders')}
+                className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                  viewMode === 'folders' 
+                    ? 'bg-background text-foreground shadow-sm' 
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                Carpetas
+              </button>
+            </div>
+            
             <button
               onClick={() => setShowUploadModal(true)}
               className="btn btn-primary flex items-center gap-2"
@@ -494,66 +569,189 @@ export default function AdminMyDocuments() {
             </button>
           </div>
         </div>
-        <div className="p-6">
-          {filteredDocuments.length === 0 ? (
-            <div className="text-center py-8">
-              <FileText className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-muted-foreground">No hay documentos para mostrar</p>
+      </div>
+
+      {/* Content */}
+      <div className="card">
+        <div className="p-6 border-b border-border">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold text-foreground">
+              {viewMode === 'list' ? 'Documentos Subidos' : 'Carpetas por Usuario'}
+            </h3>
+            <div className="text-sm text-muted-foreground">
+              {viewMode === 'list' 
+                ? `${filteredDocuments.length} documentos` 
+                : `${Object.keys(userFolders).length} carpetas`
+              }
             </div>
-          ) : (
-            <div className="space-y-4">
-              {filteredDocuments.map((document) => (
-                <div key={document.id} className="flex items-center justify-between p-4 border border-border rounded-lg">
-                  <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
-                      <FileText className="w-5 h-5 text-primary" />
-                    </div>
-                    <div>
-                      <h4 className="font-medium text-foreground">{document.title}</h4>
-                      <p className="text-sm text-muted-foreground">{document.description}</p>
-                      <div className="flex items-center gap-4 mt-1">
-                        <span className="text-xs bg-secondary px-2 py-1 rounded">
-                          {document.category}
-                        </span>
-                        <div className="flex items-center gap-2">
-                          {document.recipient_avatar ? (
-                            <img 
-                              src={document.recipient_avatar} 
-                              alt={document.recipient_name}
-                              className="w-4 h-4 rounded-full"
-                            />
-                          ) : (
-                            <User className="w-4 h-4 text-muted-foreground" />
-                          )}
+          </div>
+        </div>
+        
+        <div className="p-6">
+          {viewMode === 'list' ? (
+            // Vista de Lista (existente)
+            filteredDocuments.length === 0 ? (
+              <div className="text-center py-8">
+                <FileText className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                <p className="text-muted-foreground">No hay documentos para mostrar</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {filteredDocuments.map((document) => (
+                  <div key={document.id} className="flex items-center justify-between p-4 border border-border rounded-lg">
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
+                        <FileText className="w-5 h-5 text-primary" />
+                      </div>
+                      <div>
+                        <h4 className="font-medium text-foreground">{document.title}</h4>
+                        <p className="text-sm text-muted-foreground">{document.description}</p>
+                        <div className="flex items-center gap-4 mt-1">
+                          <span className="text-xs bg-secondary px-2 py-1 rounded">
+                            {document.category}
+                          </span>
+                          <div className="flex items-center gap-2">
+                            {document.recipient_avatar ? (
+                              <img 
+                                src={document.recipient_avatar} 
+                                alt={document.recipient_name}
+                                className="w-4 h-4 rounded-full"
+                              />
+                            ) : (
+                              <User className="w-4 h-4 text-muted-foreground" />
+                            )}
+                            <span className="text-xs text-muted-foreground">
+                              {document.recipient_name}
+                            </span>
+                          </div>
                           <span className="text-xs text-muted-foreground">
-                            {document.recipient_name}
+                            {new Date(document.created_at).toLocaleDateString('es-ES')}
                           </span>
                         </div>
-                        <span className="text-xs text-muted-foreground">
-                          {new Date(document.created_at).toLocaleDateString('es-ES')}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleDownload(document)}
+                        className="btn btn-ghost btn-sm"
+                        title="Descargar"
+                      >
+                        <Download className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => deleteDocument(document.id)}
+                        className="btn btn-ghost btn-sm text-red-600"
+                        title="Eliminar"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )
+          ) : (
+            // Vista de Carpetas (nueva)
+            Object.keys(userFolders).length === 0 ? (
+              <div className="text-center py-8">
+                <Folder className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                <p className="text-muted-foreground">No hay carpetas para mostrar</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {Object.values(userFolders).map((folder) => (
+                  <div key={folder.userId} className="border border-border rounded-lg overflow-hidden">
+                    {/* Header de la carpeta */}
+                    <div 
+                      className="flex items-center justify-between p-4 bg-secondary/50 cursor-pointer hover:bg-secondary/70 transition-colors"
+                      onClick={() => toggleFolder(folder.userId)}
+                    >
+                      <div className="flex items-center gap-3">
+                        {expandedFolders.has(folder.userId) ? (
+                          <ChevronDown className="w-5 h-5 text-muted-foreground" />
+                        ) : (
+                          <ChevronRight className="w-5 h-5 text-muted-foreground" />
+                        )}
+                        <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
+                          {expandedFolders.has(folder.userId) ? (
+                            <FolderOpen className="w-5 h-5 text-primary" />
+                          ) : (
+                            <Folder className="w-5 h-5 text-primary" />
+                          )}
+                        </div>
+                        <div>
+                          <h4 className="font-medium text-foreground">{folder.userName}</h4>
+                          <div className="flex items-center gap-4 mt-1">
+                            <span className="text-xs text-muted-foreground">
+                              {folder.totalDocuments} documento{folder.totalDocuments !== 1 ? 's' : ''}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              {formatFileSize(folder.totalSize)}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              {folder.categories.length} categoría{folder.categories.length !== 1 ? 's' : ''}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded">
+                          {folder.categories.join(', ')}
                         </span>
                       </div>
                     </div>
+                    
+                    {/* Contenido de la carpeta */}
+                    {expandedFolders.has(folder.userId) && (
+                      <div className="p-4 bg-background">
+                        <div className="space-y-3">
+                          {folder.documents.map((document) => (
+                            <div key={document.id} className="flex items-center justify-between p-3 border border-border rounded-lg bg-secondary/20">
+                              <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center">
+                                  <FileText className="w-4 h-4 text-primary" />
+                                </div>
+                                <div>
+                                  <h5 className="font-medium text-foreground text-sm">{document.title}</h5>
+                                  <p className="text-xs text-muted-foreground">{document.description}</p>
+                                  <div className="flex items-center gap-3 mt-1">
+                                    <span className="text-xs bg-secondary px-2 py-1 rounded">
+                                      {document.category}
+                                    </span>
+                                    <span className="text-xs text-muted-foreground">
+                                      {formatFileSize(document.file_size)}
+                                    </span>
+                                    <span className="text-xs text-muted-foreground">
+                                      {new Date(document.created_at).toLocaleDateString('es-ES')}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => handleDownload(document)}
+                                  className="btn btn-ghost btn-sm"
+                                  title="Descargar"
+                                >
+                                  <Download className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => deleteDocument(document.id)}
+                                  className="btn btn-ghost btn-sm text-red-600"
+                                  title="Eliminar"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => handleDownload(document)}
-                      className="btn btn-ghost btn-sm"
-                      title="Descargar"
-                    >
-                      <Download className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => deleteDocument(document.id)}
-                      className="btn btn-ghost btn-sm text-red-600"
-                      title="Eliminar"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )
           )}
         </div>
       </div>
@@ -561,157 +759,136 @@ export default function AdminMyDocuments() {
       {/* Upload Modal */}
       {showUploadModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-background rounded-lg shadow-xl w-full max-w-2xl max-h-[80vh] overflow-hidden">
-            <div className="flex items-center justify-between p-6 border-b border-border">
-              <h3 className="text-lg font-semibold text-foreground">Subir Documento</h3>
+          <div className="bg-background rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-semibold text-foreground">Subir Documento</h3>
               <button
-                onClick={() => {
-                  setShowUploadModal(false);
-                  resetUploadForm();
-                }}
-                className="p-2 rounded-lg hover:bg-secondary transition-colors"
+                onClick={() => setShowUploadModal(false)}
+                className="btn btn-ghost btn-sm"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
-            <div className="p-6 overflow-y-auto max-h-[60vh]">
-              <div className="space-y-4">
-                {/* Título */}
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-2">
-                    Título del Documento
-                  </label>
-                  <input
-                    type="text"
-                    value={uploadForm.title}
-                    onChange={(e) => setUploadForm(prev => ({ ...prev, title: e.target.value }))}
-                    className="input w-full"
-                    placeholder="Ej: Contrato de trabajo"
-                  />
-                </div>
 
-                {/* Descripción */}
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-2">
-                    Descripción
-                  </label>
-                  <textarea
-                    value={uploadForm.description}
-                    onChange={(e) => setUploadForm(prev => ({ ...prev, description: e.target.value }))}
-                    className="input w-full"
-                    rows={3}
-                    placeholder="Descripción del documento..."
-                  />
-                </div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-2">
+                  Título del Documento
+                </label>
+                <input
+                  type="text"
+                  value={uploadForm.title}
+                  onChange={(e) => setUploadForm({...uploadForm, title: e.target.value})}
+                  className="input w-full"
+                  placeholder="Ej: Contrato de trabajo"
+                />
+              </div>
 
-                {/* Categoría */}
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-2">
+                  Descripción
+                </label>
+                <textarea
+                  value={uploadForm.description}
+                  onChange={(e) => setUploadForm({...uploadForm, description: e.target.value})}
+                  className="input w-full"
+                  rows="3"
+                  placeholder="Descripción del documento..."
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-2">
+                  Categoría
+                </label>
+                <select
+                  value={uploadForm.category}
+                  onChange={(e) => setUploadForm({...uploadForm, category: e.target.value})}
+                  className="input w-full"
+                >
+                  <option value="contract">Contratos</option>
+                  <option value="id">Identificación</option>
+                  <option value="certificate">Certificados</option>
+                  <option value="other">Otros</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-2">
+                  Destinatario
+                </label>
+                <select
+                  value={uploadForm.recipientType}
+                  onChange={(e) => setUploadForm({...uploadForm, recipientType: e.target.value})}
+                  className="input w-full"
+                >
+                  <option value="user">Usuario específico</option>
+                  <option value="department">Departamento</option>
+                  <option value="all">Todos los usuarios</option>
+                </select>
+              </div>
+
+              {uploadForm.recipientType === 'user' && (
                 <div>
                   <label className="block text-sm font-medium text-foreground mb-2">
-                    Categoría
+                    Seleccionar Usuario
                   </label>
                   <select
-                    value={uploadForm.category}
-                    onChange={(e) => setUploadForm(prev => ({ ...prev, category: e.target.value }))}
+                    value={uploadForm.selectedUser}
+                    onChange={(e) => setUploadForm({...uploadForm, selectedUser: e.target.value})}
                     className="input w-full"
                   >
-                    <option value="contract">Contrato</option>
-                    <option value="id">Identificación</option>
-                    <option value="certificate">Certificado</option>
-                    <option value="other">Otro</option>
+                    <option value="">Seleccionar usuario...</option>
+                    {availableUsers.map(user => (
+                      <option key={user.id} value={user.id}>
+                        {user.full_name} ({user.role})
+                      </option>
+                    ))}
                   </select>
                 </div>
+              )}
 
-                {/* Tipo de Destinatario */}
+              {uploadForm.recipientType === 'department' && (
                 <div>
                   <label className="block text-sm font-medium text-foreground mb-2">
-                    Destinatarios
+                    Seleccionar Departamento
                   </label>
                   <select
-                    value={uploadForm.recipientType}
-                    onChange={(e) => setUploadForm(prev => ({ 
-                      ...prev, 
-                      recipientType: e.target.value,
-                      selectedUser: '',
-                      selectedDepartment: ''
-                    }))}
+                    value={uploadForm.selectedDepartment}
+                    onChange={(e) => setUploadForm({...uploadForm, selectedDepartment: e.target.value})}
                     className="input w-full"
                   >
-                    <option value="user">Usuario específico</option>
-                    <option value="department">Departamento completo</option>
-                    <option value="all">Todos los empleados y managers</option>
+                    <option value="">Seleccionar departamento...</option>
+                    {availableDepartments.map(dept => (
+                      <option key={dept.id} value={dept.id}>{dept.name}</option>
+                    ))}
                   </select>
                 </div>
+              )}
 
-                {/* Usuario específico */}
-                {uploadForm.recipientType === 'user' && (
-                  <div>
-                    <label className="block text-sm font-medium text-foreground mb-2">
-                      Seleccionar Usuario
-                    </label>
-                    <select
-                      value={uploadForm.selectedUser}
-                      onChange={(e) => setUploadForm(prev => ({ ...prev, selectedUser: e.target.value }))}
-                      className="input w-full"
-                    >
-                      <option value="">Seleccionar usuario...</option>
-                      {availableUsers.map(user => (
-                        <option key={user.id} value={user.id}>
-                          {user.name} ({user.role === 'manager' ? 'Gerente' : 'Empleado'})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-
-                {/* Departamento */}
-                {uploadForm.recipientType === 'department' && (
-                  <div>
-                    <label className="block text-sm font-medium text-foreground mb-2">
-                      Seleccionar Departamento
-                    </label>
-                    <select
-                      value={uploadForm.selectedDepartment}
-                      onChange={(e) => setUploadForm(prev => ({ ...prev, selectedDepartment: e.target.value }))}
-                      className="input w-full"
-                    >
-                      <option value="">Seleccionar departamento...</option>
-                      {availableDepartments.map(dept => (
-                        <option key={dept.id} value={dept.id}>
-                          {dept.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-
-                {/* Archivo */}
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-2">
-                    Archivo
-                  </label>
-                  <input
-                    type="file"
-                    onChange={(e) => setUploadForm(prev => ({ ...prev, file: e.target.files[0] }))}
-                    className="input w-full"
-                    accept=".pdf,.doc,.docx,.txt,.jpg,.jpeg,.png"
-                  />
-                </div>
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-2">
+                  Archivo
+                </label>
+                <input
+                  type="file"
+                  onChange={(e) => setUploadForm({...uploadForm, file: e.target.files[0]})}
+                  className="input w-full"
+                  accept=".pdf,.doc,.docx,.txt,.jpg,.jpeg,.png"
+                />
               </div>
             </div>
-            <div className="flex items-center justify-end gap-2 p-6 border-t border-border">
+
+            <div className="flex items-center justify-end gap-4 mt-6">
               <button
-                onClick={() => {
-                  setShowUploadModal(false);
-                  resetUploadForm();
-                }}
-                className="btn btn-outline"
-                disabled={uploading}
+                onClick={() => setShowUploadModal(false)}
+                className="btn btn-ghost"
               >
                 Cancelar
               </button>
               <button
                 onClick={uploadDocument}
-                disabled={uploading || !uploadForm.title || !uploadForm.file}
+                disabled={uploading}
                 className="btn btn-primary flex items-center gap-2"
               >
                 {uploading ? (
