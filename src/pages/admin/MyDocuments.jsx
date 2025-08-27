@@ -143,6 +143,8 @@ export default function AdminMyDocuments() {
 
       if (!userRole) return;
 
+      console.log('🔍 Debug - Loading documents for company:', userRole.company_id);
+
       // Cargar documentos subidos por el admin
       const { data: documents, error } = await supabase
         .from('documents')
@@ -153,12 +155,20 @@ export default function AdminMyDocuments() {
 
       if (error) throw error;
 
+      console.log('🔍 Debug - Documents found:', documents?.length || 0);
+      console.log('🔍 Debug - Documents:', documents);
+
       // Obtener información de los destinatarios
       const recipientIds = [...new Set(documents.map(doc => doc.user_id))];
+      console.log('🔍 Debug - Recipient IDs:', recipientIds);
+
       const { data: recipients } = await supabase
         .from('user_profiles')
         .select('user_id, full_name, avatar_url')
         .in('user_id', recipientIds);
+
+      console.log('🔍 Debug - Recipients found:', recipients?.length || 0);
+      console.log('🔍 Debug - Recipients:', recipients);
 
       // Combinar datos
       const documentsWithRecipients = documents.map(doc => {
@@ -169,6 +179,8 @@ export default function AdminMyDocuments() {
           recipient_avatar: recipient?.avatar_url
         };
       });
+
+      console.log('🔍 Debug - Documents with recipients:', documentsWithRecipients);
 
       setDocuments(documentsWithRecipients);
       calculateStats(documentsWithRecipients);
@@ -230,6 +242,10 @@ export default function AdminMyDocuments() {
         recipients = availableUsers.filter(u => u.id === uploadForm.selectedUser);
       }
 
+      console.log('🔍 Debug - Recipients:', recipients);
+      console.log('🔍 Debug - Available Users:', availableUsers);
+      console.log('🔍 Debug - Selected User:', uploadForm.selectedUser);
+
       if (recipients.length === 0) {
         alert('Por favor selecciona al menos un destinatario');
         return;
@@ -241,26 +257,39 @@ export default function AdminMyDocuments() {
         const base64Data = e.target.result;
 
         // Crear documentos para cada destinatario
-        const documentPromises = recipients.map(recipient => 
-          supabase.from('documents').insert({
+        const documentPromises = recipients.map(recipient => {
+          console.log('📄 Creating document for recipient:', recipient);
+          return supabase.from('documents').insert({
             title: uploadForm.title,
             description: uploadForm.description,
             category: uploadForm.category,
             file_url: base64Data,
             file_type: uploadForm.file.type,
             file_size: uploadForm.file.size,
-            user_id: recipient.id,
+            user_id: recipient.id, // recipient.id es el user_id
             company_id: userRole.company_id,
             uploaded_by: user.id
-          })
-        );
+          });
+        });
 
         try {
-          await Promise.all(documentPromises);
+          const results = await Promise.all(documentPromises);
+          console.log('✅ Upload results:', results);
+          
+          // Verificar si hubo errores
+          const errors = results.filter(result => result.error);
+          if (errors.length > 0) {
+            console.error('❌ Upload errors:', errors);
+            alert('Error al subir algunos documentos');
+            return;
+          }
+          
           alert(`Documento subido exitosamente a ${recipients.length} destinatario${recipients.length > 1 ? 's' : ''}`);
           setShowUploadModal(false);
           resetUploadForm();
-          loadDocuments();
+          
+          // Recargar documentos después de subir
+          await loadDocuments();
         } catch (error) {
           console.error('Error uploading documents:', error);
           alert('Error al subir el documento');
@@ -360,11 +389,15 @@ export default function AdminMyDocuments() {
 
   // Función para organizar documentos por usuario (carpetas)
   function organizeDocumentsByUser(docs) {
+    console.log('🔍 Debug - Organizing documents by user:', docs);
+    
     const folders = {};
     
     docs.forEach(doc => {
       const userId = doc.user_id;
       const userName = doc.recipient_name;
+      
+      console.log('🔍 Debug - Processing document:', { userId, userName, docTitle: doc.title });
       
       if (!folders[userId]) {
         folders[userId] = {
@@ -375,6 +408,7 @@ export default function AdminMyDocuments() {
           categories: new Set(),
           totalSize: 0
         };
+        console.log('🔍 Debug - Created new folder for user:', userName);
       }
       
       folders[userId].documents.push(doc);
@@ -388,6 +422,7 @@ export default function AdminMyDocuments() {
       folder.categories = Array.from(folder.categories);
     });
     
+    console.log('🔍 Debug - Final folders:', folders);
     return folders;
   }
 
