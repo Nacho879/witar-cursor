@@ -27,6 +27,7 @@ export default function AcceptInvitation() {
 
   async function verifyInvitation() {
     try {
+      console.log('🔍 Debug: Verificando invitación con token:', token);
       
       // Consulta simplificada - primero buscar por token sin filtro de status
       const { data: invitation, error: invitationError } = await supabase
@@ -35,15 +36,37 @@ export default function AcceptInvitation() {
         .eq('token', token)
         .single();
 
-      if (invitationError || !invitation) {
-        console.error('Invitation not found:', invitationError);
+      console.log('🔍 Debug: Resultado de la consulta:', { invitation, error: invitationError });
+
+      if (invitationError) {
+        console.error('❌ Error en la consulta:', invitationError);
+        
+        // Intentar una consulta alternativa para debug
+        console.log('🔍 Debug: Intentando consulta alternativa...');
+        const { data: allInvitations, error: altError } = await supabase
+          .from('invitations')
+          .select('id, email, status, token, created_at')
+          .limit(5);
+        
+        console.log('🔍 Debug: Consulta alternativa:', { allInvitations, error: altError });
+        
         setError('Invitación no válida o expirada');
         setLoading(false);
         return;
       }
 
+      if (!invitation) {
+        console.log('❌ No se encontró la invitación');
+        setError('Invitación no válida o expirada');
+        setLoading(false);
+        return;
+      }
+
+      console.log('✅ Invitación encontrada:', invitation);
+
       // Verificar el status después de obtener la invitación
       if (invitation.status !== 'pending' && invitation.status !== 'sent') {
+        console.log('❌ Status inválido:', invitation.status);
         setError('Invitación no está disponible para aceptar');
         setLoading(false);
         return;
@@ -51,6 +74,7 @@ export default function AcceptInvitation() {
 
       // Verificar que no ha expirado
       if (new Date(invitation.expires_at) < new Date()) {
+        console.log('❌ Invitación expirada');
         setError('La invitación ha expirado');
         setLoading(false);
         return;
@@ -73,10 +97,11 @@ export default function AcceptInvitation() {
         companies: company || { name: 'Empresa no encontrada' }
       };
 
+      console.log('✅ Invitación completa preparada:', fullInvitation);
       setInvitation(fullInvitation);
       setLoading(false);
     } catch (error) {
-      console.error('Error verifying invitation:', error);
+      console.error('❌ Error general:', error);
       setError('Error al verificar la invitación');
       setLoading(false);
     }
