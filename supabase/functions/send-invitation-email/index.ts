@@ -254,7 +254,7 @@ async function sendEmailWithResend(email: string, company: any, invitation: any,
                        invitation.role === 'employee' ? 'Empleado' : invitation.role;
 
     const emailData = {
-      from: 'Witar <noreply@witar.es>', // Usar tu dominio verificado
+      from: 'Witar <noreply@updates.witar.es>', // Usar el subdominio verificado
       to: [email],
       subject: `Invitación a unirte a ${company?.name || 'una empresa'} en Witar`,
       html: htmlContent,

@@ -33,10 +33,8 @@ export default function AcceptInvitation() {
         .from('invitations')
         .select('*')
         .eq('token', token)
-        .eq('status', 'pending')
+        .in('status', ['pending', 'sent']) // Buscar tanto 'pending' como 'sent'
         .single();
-
-
 
       if (invitationError || !invitation) {
         console.error('Invitation not found:', invitationError);
@@ -68,7 +66,6 @@ export default function AcceptInvitation() {
         ...invitation,
         companies: company || { name: 'Empresa no encontrada' }
       };
-
 
       setInvitation(fullInvitation);
       setLoading(false);
