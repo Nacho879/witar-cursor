@@ -74,14 +74,25 @@ serve(async (req) => {
       throw new Error(`Invitación no está pendiente. Estado actual: ${invitation.status}`)
     }
 
-    // Verificar si el usuario ya existe y tiene un rol en esta empresa
-    const { data: existingUser, error: userCheckError } = await supabaseServiceClient
-      .from('auth.users')
-      .select('id, email')
-      .eq('email', invitation.email)
-      .single();
+    // Verificar si el usuario ya existe usando la API de administración
+    let existingUser = null;
+    try {
+      console.log('🔍 Debug - Checking if user exists in Auth:', invitation.email);
+      const { data: userList, error: listError } = await supabaseServiceClient.auth.admin.listUsers();
+      
+      if (listError) {
+        console.error('❌ Error listing users:', listError);
+      } else {
+        existingUser = userList.users.find(u => u.email === invitation.email);
+        console.log('🔍 Debug - User search result:', existingUser ? 'Found' : 'Not found');
+      }
+    } catch (error) {
+      console.log('🔍 Debug - Error checking user existence:', error.message);
+    }
 
-    if (existingUser && !userCheckError) {
+    if (existingUser) {
+      console.log('✅ User already exists in Auth:', existingUser.id);
+      
       // Verificar si ya tiene un rol activo en esta empresa
       const { data: existingRole, error: roleCheckError } = await supabaseServiceClient
         .from('user_company_roles')
@@ -91,9 +102,13 @@ serve(async (req) => {
         .eq('is_active', true)
         .single();
 
+      console.log('🔍 Debug - Role check result:', { existingRole, error: roleCheckError });
+
       if (existingRole && !roleCheckError) {
         throw new Error(`El usuario ${invitation.email} ya tiene un rol activo (${existingRole.role}) en esta empresa. No se puede enviar una nueva invitación.`);
       }
+    } else {
+      console.log('🔍 Debug - User does not exist in Auth, will create new user');
     }
 
     // Obtener información de la empresa
