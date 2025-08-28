@@ -72,6 +72,28 @@ serve(async (req) => {
       throw new Error(`Invitación no está pendiente. Estado actual: ${invitation.status}`)
     }
 
+    // Verificar si el usuario ya existe y tiene un rol en esta empresa
+    const { data: existingUser, error: userCheckError } = await supabaseServiceClient
+      .from('auth.users')
+      .select('id, email')
+      .eq('email', invitation.email)
+      .single();
+
+    if (existingUser && !userCheckError) {
+      // Verificar si ya tiene un rol activo en esta empresa
+      const { data: existingRole, error: roleCheckError } = await supabaseServiceClient
+        .from('user_company_roles')
+        .select('role, is_active')
+        .eq('user_id', existingUser.id)
+        .eq('company_id', invitation.company_id)
+        .eq('is_active', true)
+        .single();
+
+      if (existingRole && !roleCheckError) {
+        throw new Error(`El usuario ${invitation.email} ya tiene un rol activo (${existingRole.role}) en esta empresa. No se puede enviar una nueva invitación.`);
+      }
+    }
+
     // Obtener información de la empresa
     const { data: company, error: companyError } = await supabaseServiceClient
       .from('companies')

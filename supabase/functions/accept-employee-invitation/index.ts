@@ -84,6 +84,23 @@ serve(async (req) => {
     // }
     console.log('Email validation temporarily disabled for testing');
 
+    // Verificar si el usuario ya tiene un rol en esta empresa
+    const { data: existingRole, error: existingRoleError } = await supabaseClient
+      .from('user_company_roles')
+      .select('role, is_active')
+      .eq('user_id', user.id)
+      .eq('company_id', invitation.company_id)
+      .single();
+
+    if (existingRole && !existingRoleError) {
+      console.log('User already has a role in this company:', existingRole.role);
+      
+      // Si ya tiene un rol activo, no sobrescribirlo
+      if (existingRole.is_active) {
+        throw new Error(`Ya tienes un rol activo en esta empresa como ${existingRole.role}. No puedes aceptar múltiples invitaciones.`);
+      }
+    }
+
     // Crear el perfil del usuario si no existe
     const fullName = invitation.first_name && invitation.last_name 
       ? `${invitation.first_name} ${invitation.last_name}`

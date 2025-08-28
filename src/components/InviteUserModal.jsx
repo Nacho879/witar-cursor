@@ -153,7 +153,15 @@ El usuario puede acceder en: ${emailData.invitationUrl}`);
         }, 5000);
       } else {
         const errorMsg = emailData?.error || 'Error desconocido al enviar la invitación';
-        setMessage(`Error: ${errorMsg}`);
+        
+        // Manejar errores específicos de manera más amigable
+        if (errorMsg.includes('ya tiene un rol activo')) {
+          setMessage(`❌ ${errorMsg}\n\n💡 El usuario ya forma parte de la empresa. Si necesitas cambiar su rol, puedes hacerlo desde la sección de empleados.`);
+        } else if (errorMsg.includes('límite de empleados')) {
+          setMessage(`❌ ${errorMsg}\n\n💡 Considera actualizar tu plan para agregar más empleados.`);
+        } else {
+          setMessage(`❌ Error: ${errorMsg}`);
+        }
       }
 
     } catch (error) {
