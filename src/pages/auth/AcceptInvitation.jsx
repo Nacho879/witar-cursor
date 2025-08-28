@@ -28,12 +28,12 @@ export default function AcceptInvitation() {
   async function verifyInvitation() {
     try {
       
-      // Primero obtener la invitación sin join
+      // Consulta simplificada para evitar el error 406
       const { data: invitation, error: invitationError } = await supabase
         .from('invitations')
         .select('*')
         .eq('token', token)
-        .in('status', ['pending', 'sent']) // Buscar tanto 'pending' como 'sent'
+        .or('status.eq.pending,status.eq.sent')
         .single();
 
       if (invitationError || !invitation) {
