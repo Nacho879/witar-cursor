@@ -92,84 +92,21 @@ serve(async (req) => {
     const invitationUrl = `${Deno.env.get('FRONTEND_URL') || 'https://www.witar.es'}/accept-invitation?token=${invitation.token}`
     console.log('Generated invitation URL:', invitationUrl);
     
-    // Enviar email usando Resend o similar
-    const emailContent = `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #333;">¡Has sido invitado a unirte a ${company?.name || 'una empresa'}!</h2>
-        
-        <p>Hola ${invitation.first_name || 'Usuario'},</p>
-        
-        <p>Has sido invitado a unirte a <strong>${company?.name || 'una empresa'}</strong> en Witar como <strong>${invitation.role}</strong>.</p>
-        
-        <div style="background-color: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
-          <h3 style="margin-top: 0;">Para aceptar la invitación:</h3>
-          <ol>
-            <li>Haz clic en el botón de abajo</li>
-            <li>Regístrate o inicia sesión en Witar</li>
-            <li>Confirma que aceptas la invitación</li>
-          </ol>
-        </div>
-        
-        <div style="text-align: center; margin: 30px 0;">
-          <a href="${invitationUrl}" 
-             style="background-color: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
-            Aceptar Invitación
-          </a>
-        </div>
-        
-        <p style="color: #666; font-size: 14px;">
-          Si el botón no funciona, copia y pega este enlace en tu navegador:<br>
-          <a href="${invitationUrl}">${invitationUrl}</a>
-        </p>
-        
-        <p style="color: #666; font-size: 14px;">
-          Esta invitación expira en 7 días.<br>
-          Si tienes alguna pregunta, contacta con el administrador de tu empresa.
-        </p>
-        
-        <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
-        <p style="color: #999; font-size: 12px; text-align: center;">
-          Este es un email automático de Witar. No respondas a este mensaje.
-        </p>
-      </div>
-    `
-
-             // Enviar email usando Resend
-         try {
-           const resendResponse = await fetch('https://api.resend.com/emails', {
-             method: 'POST',
-             headers: {
-               'Authorization': `Bearer ${Deno.env.get('RESEND_API_KEY')}`,
-               'Content-Type': 'application/json',
-             },
-             body: JSON.stringify({
-               from: 'Witar <onboarding@resend.dev>',
-               to: ['ignaseblopez@gmail.com'], // Email verificado para pruebas
-               subject: `Invitación a unirte a ${company?.name || 'una empresa'} en Witar`,
-               html: emailContent,
-             }),
-           })
-
-           if (!resendResponse.ok) {
-             const errorText = await resendResponse.text()
-             console.error('Error sending email via Resend:', errorText)
-             throw new Error(`Error enviando email: ${resendResponse.status}`)
-           }
-
-           const resendData = await resendResponse.json()
-           console.log('Email sent successfully via Resend:', resendData.id)
-         } catch (emailError) {
-           console.error('Error sending email:', emailError)
-           // Por ahora, solo logueamos el email (en producción usarías un servicio de email)
-           console.log('Email content:', emailContent)
-           console.log('Invitation URL:', invitationUrl)
-         }
+    // Crear contenido HTML mejorado para el email
+    const emailContent = createEmailTemplate(invitation, company, invitationUrl)
+    
+    // Enviar email usando Resend
+    const emailResult = await sendEmailWithResend(invitation.email, company, invitation, emailContent)
+    
+    if (!emailResult.success) {
+      throw new Error(`Error enviando email: ${emailResult.error}`)
+    }
 
     // Actualizar la invitación con las credenciales temporales usando el cliente de servicio
     const { error: updateError } = await supabaseServiceClient
       .from('invitations')
       .update({ 
-        status: 'pending', // Mantener como pendiente hasta que el usuario se registre
+        status: 'sent', // Cambiar a 'sent' cuando se envía el email
         sent_at: new Date().toISOString(),
         temp_password: tempPassword
       })
@@ -187,8 +124,9 @@ serve(async (req) => {
       message: 'Invitación enviada exitosamente',
       email: invitation.email,
       tempPassword: tempPassword,
-      invitationUrl: `${Deno.env.get('FRONTEND_URL') || 'https://witar-cursor.vercel.app'}/login`,
-      company: company
+      invitationUrl: invitationUrl,
+      company: company,
+      emailId: emailResult.emailId
     }
 
     console.log('Returning success response:', response)
@@ -215,6 +153,138 @@ serve(async (req) => {
     )
   }
 })
+
+// Función para crear el template del email
+function createEmailTemplate(invitation: any, company: any, invitationUrl: string): string {
+  const roleDisplay = invitation.role === 'manager' ? 'Manager' : 
+                     invitation.role === 'admin' ? 'Administrador' : 
+                     invitation.role === 'employee' ? 'Empleado' : invitation.role;
+  
+  return `
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Invitación a Witar</title>
+        <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { text-align: center; padding: 30px 0; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 10px 10px 0 0; }
+            .content { padding: 30px; background: #f8f9fa; }
+            .button { display: inline-block; background: #007bff; color: white; padding: 15px 30px; text-decoration: none; border-radius: 8px; font-weight: 600; margin: 20px 0; }
+            .footer { text-align: center; padding: 20px; background: #e9ecef; border-radius: 0 0 10px 10px; font-size: 12px; color: #6c757d; }
+            .info-box { background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #007bff; }
+            .logo { font-size: 24px; font-weight: bold; margin-bottom: 10px; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <div class="logo">⏰ Witar</div>
+                <h1>¡Has sido invitado!</h1>
+            </div>
+            
+            <div class="content">
+                <h2>Hola ${invitation.first_name || 'Usuario'},</h2>
+                
+                <p>Has sido invitado a unirte a <strong>${company?.name || 'una empresa'}</strong> en Witar como <strong>${roleDisplay}</strong>.</p>
+                
+                <div class="info-box">
+                    <h3>📋 Detalles de la invitación:</h3>
+                    <ul>
+                        <li><strong>Empresa:</strong> ${company?.name || 'No especificada'}</li>
+                        <li><strong>Rol:</strong> ${roleDisplay}</li>
+                        <li><strong>Email:</strong> ${invitation.email}</li>
+                        <li><strong>Expira:</strong> En 7 días</li>
+                    </ul>
+                </div>
+                
+                <div style="text-align: center;">
+                    <a href="${invitationUrl}" class="button">
+                        ✅ Aceptar Invitación
+                    </a>
+                </div>
+                
+                <div class="info-box">
+                    <h3>📝 Pasos para aceptar:</h3>
+                    <ol>
+                        <li>Haz clic en el botón "Aceptar Invitación"</li>
+                        <li>Completa tu registro en Witar</li>
+                        <li>Confirma que aceptas la invitación</li>
+                        <li>¡Listo! Ya puedes usar el sistema</li>
+                    </ol>
+                </div>
+                
+                <p style="color: #6c757d; font-size: 14px;">
+                    Si el botón no funciona, copia y pega este enlace en tu navegador:<br>
+                    <a href="${invitationUrl}" style="color: #007bff;">${invitationUrl}</a>
+                </p>
+            </div>
+            
+            <div class="footer">
+                <p>Este es un email automático de Witar. No respondas a este mensaje.</p>
+                <p>Si tienes alguna pregunta, contacta con el administrador de tu empresa.</p>
+            </div>
+        </div>
+    </body>
+    </html>
+  `;
+}
+
+// Función para enviar email con Resend
+async function sendEmailWithResend(email: string, company: any, invitation: any, htmlContent: string): Promise<{success: boolean, error?: string, emailId?: string}> {
+  try {
+    const resendApiKey = Deno.env.get('RESEND_API_KEY');
+    
+    if (!resendApiKey) {
+      console.error('RESEND_API_KEY no está configurada');
+      return { success: false, error: 'RESEND_API_KEY no configurada' };
+    }
+
+    const roleDisplay = invitation.role === 'manager' ? 'Manager' : 
+                       invitation.role === 'admin' ? 'Administrador' : 
+                       invitation.role === 'employee' ? 'Empleado' : invitation.role;
+
+    const emailData = {
+      from: 'Witar <noreply@witar.es>', // Cambiar por tu dominio verificado
+      to: [email],
+      subject: `Invitación a unirte a ${company?.name || 'una empresa'} en Witar`,
+      html: htmlContent,
+      tags: [
+        { name: 'category', value: 'invitation' },
+        { name: 'company', value: company?.name || 'unknown' },
+        { name: 'role', value: invitation.role }
+      ]
+    };
+
+    console.log('Sending email with Resend:', { to: email, subject: emailData.subject });
+
+    const resendResponse = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${resendApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(emailData),
+    });
+
+    if (!resendResponse.ok) {
+      const errorText = await resendResponse.text();
+      console.error('Error sending email via Resend:', errorText);
+      return { success: false, error: `Resend API error: ${resendResponse.status} - ${errorText}` };
+    }
+
+    const resendData = await resendResponse.json();
+    console.log('Email sent successfully via Resend:', resendData.id);
+    
+    return { success: true, emailId: resendData.id };
+    
+  } catch (error) {
+    console.error('Error sending email:', error);
+    return { success: false, error: error.message };
+  }
+}
 
 function generateTempPassword(): string {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
