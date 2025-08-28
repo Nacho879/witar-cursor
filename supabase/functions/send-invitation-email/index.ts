@@ -237,17 +237,24 @@ async function sendEmailWithResend(email: string, company: any, invitation: any,
   try {
     const resendApiKey = Deno.env.get('RESEND_API_KEY');
     
+    console.log('🔍 Debug - Starting email send process');
+    console.log('🔍 Debug - Email:', email);
+    console.log('🔍 Debug - Company:', company?.name);
+    console.log('🔍 Debug - Role:', invitation.role);
+    
     if (!resendApiKey) {
-      console.error('RESEND_API_KEY no está configurada');
+      console.error('❌ RESEND_API_KEY no está configurada');
       return { success: false, error: 'RESEND_API_KEY no configurada' };
     }
+
+    console.log('🔍 Debug - API Key found (length):', resendApiKey.length);
 
     const roleDisplay = invitation.role === 'manager' ? 'Manager' : 
                        invitation.role === 'admin' ? 'Administrador' : 
                        invitation.role === 'employee' ? 'Empleado' : invitation.role;
 
     const emailData = {
-      from: 'Witar <noreply@witar.es>', // Cambiar por tu dominio verificado
+      from: 'Witar <onboarding@resend.dev>', // Usar dominio de Resend por defecto
       to: [email],
       subject: `Invitación a unirte a ${company?.name || 'una empresa'} en Witar`,
       html: htmlContent,
@@ -258,7 +265,14 @@ async function sendEmailWithResend(email: string, company: any, invitation: any,
       ]
     };
 
-    console.log('Sending email with Resend:', { to: email, subject: emailData.subject });
+    console.log('🔍 Debug - Email data prepared:', {
+      from: emailData.from,
+      to: emailData.to,
+      subject: emailData.subject,
+      tags: emailData.tags
+    });
+
+    console.log('🔍 Debug - Sending request to Resend API...');
 
     const resendResponse = await fetch('https://api.resend.com/emails', {
       method: 'POST',
@@ -269,19 +283,28 @@ async function sendEmailWithResend(email: string, company: any, invitation: any,
       body: JSON.stringify(emailData),
     });
 
+    console.log('🔍 Debug - Resend response status:', resendResponse.status);
+    console.log('🔍 Debug - Resend response headers:', Object.fromEntries(resendResponse.headers.entries()));
+
     if (!resendResponse.ok) {
       const errorText = await resendResponse.text();
-      console.error('Error sending email via Resend:', errorText);
+      console.error('❌ Error sending email via Resend:', errorText);
+      console.error('❌ Response status:', resendResponse.status);
       return { success: false, error: `Resend API error: ${resendResponse.status} - ${errorText}` };
     }
 
     const resendData = await resendResponse.json();
-    console.log('Email sent successfully via Resend:', resendData.id);
+    console.log('✅ Email sent successfully via Resend:', resendData.id);
     
     return { success: true, emailId: resendData.id };
     
   } catch (error) {
-    console.error('Error sending email:', error);
+    console.error('❌ Error sending email:', error);
+    console.error('❌ Error details:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name
+    });
     return { success: false, error: error.message };
   }
 }
