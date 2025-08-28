@@ -2,6 +2,7 @@ import * as React from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabaseClient';
 import { CheckCircle, XCircle, Clock, Building, User } from 'lucide-react';
+import ChangePasswordAfterInvitation from '@/components/ChangePasswordAfterInvitation';
 
 export default function AcceptInvitation() {
   const [searchParams] = useSearchParams();
@@ -11,6 +12,8 @@ export default function AcceptInvitation() {
   const [error, setError] = React.useState(null);
   const [accepting, setAccepting] = React.useState(false);
   const [success, setSuccess] = React.useState(false);
+  const [showPasswordModal, setShowPasswordModal] = React.useState(false);
+  const [acceptedRole, setAcceptedRole] = React.useState(null);
 
   const token = searchParams.get('token');
   
@@ -83,7 +86,14 @@ export default function AcceptInvitation() {
         return;
       }
 
-      // Si está autenticado, aceptar la invitación
+      // Si está autenticado, verificar si es el usuario correcto para esta invitación
+      if (user.email !== invitation.email) {
+        setError(`Esta invitación es para ${invitation.email}, pero estás logueado como ${user.email}. Por favor, cierra sesión y accede con la cuenta correcta.`);
+        setAccepting(false);
+        return;
+      }
+
+      // Si está autenticado y es el usuario correcto, aceptar la invitación
       const { data, error } = await supabase.functions.invoke('accept-employee-invitation', {
         body: { token }
       });
@@ -94,13 +104,21 @@ export default function AcceptInvitation() {
 
       if (data.success) {
         setSuccess(true);
+        setAcceptedRole(data.role);
+        
         // Redirigir según el rol
         const redirectPath = data.role === 'owner' ? '/owner' : 
-                           data.role === 'admin' ? '/owner' : 
+                           data.role === 'admin' ? '/admin' : 
                            data.role === 'manager' ? '/manager' : '/employee';
+        
+        // Redirigir inmediatamente al dashboard
+        navigate(redirectPath);
+        
+        // Mostrar el popup de cambio de contraseña después de un breve delay
         setTimeout(() => {
-          navigate(redirectPath);
-        }, 3000);
+          setShowPasswordModal(true);
+        }, 1000);
+        
       } else {
         setError(data.error || 'Error al aceptar la invitación');
       }
@@ -123,6 +141,11 @@ export default function AcceptInvitation() {
       default:
         return role;
     }
+  }
+
+  function handlePasswordChangeSuccess() {
+    // El usuario ya está en el dashboard correcto, solo cerrar el modal
+    setShowPasswordModal(false);
   }
 
   if (loading) {
@@ -164,7 +187,7 @@ export default function AcceptInvitation() {
             Has sido agregado exitosamente a {invitation.companies.name} como {getRoleDisplayName(invitation.role)}.
           </p>
           <div className="animate-pulse">
-            <p className="text-sm text-muted-foreground">Redirigiendo...</p>
+            <p className="text-sm text-muted-foreground">Redirigiendo al dashboard...</p>
           </div>
         </div>
       </div>
@@ -197,45 +220,40 @@ export default function AcceptInvitation() {
           {/* Información del rol */}
           <div className="bg-secondary p-4 rounded-lg">
             <h3 className="font-semibold text-foreground mb-2">Rol</h3>
-            <div className="flex items-center gap-2">
-              <User className="w-5 h-5 text-primary" />
-              <span className="font-medium">{getRoleDisplayName(invitation.role)}</span>
-            </div>
+            <p className="text-lg font-bold text-primary">{getRoleDisplayName(invitation.role)}</p>
           </div>
 
-          {/* Información de expiración */}
+          {/* Información del email */}
           <div className="bg-secondary p-4 rounded-lg">
-            <h3 className="font-semibold text-foreground mb-2">Expiración</h3>
-            <div className="flex items-center gap-2">
-              <Clock className="w-5 h-5 text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">
-                Expira el {new Date(invitation.expires_at).toLocaleDateString()}
-              </span>
-            </div>
+            <h3 className="font-semibold text-foreground mb-2">Email</h3>
+            <p className="text-lg font-bold text-primary">{invitation.email}</p>
           </div>
 
-          {/* Botones de acción */}
-          <div className="space-y-3">
-            <button 
-              onClick={acceptInvitation}
-              disabled={accepting}
-              className="btn btn-primary w-full"
-            >
-              {accepting ? 'Aceptando...' : 'Aceptar Invitación'}
-            </button>
-            
-            <button 
-              onClick={() => navigate('/login')}
-              className="btn btn-ghost w-full"
-            >
-              Cancelar
-            </button>
-          </div>
-
-          <p className="text-xs text-muted-foreground text-center">
-            Al aceptar esta invitación, tendrás acceso a la plataforma de {invitation.companies.name}
-          </p>
+          {/* Botón de aceptar */}
+          <button
+            onClick={acceptInvitation}
+            disabled={accepting}
+            className="btn btn-primary w-full"
+          >
+            {accepting ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                Aceptando...
+              </>
+            ) : (
+              'Aceptar Invitación'
+            )}
+          </button>
         </div>
+
+        {/* Modal de cambio de contraseña */}
+        {showPasswordModal && (
+          <ChangePasswordAfterInvitation
+            isOpen={showPasswordModal}
+            onClose={() => setShowPasswordModal(false)}
+            onSuccess={handlePasswordChangeSuccess}
+          />
+        )}
       </div>
     </div>
   );
