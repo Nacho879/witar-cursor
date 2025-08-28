@@ -46,7 +46,7 @@ serve(async (req) => {
         )
       `)
       .eq('token', token)
-      .eq('status', 'pending')
+      .in('status', ['pending', 'sent']) // Buscar tanto 'pending' como 'sent'
       .single()
 
     console.log('Invitation query result:', { invitation, error: invitationError });
