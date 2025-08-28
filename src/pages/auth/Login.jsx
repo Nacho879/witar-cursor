@@ -137,10 +137,22 @@ export default function Login() {
         // Login exitoso, resetear intentos
         resetAttempts();
         
-        // Verificar si es un usuario temporal y redirigir al cambio de contraseña PRIMERO
+        // Verificar si el usuario tiene contraseña temporal PRIMERO
         if (data.session.user.user_metadata?.temp_user) {
-          navigate('/change-password');
+          setTempPasswordUser(data.session.user);
+          setShowPasswordModal(true);
           return;
+        }
+
+        // Si hay un token de invitación, procesarlo después del login
+        if (invitationToken) {
+          try {
+            // En lugar de procesar la invitación aquí, redirigir de vuelta a la página de aceptación
+            navigate(`/accept-invitation?token=${invitationToken}`);
+            return;
+          } catch (error) {
+            console.error('Error redirecting to invitation:', error);
+          }
         }
 
         // Obtener el rol del usuario para redirigir correctamente
@@ -180,24 +192,6 @@ export default function Login() {
           default:
             setMsg('Rol de usuario no válido');
             setLoading(false);
-        }
-
-        // Si hay un token de invitación, procesarlo después del login
-        if (invitationToken) {
-          try {
-            // En lugar de procesar la invitación aquí, redirigir de vuelta a la página de aceptación
-            navigate(`/accept-invitation?token=${invitationToken}`);
-            return;
-          } catch (error) {
-            console.error('Error redirecting to invitation:', error);
-          }
-        }
-
-        // Verificar si el usuario tiene contraseña temporal
-        if (data.session.user.user_metadata?.temp_user) {
-          setTempPasswordUser(data.session.user);
-          setShowPasswordModal(true);
-          return;
         }
       }
     } catch (error) {
@@ -372,26 +366,76 @@ export default function Login() {
         <ChangePasswordAfterInvitation
           isOpen={showPasswordModal}
           onClose={() => setShowPasswordModal(false)}
-          onSuccess={() => {
+          onSuccess={async () => {
             setShowPasswordModal(false);
-            // Redirigir al dashboard correspondiente
-            const { data: { user } } = supabase.auth.getUser();
+            
+            // Después de cambiar la contraseña, verificar si hay una invitación pendiente
+            const { data: { user } } = await supabase.auth.getUser();
             if (user) {
-              // Obtener el rol del usuario para redirigir correctamente
-              supabase
-                .from('user_company_roles')
-                .select('role')
-                .eq('user_id', user.id)
-                .eq('is_active', true)
-                .single()
-                .then(({ data: userRole }) => {
-                  if (userRole) {
-                    const redirectPath = userRole.role === 'owner' ? '/owner' : 
-                                       userRole.role === 'admin' ? '/admin' : 
-                                       userRole.role === 'manager' ? '/manager' : '/employee';
+              // Buscar invitaciones pendientes para este usuario
+              const { data: pendingInvitation } = await supabase
+                .from('invitations')
+                .select('*')
+                .eq('email', user.email)
+                .in('status', ['pending', 'sent'])
+                .single();
+
+              if (pendingInvitation) {
+                // Procesar la invitación automáticamente
+                try {
+                  const { data, error } = await supabase.functions.invoke('accept-employee-invitation', {
+                    body: { token: pendingInvitation.token }
+                  });
+
+                  if (data && data.success) {
+                    // Redirigir al dashboard correspondiente
+                    const redirectPath = data.role === 'owner' ? '/owner' : 
+                                       data.role === 'admin' ? '/admin' : 
+                                       data.role === 'manager' ? '/manager' : '/employee';
                     navigate(redirectPath);
+                  } else {
+                    console.error('Error processing invitation:', error);
+                    // Si hay error, intentar obtener el rol directamente
+                    const { data: userRole } = await supabase
+                      .from('user_company_roles')
+                      .select('role')
+                      .eq('user_id', user.id)
+                      .eq('is_active', true)
+                      .single();
+
+                    if (userRole) {
+                      const redirectPath = userRole.role === 'owner' ? '/owner' : 
+                                         userRole.role === 'admin' ? '/admin' : 
+                                         userRole.role === 'manager' ? '/manager' : '/employee';
+                      navigate(redirectPath);
+                    } else {
+                      // Si no hay rol, redirigir a una página de error o dashboard por defecto
+                      navigate('/employee');
+                    }
                   }
-                });
+                } catch (error) {
+                  console.error('Error in invitation processing:', error);
+                  navigate('/employee');
+                }
+              } else {
+                // Si no hay invitación pendiente, intentar obtener el rol directamente
+                const { data: userRole } = await supabase
+                  .from('user_company_roles')
+                  .select('role')
+                  .eq('user_id', user.id)
+                  .eq('is_active', true)
+                  .single();
+
+                if (userRole) {
+                  const redirectPath = userRole.role === 'owner' ? '/owner' : 
+                                     userRole.role === 'admin' ? '/admin' : 
+                                     userRole.role === 'manager' ? '/manager' : '/employee';
+                  navigate(redirectPath);
+                } else {
+                  // Si no hay rol, redirigir a una página de error o dashboard por defecto
+                  navigate('/employee');
+                }
+              }
             }
           }}
         />
