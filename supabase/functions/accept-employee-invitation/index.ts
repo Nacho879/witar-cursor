@@ -148,6 +148,19 @@ serve(async (req) => {
       console.error('Error updating invitation:', updateError)
     }
 
+    // Marcar al usuario como temporal para que cambie la contraseña
+    const { error: userUpdateError } = await supabaseClient.auth.admin.updateUserById(
+      user.id,
+      {
+        user_metadata: { temp_user: true }
+      }
+    );
+
+    if (userUpdateError) {
+      console.error('Error marking user as temporary:', userUpdateError)
+      // No lanzar error aquí, es opcional
+    }
+
     return new Response(
       JSON.stringify({
         success: true,

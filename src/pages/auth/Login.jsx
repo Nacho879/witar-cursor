@@ -1,21 +1,23 @@
 import * as React from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabaseClient';
-import { AlertTriangle, Shield, Eye, EyeOff } from 'lucide-react';
+import { Mail, Lock, Shield, AlertTriangle, Eye, EyeOff } from 'lucide-react';
+import ChangePasswordAfterInvitation from '@/components/ChangePasswordAfterInvitation';
 
 export default function Login() {
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
-  const [msg, setMsg] = React.useState('');
   const [loading, setLoading] = React.useState(false);
+  const [msg, setMsg] = React.useState('');
   const [showPassword, setShowPassword] = React.useState(false);
   const [loginAttempts, setLoginAttempts] = React.useState(0);
+  const [showCaptcha, setShowCaptcha] = React.useState(false);
+  const [captchaAnswer, setCaptchaAnswer] = React.useState('');
   const [isBlocked, setIsBlocked] = React.useState(false);
   const [blockUntil, setBlockUntil] = React.useState(null);
-  const [showCaptcha, setShowCaptcha] = React.useState(false);
-  const [captchaValue, setCaptchaValue] = React.useState('');
-  const [captchaInput, setCaptchaInput] = React.useState('');
-  
+  const [showPasswordModal, setShowPasswordModal] = React.useState(false);
+  const [tempPasswordUser, setTempPasswordUser] = React.useState(null);
+
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const invitationToken = searchParams.get('invitation');
@@ -50,13 +52,13 @@ export default function Login() {
     const num1 = Math.floor(Math.random() * 10) + 1;
     const num2 = Math.floor(Math.random() * 10) + 1;
     const result = num1 + num2;
-    setCaptchaValue(result.toString());
+    setCaptchaAnswer(result.toString());
     return `${num1} + ${num2} = ?`;
   };
 
   // Función para verificar CAPTCHA
   const verifyCaptcha = (input) => {
-    return input === captchaValue;
+    return input === captchaAnswer;
   };
 
   // Función para bloquear temporalmente
@@ -85,7 +87,7 @@ export default function Login() {
   const resetAttempts = () => {
     setLoginAttempts(0);
     setShowCaptcha(false);
-    setCaptchaInput('');
+    setCaptchaAnswer('');
     localStorage.removeItem('loginAttempts');
   };
 
@@ -103,15 +105,15 @@ export default function Login() {
 
     // Verificar CAPTCHA si es necesario
     if (showCaptcha) {
-      if (!captchaInput.trim()) {
+      if (!captchaAnswer.trim()) {
         setMsg('Por favor, completa el CAPTCHA');
         setLoading(false);
         return;
       }
       
-      if (!verifyCaptcha(captchaInput)) {
+      if (!verifyCaptcha(captchaAnswer)) {
         setMsg('CAPTCHA incorrecto. Intenta de nuevo.');
-        setCaptchaInput('');
+        setCaptchaAnswer('');
         incrementAttempts();
         setLoading(false);
         return;
@@ -189,6 +191,13 @@ export default function Login() {
           } catch (error) {
             console.error('Error redirecting to invitation:', error);
           }
+        }
+
+        // Verificar si el usuario tiene contraseña temporal
+        if (data.session.user.user_metadata?.temp_user) {
+          setTempPasswordUser(data.session.user);
+          setShowPasswordModal(true);
+          return;
         }
       }
     } catch (error) {
@@ -327,8 +336,8 @@ export default function Login() {
                   className="input w-full"
                   type="number"
                   placeholder="Respuesta"
-                  value={captchaInput}
-                  onChange={e => setCaptchaInput(e.target.value)}
+                  value={captchaAnswer}
+                  onChange={e => setCaptchaAnswer(e.target.value)}
                   required
                 />
               </div>
@@ -357,6 +366,36 @@ export default function Login() {
           </a>
         </p>
       </form>
+      
+      {/* Modal de cambio de contraseña */}
+      {showPasswordModal && tempPasswordUser && (
+        <ChangePasswordAfterInvitation
+          isOpen={showPasswordModal}
+          onClose={() => setShowPasswordModal(false)}
+          onSuccess={() => {
+            setShowPasswordModal(false);
+            // Redirigir al dashboard correspondiente
+            const { data: { user } } = supabase.auth.getUser();
+            if (user) {
+              // Obtener el rol del usuario para redirigir correctamente
+              supabase
+                .from('user_company_roles')
+                .select('role')
+                .eq('user_id', user.id)
+                .eq('is_active', true)
+                .single()
+                .then(({ data: userRole }) => {
+                  if (userRole) {
+                    const redirectPath = userRole.role === 'owner' ? '/owner' : 
+                                       userRole.role === 'admin' ? '/admin' : 
+                                       userRole.role === 'manager' ? '/manager' : '/employee';
+                    navigate(redirectPath);
+                  }
+                });
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

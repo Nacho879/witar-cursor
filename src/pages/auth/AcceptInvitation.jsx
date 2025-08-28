@@ -81,8 +81,8 @@ export default function AcceptInvitation() {
       const { data: { user } } = await supabase.auth.getUser();
       
       if (!user) {
-        // Si no está autenticado, redirigir al login con el token
-        navigate(`/login?invitation=${token}`);
+        // Si no está autenticado, mostrar la contraseña temporal y redirigir al login
+        setSuccess(true);
         return;
       }
 
@@ -103,7 +103,6 @@ export default function AcceptInvitation() {
       }
 
       if (data.success) {
-        setSuccess(true);
         setAcceptedRole(data.role);
         
         // Redirigir según el rol
@@ -186,9 +185,69 @@ export default function AcceptInvitation() {
           <p className="text-muted-foreground mb-6">
             Has sido agregado exitosamente a {invitation.companies.name} como {getRoleDisplayName(invitation.role)}.
           </p>
-          <div className="animate-pulse">
-            <p className="text-sm text-muted-foreground">Redirigiendo al dashboard...</p>
+          
+          {/* Credenciales temporales */}
+          <div className="bg-secondary p-4 rounded-lg mb-6">
+            <h3 className="font-semibold text-foreground mb-3">Credenciales Temporales</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Email:</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={invitation.email}
+                    readOnly
+                    className="input flex-1 text-sm"
+                  />
+                  <button
+                    onClick={() => navigator.clipboard.writeText(invitation.email)}
+                    className="btn btn-sm btn-ghost"
+                    title="Copiar email"
+                  >
+                    📋
+                  </button>
+                </div>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Contraseña Temporal:</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={invitation.temp_password || 'No disponible'}
+                    readOnly
+                    className="input flex-1 text-sm"
+                  />
+                  <button
+                    onClick={() => navigator.clipboard.writeText(invitation.temp_password || '')}
+                    className="btn btn-sm btn-ghost"
+                    title="Copiar contraseña"
+                    disabled={!invitation.temp_password}
+                  >
+                    📋
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
+
+          {/* Instrucciones */}
+          <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg mb-6">
+            <h4 className="font-semibold text-blue-800 dark:text-blue-200 mb-2">📋 Instrucciones:</h4>
+            <ol className="text-sm text-blue-700 dark:text-blue-300 text-left space-y-1">
+              <li>1. Copia las credenciales temporales</li>
+              <li>2. Ve al login e inicia sesión</li>
+              <li>3. Se te pedirá cambiar la contraseña</li>
+              <li>4. ¡Listo! Ya puedes usar la plataforma</li>
+            </ol>
+          </div>
+
+          <button 
+            onClick={() => navigate('/login')}
+            className="btn btn-primary w-full"
+          >
+            Ir al Login
+          </button>
         </div>
       </div>
     );
