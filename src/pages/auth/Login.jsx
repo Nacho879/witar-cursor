@@ -139,6 +139,7 @@ export default function Login() {
         
         // Verificar si el usuario tiene contraseña temporal PRIMERO
         if (data.session.user.user_metadata?.temp_user) {
+          console.log('🔍 Usuario temporal detectado, mostrando modal de cambio de contraseña');
           setTempPasswordUser(data.session.user);
           setShowPasswordModal(true);
           return;
@@ -146,6 +147,7 @@ export default function Login() {
 
         // Si hay un token de invitación, procesarlo después del login
         if (invitationToken) {
+          console.log('🔍 Token de invitación detectado, redirigiendo a página de aceptación');
           try {
             // En lugar de procesar la invitación aquí, redirigir de vuelta a la página de aceptación
             navigate(`/accept-invitation?token=${invitationToken}`);
@@ -155,43 +157,49 @@ export default function Login() {
           }
         }
 
-        // Obtener el rol del usuario para redirigir correctamente
+        // Obtener el rol del usuario para redirigir correctamente (if not temp_user or invitation)
+        console.log('🔍 Obteniendo rol del usuario para redirección');
         const { data: userRole, error: roleError } = await supabase
           .from('user_company_roles')
-          .select('role')
+          .select('role, company_id, companies(id, name, slug)')
           .eq('user_id', data.session.user.id)
           .eq('is_active', true)
           .single();
 
+        console.log('🔍 Resultado de consulta de rol:', { userRole, error: roleError });
+
         if (roleError) {
-          console.error('Error fetching user role:', roleError);
-          // Si no hay rol, redirigir al login
-          setMsg('Error al obtener información del usuario');
-          setLoading(false);
-          return;
+          console.error('❌ Error obteniendo rol del usuario:', roleError);
+          
+          // Si no hay rol activo, verificar si hay invitaciones pendientes
+          const { data: pendingInvitation } = await supabase
+            .from('invitations')
+            .select('*')
+            .eq('email', data.session.user.email)
+            .in('status', ['pending', 'sent'])
+            .single();
+
+          if (pendingInvitation) {
+            console.log('🔍 Invitación pendiente encontrada, redirigiendo a aceptación');
+            navigate(`/accept-invitation?token=${pendingInvitation.token}`);
+            return;
+          } else {
+            console.log('❌ No hay rol ni invitación pendiente, redirigiendo a employee por defecto');
+            navigate('/employee');
+            return;
+          }
         }
 
-        // Guardar información en sessionStorage (más seguro que localStorage)
-        sessionStorage.setItem('userRole', userRole.role);
-        // NO guardar access_token - Supabase maneja la sesión automáticamente
-
-        // Redirigir según el rol
-        switch (userRole.role) {
-          case 'owner':
-            navigate('/owner');
-            break;
-          case 'admin':
-            navigate('/admin'); // Los admins van a su propio panel
-            break;
-          case 'manager':
-            navigate('/manager');
-            break;
-          case 'employee':
-            navigate('/employee');
-            break;
-          default:
-            setMsg('Rol de usuario no válido');
-            setLoading(false);
+        if (userRole) {
+          console.log('✅ Rol encontrado:', userRole.role);
+          const redirectPath = userRole.role === 'owner' ? '/owner' : 
+                             userRole.role === 'admin' ? '/admin' : 
+                             userRole.role === 'manager' ? '/manager' : '/employee';
+          console.log('🔀 Redirigiendo a:', redirectPath);
+          navigate(redirectPath);
+        } else {
+          console.log('❌ No se encontró rol, redirigiendo a employee por defecto');
+          navigate('/employee');
         }
       }
     } catch (error) {

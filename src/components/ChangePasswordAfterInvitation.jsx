@@ -23,48 +23,67 @@ export default function ChangePasswordAfterInvitation({ isOpen, onClose, onSucce
     }
   }, [isOpen]);
 
-  async function handleChangePassword(e) {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-    setMessage('');
+    setError('');
+    setSuccess('');
+
+    if (password !== confirmPassword) {
+      setError('Las contraseñas no coinciden');
+      setLoading(false);
+      return;
+    }
+
+    if (password.length < 6) {
+      setError('La contraseña debe tener al menos 6 caracteres');
+      setLoading(false);
+      return;
+    }
 
     try {
-      // Validaciones
-      if (newPassword.length < 6) {
-        setMessage('La nueva contraseña debe tener al menos 6 caracteres');
-        return;
-      }
-
-      if (newPassword !== confirmPassword) {
-        setMessage('Las contraseñas no coinciden');
-        return;
-      }
-
-      // Cambiar contraseña
-      const { error } = await supabase.auth.updateUser({
-        password: newPassword
+      console.log('🔍 Cambiando contraseña para usuario temporal');
+      
+      // Cambiar la contraseña
+      const { error: updateError } = await supabase.auth.updateUser({
+        password: password
       });
 
-      if (error) {
-        throw error;
+      if (updateError) {
+        console.error('❌ Error cambiando contraseña:', updateError);
+        setError(`Error al cambiar la contraseña: ${updateError.message}`);
+        setLoading(false);
+        return;
       }
 
-      setSuccess(true);
-      setMessage('Contraseña cambiada exitosamente');
+      console.log('✅ Contraseña cambiada exitosamente');
+
+      // Eliminar la marca de usuario temporal
+      const { error: metadataError } = await supabase.auth.updateUser({
+        data: { temp_user: null }
+      });
+
+      if (metadataError) {
+        console.error('⚠️ Error eliminando marca temporal:', metadataError);
+        // No lanzar error aquí, es opcional
+      } else {
+        console.log('✅ Marca de usuario temporal eliminada');
+      }
+
+      setSuccess('Contraseña cambiada exitosamente');
+      setLoading(false);
       
-      // Cerrar modal después de 2 segundos
+      // Llamar al callback de éxito después de un breve delay
       setTimeout(() => {
         onSuccess();
-        onClose();
-      }, 2000);
+      }, 1500);
 
     } catch (error) {
-      console.error('Error changing password:', error);
-      setMessage(`Error al cambiar la contraseña: ${error.message}`);
-    } finally {
+      console.error('❌ Error general:', error);
+      setError('Error inesperado al cambiar la contraseña');
       setLoading(false);
     }
-  }
+  };
 
   if (!isOpen) return null;
 
