@@ -183,17 +183,11 @@ export default function Login() {
         // Si hay un token de invitación, procesarlo después del login
         if (invitationToken) {
           try {
-            const { data, error } = await supabase.functions.invoke('accept-employee-invitation', {
-              body: { token: invitationToken }
-            });
-
-            if (error) {
-              console.error('Error accepting invitation:', error);
-            } else if (data.success) {
-              // La invitación se procesó correctamente, el usuario ya está en la empresa
-            }
+            // En lugar de procesar la invitación aquí, redirigir de vuelta a la página de aceptación
+            navigate(`/accept-invitation?token=${invitationToken}`);
+            return;
           } catch (error) {
-            console.error('Error processing invitation:', error);
+            console.error('Error redirecting to invitation:', error);
           }
         }
       }
