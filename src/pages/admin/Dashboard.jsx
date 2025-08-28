@@ -425,7 +425,7 @@ export default function AdminDashboard() {
             Bienvenido, {companyInfo?.name}
           </p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex gap-3 pr-16 sm:pr-0">
           <button
             onClick={() => window.location.href = '/admin/employees'}
             className="btn btn-primary flex items-center gap-2 w-full sm:w-auto"

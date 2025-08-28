@@ -388,14 +388,16 @@ export default function Employees() {
             Gestiona los empleados de tu empresa
           </p>
         </div>
-        <button
-          onClick={() => setShowInviteModal(true)}
-          className="btn btn-primary flex items-center gap-2 w-full sm:w-auto"
-        >
-          <Plus className="w-4 h-4" />
-          <span className="hidden sm:inline">Invitar Empleado</span>
-          <span className="sm:hidden">Invitar</span>
-        </button>
+        <div className="flex justify-end pr-16 sm:pr-0">
+          <button
+            onClick={() => setShowInviteModal(true)}
+            className="btn btn-primary flex items-center gap-2 w-full sm:w-auto"
+          >
+            <Plus className="w-4 h-4" />
+            <span className="hidden sm:inline">Invitar Empleado</span>
+            <span className="sm:hidden">Invitar</span>
+          </button>
+        </div>
       </div>
 
       {/* Stats Cards */}

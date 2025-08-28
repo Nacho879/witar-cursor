@@ -269,7 +269,7 @@ export default function OwnerDashboard() {
             Bienvenido de vuelta, {companyInfo?.name}
           </p>
         </div>
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 pr-16 sm:pr-0">
           <NotificationCenter />
           <ThemeToggle/>
           <button
