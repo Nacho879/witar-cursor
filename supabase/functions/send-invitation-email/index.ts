@@ -109,6 +109,49 @@ serve(async (req) => {
     const tempPassword = generateTempPassword()
     console.log('Generated temp password for:', invitation.email)
     
+    // Crear el usuario en Supabase Auth si no existe
+    let authUser = existingUser;
+    if (!existingUser) {
+      console.log('Creating new user in Supabase Auth:', invitation.email);
+      const { data: newUser, error: createUserError } = await supabaseServiceClient.auth.admin.createUser({
+        email: invitation.email,
+        password: tempPassword,
+        email_confirm: true, // Confirmar email automáticamente
+        user_metadata: {
+          temp_user: true,
+          first_name: invitation.first_name,
+          last_name: invitation.last_name
+        }
+      });
+
+      if (createUserError) {
+        console.error('Error creating user:', createUserError);
+        throw new Error(`Error creando usuario: ${createUserError.message}`);
+      }
+
+      authUser = newUser.user;
+      console.log('User created successfully:', authUser.id);
+    } else {
+      // Si el usuario ya existe, actualizar la contraseña temporal
+      console.log('Updating existing user password:', invitation.email);
+      const { error: updatePasswordError } = await supabaseServiceClient.auth.admin.updateUserById(
+        existingUser.id,
+        {
+          password: tempPassword,
+          user_metadata: {
+            temp_user: true,
+            first_name: invitation.first_name,
+            last_name: invitation.last_name
+          }
+        }
+      );
+
+      if (updatePasswordError) {
+        console.error('Error updating user password:', updatePasswordError);
+        throw new Error(`Error actualizando contraseña: ${updatePasswordError.message}`);
+      }
+    }
+    
     // Generar URL de invitación
     console.log('Invitation token for URL:', invitation.token);
     const invitationUrl = `${Deno.env.get('FRONTEND_URL') || 'https://www.witar.es'}/accept-invitation?token=${invitation.token}`
