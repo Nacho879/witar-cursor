@@ -28,17 +28,23 @@ export default function AcceptInvitation() {
   async function verifyInvitation() {
     try {
       
-      // Consulta simplificada para evitar el error 406
+      // Consulta simplificada - primero buscar por token sin filtro de status
       const { data: invitation, error: invitationError } = await supabase
         .from('invitations')
         .select('*')
         .eq('token', token)
-        .or('status.eq.pending,status.eq.sent')
         .single();
 
       if (invitationError || !invitation) {
         console.error('Invitation not found:', invitationError);
         setError('Invitación no válida o expirada');
+        setLoading(false);
+        return;
+      }
+
+      // Verificar el status después de obtener la invitación
+      if (invitation.status !== 'pending' && invitation.status !== 'sent') {
+        setError('Invitación no está disponible para aceptar');
         setLoading(false);
         return;
       }
