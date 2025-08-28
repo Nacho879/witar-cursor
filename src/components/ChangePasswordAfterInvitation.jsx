@@ -3,10 +3,8 @@ import { supabase } from '@/lib/supabaseClient';
 import { Lock, Eye, EyeOff, CheckCircle } from 'lucide-react';
 
 export default function ChangePasswordAfterInvitation({ isOpen, onClose, onSuccess }) {
-  const [currentPassword, setCurrentPassword] = React.useState('');
   const [newPassword, setNewPassword] = React.useState('');
   const [confirmPassword, setConfirmPassword] = React.useState('');
-  const [showCurrentPassword, setShowCurrentPassword] = React.useState(false);
   const [showNewPassword, setShowNewPassword] = React.useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
@@ -15,7 +13,6 @@ export default function ChangePasswordAfterInvitation({ isOpen, onClose, onSucce
 
   React.useEffect(() => {
     if (isOpen) {
-      setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
       setMessage('');
@@ -26,17 +23,16 @@ export default function ChangePasswordAfterInvitation({ isOpen, onClose, onSucce
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-    setError('');
-    setSuccess('');
+    setMessage('');
 
-    if (password !== confirmPassword) {
-      setError('Las contraseñas no coinciden');
+    if (newPassword !== confirmPassword) {
+      setMessage('Las contraseñas no coinciden');
       setLoading(false);
       return;
     }
 
-    if (password.length < 6) {
-      setError('La contraseña debe tener al menos 6 caracteres');
+    if (newPassword.length < 6) {
+      setMessage('La contraseña debe tener al menos 6 caracteres');
       setLoading(false);
       return;
     }
@@ -46,12 +42,12 @@ export default function ChangePasswordAfterInvitation({ isOpen, onClose, onSucce
       
       // Cambiar la contraseña
       const { error: updateError } = await supabase.auth.updateUser({
-        password: password
+        password: newPassword
       });
 
       if (updateError) {
         console.error('❌ Error cambiando contraseña:', updateError);
-        setError(`Error al cambiar la contraseña: ${updateError.message}`);
+        setMessage(`Error al cambiar la contraseña: ${updateError.message}`);
         setLoading(false);
         return;
       }
@@ -70,7 +66,8 @@ export default function ChangePasswordAfterInvitation({ isOpen, onClose, onSucce
         console.log('✅ Marca de usuario temporal eliminada');
       }
 
-      setSuccess('Contraseña cambiada exitosamente');
+      setSuccess(true);
+      setMessage('Contraseña cambiada exitosamente');
       setLoading(false);
       
       // Llamar al callback de éxito después de un breve delay
@@ -80,7 +77,7 @@ export default function ChangePasswordAfterInvitation({ isOpen, onClose, onSucce
 
     } catch (error) {
       console.error('❌ Error general:', error);
-      setError('Error inesperado al cambiar la contraseña');
+      setMessage('Error inesperado al cambiar la contraseña');
       setLoading(false);
     }
   };
@@ -126,7 +123,7 @@ export default function ChangePasswordAfterInvitation({ isOpen, onClose, onSucce
                 Por seguridad, debes cambiar tu contraseña temporal antes de continuar.
               </p>
 
-              <form onSubmit={handleChangePassword} className="space-y-4">
+              <form onSubmit={handleSubmit} className="space-y-4">
                 {/* Nueva Contraseña */}
                 <div>
                   <label className="block text-sm font-medium mb-2">
