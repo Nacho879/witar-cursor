@@ -73,6 +73,18 @@ serve(async (req) => {
     console.log('✅ Admin permissions verified:', adminRole.role);
 
     // Obtener información del empleado a eliminar
+    console.log('🔍 Searching for employee with ID:', employeeId);
+    console.log('🔍 Admin company_id:', adminRole.company_id);
+    
+    // Debug: Listar todos los empleados de la empresa
+    const { data: allEmployees, error: listError } = await supabaseServiceClient
+      .from('user_company_roles')
+      .select('id, user_id, role, company_id')
+      .eq('company_id', adminRole.company_id);
+    
+    console.log('🔍 All employees in company:', allEmployees);
+    console.log('🔍 List error:', listError);
+    
     const { data: employeeRole, error: employeeRoleError } = await supabaseServiceClient
       .from('user_company_roles')
       .select(`
@@ -86,7 +98,10 @@ serve(async (req) => {
       .eq('company_id', adminRole.company_id)
       .single();
 
+    console.log('🔍 Employee role query result:', { employeeRole, error: employeeRoleError });
+
     if (employeeRoleError || !employeeRole) {
+      console.log('❌ Employee not found. Error:', employeeRoleError);
       throw new Error('Empleado no encontrado')
     }
 

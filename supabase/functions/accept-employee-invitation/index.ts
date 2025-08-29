@@ -143,16 +143,50 @@ serve(async (req) => {
       supervisor_id: invitation.supervisor_id
     });
 
-    const { error: roleError } = await supabaseServiceClient
+    // Primero verificar si ya existe un rol para este usuario en esta empresa
+    const { data: existingRoleRecord, error: existingRoleRecordError } = await supabaseServiceClient
       .from('user_company_roles')
-      .upsert({
-        user_id: user.id,
-        company_id: invitation.company_id,
-        role: invitation.role,
-        department_id: invitation.department_id,
-        supervisor_id: invitation.supervisor_id,
-        is_active: true
-      }, { onConflict: 'user_id,company_id' })
+      .select('id, is_active, role')
+      .eq('user_id', user.id)
+      .eq('company_id', invitation.company_id)
+      .maybeSingle();
+
+    console.log('🔍 Existing role record:', { existingRoleRecord, error: existingRoleRecordError });
+
+    let roleError = null;
+    
+    if (existingRoleRecord) {
+      // Si existe, actualizar el rol existente
+      console.log('🔄 Updating existing role record:', existingRoleRecord.id);
+      const { error: updateError } = await supabaseServiceClient
+        .from('user_company_roles')
+        .update({
+          role: invitation.role,
+          department_id: invitation.department_id,
+          supervisor_id: invitation.supervisor_id,
+          is_active: true,
+          joined_at: existingRoleRecord.joined_at || new Date().toISOString()
+        })
+        .eq('id', existingRoleRecord.id);
+      
+      roleError = updateError;
+    } else {
+      // Si no existe, crear un nuevo rol
+      console.log('🆕 Creating new role record');
+      const { error: insertError } = await supabaseServiceClient
+        .from('user_company_roles')
+        .insert({
+          user_id: user.id,
+          company_id: invitation.company_id,
+          role: invitation.role,
+          department_id: invitation.department_id,
+          supervisor_id: invitation.supervisor_id,
+          is_active: true,
+          joined_at: new Date().toISOString()
+        });
+      
+      roleError = insertError;
+    }
 
     if (roleError) {
       console.error('❌ Error creating/updating role:', roleError);

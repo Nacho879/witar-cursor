@@ -96,16 +96,20 @@ serve(async (req) => {
       // Verificar si ya tiene un rol activo en esta empresa
       const { data: existingRole, error: roleCheckError } = await supabaseServiceClient
         .from('user_company_roles')
-        .select('role, is_active')
+        .select('role, is_active, id')
         .eq('user_id', existingUser.id)
         .eq('company_id', invitation.company_id)
-        .eq('is_active', true)
-        .single();
+        .maybeSingle();
 
       console.log('🔍 Debug - Role check result:', { existingRole, error: roleCheckError });
 
-      if (existingRole && !roleCheckError) {
+      if (existingRole && existingRole.is_active) {
         throw new Error(`El usuario ${invitation.email} ya tiene un rol activo (${existingRole.role}) en esta empresa. No se puede enviar una nueva invitación.`);
+      }
+      
+      // Si tiene un rol inactivo, lo reactivaremos cuando acepte la invitación
+      if (existingRole && !existingRole.is_active) {
+        console.log('🔄 User has inactive role, will reactivate when accepting invitation');
       }
     } else {
       console.log('🔍 Debug - User does not exist in Auth, will create new user');
