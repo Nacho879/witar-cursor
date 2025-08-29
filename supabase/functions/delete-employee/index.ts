@@ -13,6 +13,8 @@ serve(async (req) => {
 
   try {
     console.log('🔍 Function started - delete-employee');
+    console.log('🔍 SUPABASE_URL:', Deno.env.get('SUPABASE_URL'));
+    console.log('🔍 SUPABASE_SERVICE_ROLE_KEY length:', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')?.length);
     
     // Cliente de servicio para operaciones de base de datos
     const supabaseServiceClient = createClient(
@@ -33,7 +35,11 @@ serve(async (req) => {
 
     const body = await req.json();
     console.log('📋 Request body:', body);
+    console.log('📋 Request headers:', Object.fromEntries(req.headers.entries()));
     const { employeeId, reason } = body;
+
+    console.log('🔍 employeeId:', employeeId);
+    console.log('🔍 reason:', reason);
 
     if (!employeeId) {
       throw new Error('ID del empleado requerido')

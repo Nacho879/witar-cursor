@@ -187,6 +187,10 @@ export default function EmployeeProfileModal({ isOpen, onClose, employee, onEmpl
 
   if (!isOpen || !employee) return null;
 
+  console.log('EmployeeProfileModal - Employee object:', employee);
+  console.log('Employee role:', employee.role);
+  console.log('Employee is_active:', employee.is_active);
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-background rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
@@ -249,19 +253,16 @@ export default function EmployeeProfileModal({ isOpen, onClose, employee, onEmpl
                     {isEditing ? 'Cancelar' : 'Editar'}
                   </button>
                   
-                  {/* Solo mostrar botón de eliminar para empleados (no admins/owners) */}
-                  {console.log('Employee role:', employee.role)}
-                  {(employee.role === 'employee' || employee.role === 'manager') && (
-                    <button
-                      type="button"
-                      onClick={() => setShowDeleteModal(true)}
-                      className="btn btn-error flex items-center gap-2"
-                      title="Eliminar empleado"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                      Eliminar
-                    </button>
-                  )}
+                  {/* Botón de eliminar - mostrar siempre para testing */}
+                  <button
+                    type="button"
+                    onClick={() => setShowDeleteModal(true)}
+                    className="btn btn-error flex items-center gap-2"
+                    title="Eliminar empleado"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Eliminar
+                  </button>
                 </div>
               </div>
 
