@@ -435,20 +435,69 @@ export default function Login() {
                     navigate(redirectPath);
                   } else {
                     console.error('❌ Error procesando invitación:', error);
-                    // Si hay error, mostrar mensaje y redirigir a employee por defecto
-                    alert('Hubo un problema al procesar tu invitación. Por favor, contacta al administrador.');
-                    navigate('/employee');
+                    // Si hay error, intentar usar la función de verificación como respaldo
+                    console.log('🔄 Intentando reparación automática con verify-user-role...');
+                    const { data: verifyData, error: verifyError } = await supabase.functions.invoke('verify-user-role');
+                    
+                    if (verifyData && verifyData.success && verifyData.hasRole) {
+                      console.log('✅ Reparación automática exitosa:', verifyData.role);
+                      const redirectPath = verifyData.role === 'owner' ? '/owner' : 
+                                         verifyData.role === 'admin' ? '/admin' : 
+                                         verifyData.role === 'manager' ? '/manager' : '/employee';
+                      navigate(redirectPath);
+                    } else {
+                      console.error('❌ Reparación automática falló:', verifyError);
+                      alert('Hubo un problema al procesar tu invitación. Por favor, contacta al administrador.');
+                      navigate('/employee');
+                    }
                   }
                 } catch (error) {
                   console.error('❌ Error en procesamiento de invitación:', error);
-                  alert('Error al procesar la invitación. Por favor, contacta al administrador.');
-                  navigate('/employee');
+                  // Intentar reparación automática como último recurso
+                  try {
+                    console.log('🔄 Intentando reparación automática como último recurso...');
+                    const { data: verifyData, error: verifyError } = await supabase.functions.invoke('verify-user-role');
+                    
+                    if (verifyData && verifyData.success && verifyData.hasRole) {
+                      console.log('✅ Reparación automática exitosa:', verifyData.role);
+                      const redirectPath = verifyData.role === 'owner' ? '/owner' : 
+                                         verifyData.role === 'admin' ? '/admin' : 
+                                         verifyData.role === 'manager' ? '/manager' : '/employee';
+                      navigate(redirectPath);
+                    } else {
+                      console.error('❌ Reparación automática falló:', verifyError);
+                      alert('Error al procesar la invitación. Por favor, contacta al administrador.');
+                      navigate('/employee');
+                    }
+                  } catch (verifyError) {
+                    console.error('❌ Error en reparación automática:', verifyError);
+                    alert('Error al procesar la invitación. Por favor, contacta al administrador.');
+                    navigate('/employee');
+                  }
                 }
               } else {
                 console.log('❌ No hay invitación pendiente ni rol activo');
-                // Si no hay invitación pendiente ni rol activo, mostrar mensaje
-                alert('No se encontró información de tu cuenta. Por favor, contacta al administrador.');
-                navigate('/employee');
+                // Intentar reparación automática como último recurso
+                try {
+                  console.log('🔄 Intentando reparación automática...');
+                  const { data: verifyData, error: verifyError } = await supabase.functions.invoke('verify-user-role');
+                  
+                  if (verifyData && verifyData.success && verifyData.hasRole) {
+                    console.log('✅ Reparación automática exitosa:', verifyData.role);
+                    const redirectPath = verifyData.role === 'owner' ? '/owner' : 
+                                       verifyData.role === 'admin' ? '/admin' : 
+                                       verifyData.role === 'manager' ? '/manager' : '/employee';
+                    navigate(redirectPath);
+                  } else {
+                    console.error('❌ Reparación automática falló:', verifyError);
+                    alert('No se encontró información de tu cuenta. Por favor, contacta al administrador.');
+                    navigate('/employee');
+                  }
+                } catch (verifyError) {
+                  console.error('❌ Error en reparación automática:', verifyError);
+                  alert('No se encontró información de tu cuenta. Por favor, contacta al administrador.');
+                  navigate('/employee');
+                }
               }
             } else {
               console.error('❌ No se pudo obtener el usuario autenticado');
