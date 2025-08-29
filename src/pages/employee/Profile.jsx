@@ -55,24 +55,39 @@ export default function Profile() {
 
   async function loadProfileData() {
     try {
+      console.log('🔍 Loading profile data...');
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!user) {
+        console.log('❌ No user found');
+        setLoading(false);
+        return;
+      }
+
+      console.log('👤 User found:', user.email);
 
       // Asegurar que el perfil esté completo
       try {
+        console.log('🔍 Ensuring user profile...');
         await supabase.functions.invoke('ensure-user-profile');
+        console.log('✅ User profile ensured');
       } catch (error) {
-        console.error('Error ensuring user profile:', error);
+        console.error('❌ Error ensuring user profile:', error);
       }
 
       // Cargar perfil del usuario
+      console.log('🔍 Loading user profile from database...');
       const { data: profile, error: profileError } = await supabase
         .from('user_profiles')
         .select('*')
         .eq('user_id', user.id)
         .single();
 
-      if (profileError) throw profileError;
+      if (profileError) {
+        console.error('❌ Profile error:', profileError);
+        throw profileError;
+      }
+
+      console.log('✅ Profile loaded:', profile);
       
       // Combinar datos del perfil con el email del usuario autenticado
       const profileWithEmail = {
@@ -89,6 +104,7 @@ export default function Profile() {
       });
 
       // Cargar información de la empresa
+      console.log('🔍 Loading company info...');
       const { data: userRole, error: roleError } = await supabase
         .from('user_company_roles')
         .select(`
@@ -108,15 +124,22 @@ export default function Profile() {
         .eq('is_active', true)
         .single();
 
-      if (!roleError && userRole) {
+      if (roleError) {
+        console.error('❌ Role error:', roleError);
+      } else if (userRole) {
+        console.log('✅ Company info loaded:', userRole);
         setCompanyInfo({
           company: userRole.companies,
           department: userRole.departments,
           role: userRole.role
         });
       }
+
+      console.log('✅ Profile data loading completed');
     } catch (error) {
-      console.error('Error loading profile data:', error);
+      console.error('❌ Error loading profile data:', error);
+    } finally {
+      setLoading(false);
     }
   }
 
