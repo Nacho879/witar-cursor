@@ -624,6 +624,7 @@ export default function Employees() {
         isOpen={!!selectedEmployee}
         onClose={() => setSelectedEmployee(null)}
         employee={selectedEmployee}
+        onEmployeeDeleted={handleEmployeeDeleted}
       />
 
       <DeleteEmployeeModal

@@ -1,12 +1,14 @@
 import * as React from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { X, User, Mail, Phone, MapPin, Calendar, Save, Edit, Building, Shield } from 'lucide-react';
+import { X, User, Mail, Phone, MapPin, Calendar, Save, Edit, Building, Shield, Trash2 } from 'lucide-react';
+import DeleteEmployeeModal from './DeleteEmployeeModal';
 
-export default function EmployeeProfileModal({ isOpen, onClose, employee }) {
+export default function EmployeeProfileModal({ isOpen, onClose, employee, onEmployeeDeleted }) {
   const [loading, setLoading] = React.useState(false);
   const [message, setMessage] = React.useState('');
   const [isEditing, setIsEditing] = React.useState(false);
   const [departments, setDepartments] = React.useState([]);
+  const [showDeleteModal, setShowDeleteModal] = React.useState(false);
   const [formData, setFormData] = React.useState({
     full_name: '',
     phone: '',
@@ -154,6 +156,16 @@ export default function EmployeeProfileModal({ isOpen, onClose, employee }) {
     }));
   }
 
+  const handleEmployeeDeleted = (employeeId, deletedEmployee) => {
+    // Cerrar el modal de perfil
+    onClose();
+    
+    // Llamar al callback del padre si existe
+    if (onEmployeeDeleted) {
+      onEmployeeDeleted(employeeId, deletedEmployee);
+    }
+  };
+
   function getRoleDisplayName(role) {
     switch (role) {
       case 'owner': return 'Propietario';
@@ -227,14 +239,29 @@ export default function EmployeeProfileModal({ isOpen, onClose, employee }) {
                     </span>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setIsEditing(!isEditing)}
-                  className="btn btn-secondary flex items-center gap-2"
-                >
-                  <Edit className="w-4 h-4" />
-                  {isEditing ? 'Cancelar' : 'Editar'}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsEditing(!isEditing)}
+                    className="btn btn-secondary flex items-center gap-2"
+                  >
+                    <Edit className="w-4 h-4" />
+                    {isEditing ? 'Cancelar' : 'Editar'}
+                  </button>
+                  
+                  {/* Solo mostrar botón de eliminar para empleados (no admins/owners) */}
+                  {employee.role === 'employee' && (
+                    <button
+                      type="button"
+                      onClick={() => setShowDeleteModal(true)}
+                      className="btn btn-error flex items-center gap-2"
+                      title="Eliminar empleado"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      Eliminar
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Form Fields */}
@@ -409,6 +436,14 @@ export default function EmployeeProfileModal({ isOpen, onClose, employee }) {
           )}
         </div>
       </div>
+
+      {/* Delete Employee Modal */}
+      <DeleteEmployeeModal
+        isOpen={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        employee={employee}
+        onEmployeeDeleted={handleEmployeeDeleted}
+      />
     </div>
   );
 } 
