@@ -91,13 +91,7 @@ serve(async (req) => {
     
     const { data: employeeRole, error: employeeRoleError } = await supabaseServiceClient
       .from('user_company_roles')
-      .select(`
-        *,
-        user_profiles (
-          full_name,
-          email
-        )
-      `)
+      .select('*')
       .eq('id', employeeId)
       .eq('company_id', adminRole.company_id)
       .single();
@@ -126,15 +120,22 @@ serve(async (req) => {
       throw new Error('No puedes eliminar a otro administrador o propietario')
     }
 
-    console.log('👤 Employee to delete:', employeeRole.user_profiles?.full_name);
+    // Obtener datos del perfil del empleado
+    const { data: employeeProfile, error: profileError } = await supabaseServiceClient
+      .from('user_profiles')
+      .select('full_name, email')
+      .eq('user_id', employeeRole.user_id)
+      .single();
+
+    console.log('👤 Employee to delete:', employeeProfile?.full_name || 'Sin nombre');
 
     // Crear registro de eliminación para auditoría
     const { error: auditError } = await supabaseServiceClient
       .from('employee_deletions')
       .insert({
         employee_id: employeeRole.user_id,
-        employee_name: employeeRole.user_profiles?.full_name || 'Sin nombre',
-        employee_email: employeeRole.user_profiles?.email || 'Sin email',
+        employee_name: employeeProfile?.full_name || 'Sin nombre',
+        employee_email: employeeProfile?.email || 'Sin email',
         deleted_by: user.id,
         deleted_by_name: user.email,
         company_id: adminRole.company_id,
