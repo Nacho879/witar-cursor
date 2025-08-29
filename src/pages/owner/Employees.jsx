@@ -76,7 +76,7 @@ export default function Employees() {
 
   async function loadEmployees(companyId) {
     try {
-      // Obtener los roles de usuario (excluyendo el owner)
+      // Obtener los roles de usuario activos (excluyendo el owner)
       const { data: rolesData, error: rolesError } = await supabase
         .from('user_company_roles')
         .select(`
@@ -90,6 +90,7 @@ export default function Employees() {
           )
         `)
         .eq('company_id', companyId)
+        .eq('is_active', true) // Solo empleados activos
         .neq('role', 'owner') // Excluir al owner
         .order('joined_at', { ascending: false });
 
