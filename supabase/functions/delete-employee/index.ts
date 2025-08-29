@@ -12,20 +12,15 @@ serve(async (req) => {
   }
 
   try {
-    console.log('Delete employee function started')
+    console.log('🔍 Function started - delete-employee');
     
-    const body = await req.json()
-    console.log('Request body:', body)
-    
-    const { employeeId, companyId } = body
+    // Cliente de servicio para operaciones de base de datos
+    const supabaseServiceClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    )
 
-    if (!employeeId || !companyId) {
-      throw new Error('ID de empleado y empresa requeridos')
-    }
-
-    console.log('Processing employee deletion:', employeeId, 'from company:', companyId)
-
-    // Cliente anónimo para verificar autenticación
+    // Cliente anónimo para autenticación
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
@@ -36,166 +31,140 @@ serve(async (req) => {
       }
     )
 
-    // Cliente de servicio para operaciones de base de datos y auth
-    const supabaseServiceClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    )
+    const body = await req.json();
+    console.log('📋 Request body:', body);
+    const { employeeId, reason } = body;
 
-    // Obtener el usuario actual
+    if (!employeeId) {
+      throw new Error('ID del empleado requerido')
+    }
+
+    // Obtener el usuario que está ejecutando la acción
     const { data: { user }, error: userError } = await supabaseClient.auth.getUser()
 
     if (userError || !user) {
       throw new Error('Usuario no autenticado')
     }
 
-    console.log('User authenticated:', user.id)
+    console.log('👤 Admin user:', user.email);
 
-    // Verificar que el usuario tiene permisos para eliminar empleados
-    const { data: userRole, error: roleError } = await supabaseServiceClient
+    // Verificar que el usuario que ejecuta la acción es admin o owner
+    const { data: adminRole, error: adminRoleError } = await supabaseServiceClient
       .from('user_company_roles')
-      .select('role')
+      .select('role, company_id')
       .eq('user_id', user.id)
-      .eq('company_id', companyId)
       .eq('is_active', true)
-      .single()
+      .single();
 
-    if (roleError || !userRole) {
-      throw new Error('No tienes permisos para eliminar empleados en esta empresa')
+    if (adminRoleError || !adminRole) {
+      throw new Error('No tienes permisos para realizar esta acción')
     }
 
-    if (!['owner', 'admin'].includes(userRole.role)) {
-      throw new Error('Solo los propietarios y administradores pueden eliminar empleados')
+    if (adminRole.role !== 'admin' && adminRole.role !== 'owner') {
+      throw new Error('Solo los administradores pueden eliminar empleados')
     }
+
+    console.log('✅ Admin permissions verified:', adminRole.role);
 
     // Obtener información del empleado a eliminar
-    const { data: employeeRole, error: employeeError } = await supabaseServiceClient
+    const { data: employeeRole, error: employeeRoleError } = await supabaseServiceClient
       .from('user_company_roles')
-      .select('*')
+      .select(`
+        *,
+        user_profiles (
+          full_name,
+          email
+        )
+      `)
       .eq('id', employeeId)
-      .eq('company_id', companyId)
-      .single()
+      .eq('company_id', adminRole.company_id)
+      .single();
 
-    if (employeeError || !employeeRole) {
+    if (employeeRoleError || !employeeRole) {
       throw new Error('Empleado no encontrado')
     }
 
-    // Verificar que no se está intentando eliminar al owner
-    if (employeeRole.role === 'owner') {
-      throw new Error('No se puede eliminar al propietario de la empresa')
+    // Verificar que no se está eliminando a sí mismo
+    if (employeeRole.user_id === user.id) {
+      throw new Error('No puedes eliminarte a ti mismo')
     }
 
-    console.log('Employee to delete:', employeeRole)
+    // Verificar que no se está eliminando a otro admin o owner
+    if (employeeRole.role === 'admin' || employeeRole.role === 'owner') {
+      throw new Error('No puedes eliminar a otro administrador o propietario')
+    }
 
-    // Verificar si el usuario está en otras empresas
-    const { data: otherCompanies, error: otherCompaniesError } = await supabaseServiceClient
+    console.log('👤 Employee to delete:', employeeRole.user_profiles?.full_name);
+
+    // Crear registro de eliminación para auditoría
+    const { error: auditError } = await supabaseServiceClient
+      .from('employee_deletions')
+      .insert({
+        employee_id: employeeRole.user_id,
+        employee_name: employeeRole.user_profiles?.full_name || 'Sin nombre',
+        employee_email: employeeRole.user_profiles?.email || 'Sin email',
+        deleted_by: user.id,
+        deleted_by_name: user.email,
+        company_id: adminRole.company_id,
+        role: employeeRole.role,
+        reason: reason || 'Sin motivo especificado',
+        deleted_at: new Date().toISOString()
+      });
+
+    if (auditError) {
+      console.error('⚠️ Error creating audit log:', auditError);
+    }
+
+    // Desactivar el rol del empleado (soft delete)
+    const { error: deactivateError } = await supabaseServiceClient
       .from('user_company_roles')
-      .select('company_id')
-      .eq('user_id', employeeRole.user_id)
-      .neq('company_id', companyId)
+      .update({
+        is_active: false,
+        deactivated_at: new Date().toISOString(),
+        deactivated_by: user.id
+      })
+      .eq('id', employeeId);
 
-    if (otherCompaniesError) {
-      console.error('Error checking other companies:', otherCompaniesError)
+    if (deactivateError) {
+      console.error('❌ Error deactivating employee role:', deactivateError);
+      throw new Error(`Error al desactivar empleado: ${deactivateError.message}`)
     }
 
-    const hasOtherCompanies = otherCompanies && otherCompanies.length > 0
-
-    // Eliminar el rol del usuario en esta empresa
-    const { error: deleteRoleError } = await supabaseServiceClient
-      .from('user_company_roles')
-      .delete()
-      .eq('id', employeeId)
-
-    if (deleteRoleError) {
-      console.error('Error deleting user role:', deleteRoleError)
-      throw new Error(`Error eliminando rol de empleado: ${deleteRoleError.message}`)
-    }
-
-    console.log('User role deleted successfully')
-
-    // Eliminar registros relacionados en otras tablas
-    const userId = employeeRole.user_id
-
-    // Eliminar registros de tiempo
+    // Eliminar fichajes futuros del empleado
     const { error: timeEntriesError } = await supabaseServiceClient
       .from('time_entries')
       .delete()
-      .eq('user_id', userId)
-      .eq('company_id', companyId)
+      .eq('user_id', employeeRole.user_id)
+      .gte('entry_time', new Date().toISOString());
 
     if (timeEntriesError) {
-      console.error('Error deleting time entries:', timeEntriesError)
+      console.error('⚠️ Error deleting future time entries:', timeEntriesError);
     }
 
-    // Eliminar solicitudes
+    // Eliminar solicitudes pendientes del empleado
     const { error: requestsError } = await supabaseServiceClient
-      .from('requests')
+      .from('time_entry_edit_requests')
       .delete()
-      .eq('user_id', userId)
-      .eq('company_id', companyId)
+      .eq('user_id', employeeRole.user_id)
+      .eq('status', 'pending');
 
     if (requestsError) {
-      console.error('Error deleting requests:', requestsError)
+      console.error('⚠️ Error deleting pending requests:', requestsError);
     }
 
-    // Eliminar documentos
-    const { error: documentsError } = await supabaseServiceClient
-      .from('documents')
-      .delete()
-      .eq('user_id', userId)
-      .eq('company_id', companyId)
-
-    if (documentsError) {
-      console.error('Error deleting documents:', documentsError)
-    }
-
-    // Eliminar notificaciones
-    const { error: notificationsError } = await supabaseServiceClient
-      .from('notifications')
-      .delete()
-      .eq('user_id', userId)
-      .eq('company_id', companyId)
-
-    if (notificationsError) {
-      console.error('Error deleting notifications:', notificationsError)
-    }
-
-    // Si el usuario no está en otras empresas, eliminar el perfil y la cuenta de auth
-    if (!hasOtherCompanies) {
-      // Eliminar perfil de usuario
-      const { error: profileError } = await supabaseServiceClient
-        .from('user_profiles')
-        .delete()
-        .eq('user_id', userId)
-
-      if (profileError) {
-        console.error('Error deleting user profile:', profileError)
-      }
-
-      // Eliminar usuario de Supabase Auth
-      const { error: authError } = await supabaseServiceClient.auth.admin.deleteUser(userId)
-
-      if (authError) {
-        console.error('Error deleting auth user:', authError)
-      } else {
-        console.log('Auth user deleted successfully')
-      }
-    } else {
-      console.log('User has other companies, keeping profile and auth account')
-    }
-
-    const response = {
-      success: true,
-      message: 'Empleado eliminado exitosamente',
-      employeeId: employeeId,
-      userId: userId,
-      hasOtherCompanies: hasOtherCompanies
-    }
-
-    console.log('Employee deletion completed successfully')
+    console.log('✅ Employee deleted successfully');
 
     return new Response(
-      JSON.stringify(response),
+      JSON.stringify({
+        success: true,
+        message: 'Empleado eliminado exitosamente',
+        employee: {
+          id: employeeRole.user_id,
+          name: employeeRole.user_profiles?.full_name,
+          email: employeeRole.user_profiles?.email,
+          role: employeeRole.role
+        }
+      }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200,
@@ -203,7 +172,7 @@ serve(async (req) => {
     )
 
   } catch (error) {
-    console.error('Delete employee function error:', error)
+    console.error('❌ Function error:', error);
     return new Response(
       JSON.stringify({
         success: false,
