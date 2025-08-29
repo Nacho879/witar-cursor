@@ -85,7 +85,10 @@ serve(async (req) => {
     console.log('🔍 All employees in company:', allEmployees);
     console.log('🔍 List error:', listError);
     
-    // Buscar el empleado por el ID del registro user_company_roles
+    // Buscar específicamente el empleado que queremos eliminar
+    console.log('🔍 Looking for employee with ID:', employeeId);
+    console.log('🔍 In company:', adminRole.company_id);
+    
     const { data: employeeRole, error: employeeRoleError } = await supabaseServiceClient
       .from('user_company_roles')
       .select(`
@@ -100,9 +103,16 @@ serve(async (req) => {
       .single();
 
     console.log('🔍 Employee role query result:', { employeeRole, error: employeeRoleError });
+    console.log('🔍 Employee role data:', employeeRole);
+    console.log('🔍 Employee role error:', employeeRoleError);
 
-    if (employeeRoleError || !employeeRole) {
-      console.log('❌ Employee not found. Error:', employeeRoleError);
+    if (employeeRoleError) {
+      console.log('❌ Employee role error:', employeeRoleError);
+      throw new Error(`Error al buscar empleado: ${employeeRoleError.message}`)
+    }
+
+    if (!employeeRole) {
+      console.log('❌ Employee not found. No data returned.');
       throw new Error('Empleado no encontrado')
     }
 
