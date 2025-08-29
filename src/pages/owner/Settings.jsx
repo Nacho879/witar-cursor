@@ -15,7 +15,8 @@ import {
   Mail,
   CheckCircle,
   AlertCircle,
-  Lock
+  Lock,
+  User
 } from 'lucide-react';
 import CompanySettingsModal from '@/components/CompanySettingsModal';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
@@ -23,6 +24,7 @@ import ChangePasswordModal from '@/components/ChangePasswordModal';
 export default function Settings() {
   const [company, setCompany] = React.useState(null);
   const [settings, setSettings] = React.useState(null);
+  const [userProfile, setUserProfile] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
   const [showSettingsModal, setShowSettingsModal] = React.useState(false);
   const [showChangePasswordModal, setShowChangePasswordModal] = React.useState(false);

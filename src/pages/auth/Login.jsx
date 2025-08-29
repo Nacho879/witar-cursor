@@ -377,73 +377,82 @@ export default function Login() {
           onSuccess={async () => {
             setShowPasswordModal(false);
             
+            console.log('🔍 Procesando redirección después del cambio de contraseña');
+            
             // Después de cambiar la contraseña, verificar si hay una invitación pendiente
             const { data: { user } } = await supabase.auth.getUser();
             if (user) {
-              // Buscar invitaciones pendientes para este usuario
-              const { data: pendingInvitation } = await supabase
+              console.log('🔍 Usuario autenticado:', user.email);
+              
+              // Primero, intentar obtener el rol directamente
+              const { data: userRole, error: roleError } = await supabase
+                .from('user_company_roles')
+                .select('role, company_id')
+                .eq('user_id', user.id)
+                .eq('is_active', true)
+                .single();
+
+              console.log('🔍 Resultado de consulta de rol:', { userRole, error: roleError });
+
+              if (userRole && !roleError) {
+                console.log('✅ Rol encontrado:', userRole.role);
+                const redirectPath = userRole.role === 'owner' ? '/owner' : 
+                                   userRole.role === 'admin' ? '/admin' : 
+                                   userRole.role === 'manager' ? '/manager' : '/employee';
+                console.log('🔀 Redirigiendo a:', redirectPath);
+                navigate(redirectPath);
+                return;
+              }
+
+              // Si no hay rol activo, buscar invitaciones pendientes
+              console.log('🔍 No hay rol activo, buscando invitaciones pendientes');
+              const { data: pendingInvitation, error: invitationError } = await supabase
                 .from('invitations')
                 .select('*')
                 .eq('email', user.email)
                 .in('status', ['pending', 'sent'])
                 .single();
 
-              if (pendingInvitation) {
+              console.log('🔍 Resultado de búsqueda de invitación:', { pendingInvitation, error: invitationError });
+
+              if (pendingInvitation && !invitationError) {
+                console.log('✅ Invitación pendiente encontrada, procesando...');
                 // Procesar la invitación automáticamente
                 try {
                   const { data, error } = await supabase.functions.invoke('accept-employee-invitation', {
                     body: { token: pendingInvitation.token }
                   });
 
+                  console.log('🔍 Resultado de procesamiento de invitación:', { data, error });
+
                   if (data && data.success) {
+                    console.log('✅ Invitación procesada exitosamente');
                     // Redirigir al dashboard correspondiente
                     const redirectPath = data.role === 'owner' ? '/owner' : 
                                        data.role === 'admin' ? '/admin' : 
                                        data.role === 'manager' ? '/manager' : '/employee';
+                    console.log('🔀 Redirigiendo a:', redirectPath);
                     navigate(redirectPath);
                   } else {
-                    console.error('Error processing invitation:', error);
-                    // Si hay error, intentar obtener el rol directamente
-                    const { data: userRole } = await supabase
-                      .from('user_company_roles')
-                      .select('role')
-                      .eq('user_id', user.id)
-                      .eq('is_active', true)
-                      .single();
-
-                    if (userRole) {
-                      const redirectPath = userRole.role === 'owner' ? '/owner' : 
-                                         userRole.role === 'admin' ? '/admin' : 
-                                         userRole.role === 'manager' ? '/manager' : '/employee';
-                      navigate(redirectPath);
-                    } else {
-                      // Si no hay rol, redirigir a una página de error o dashboard por defecto
-                      navigate('/employee');
-                    }
+                    console.error('❌ Error procesando invitación:', error);
+                    // Si hay error, mostrar mensaje y redirigir a employee por defecto
+                    alert('Hubo un problema al procesar tu invitación. Por favor, contacta al administrador.');
+                    navigate('/employee');
                   }
                 } catch (error) {
-                  console.error('Error in invitation processing:', error);
+                  console.error('❌ Error en procesamiento de invitación:', error);
+                  alert('Error al procesar la invitación. Por favor, contacta al administrador.');
                   navigate('/employee');
                 }
               } else {
-                // Si no hay invitación pendiente, intentar obtener el rol directamente
-                const { data: userRole } = await supabase
-                  .from('user_company_roles')
-                  .select('role')
-                  .eq('user_id', user.id)
-                  .eq('is_active', true)
-                  .single();
-
-                if (userRole) {
-                  const redirectPath = userRole.role === 'owner' ? '/owner' : 
-                                     userRole.role === 'admin' ? '/admin' : 
-                                     userRole.role === 'manager' ? '/manager' : '/employee';
-                  navigate(redirectPath);
-                } else {
-                  // Si no hay rol, redirigir a una página de error o dashboard por defecto
-                  navigate('/employee');
-                }
+                console.log('❌ No hay invitación pendiente ni rol activo');
+                // Si no hay invitación pendiente ni rol activo, mostrar mensaje
+                alert('No se encontró información de tu cuenta. Por favor, contacta al administrador.');
+                navigate('/employee');
               }
+            } else {
+              console.error('❌ No se pudo obtener el usuario autenticado');
+              navigate('/employee');
             }
           }}
         />
