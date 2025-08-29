@@ -21,7 +21,10 @@ export default function DeleteEmployeeModal({ isOpen, onClose, employee, onEmplo
     setError('');
 
     try {
-      console.log('🗑️ Deleting employee:', employee.id);
+      console.log('🗑️ Employee object:', employee);
+      console.log('🗑️ Employee ID:', employee.id);
+      console.log('🗑️ Employee user_id:', employee.user_id);
+      console.log('🗑️ Employee role:', employee.role);
       
       const { data, error } = await supabase.functions.invoke('delete-employee', {
         body: {
