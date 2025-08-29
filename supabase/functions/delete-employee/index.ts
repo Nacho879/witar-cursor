@@ -85,6 +85,7 @@ serve(async (req) => {
     console.log('🔍 All employees in company:', allEmployees);
     console.log('🔍 List error:', listError);
     
+    // Buscar el empleado por el ID del registro user_company_roles
     const { data: employeeRole, error: employeeRoleError } = await supabaseServiceClient
       .from('user_company_roles')
       .select(`
@@ -95,7 +96,6 @@ serve(async (req) => {
         )
       `)
       .eq('id', employeeId)
-      .eq('company_id', adminRole.company_id)
       .single();
 
     console.log('🔍 Employee role query result:', { employeeRole, error: employeeRoleError });
