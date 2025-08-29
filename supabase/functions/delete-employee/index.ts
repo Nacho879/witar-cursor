@@ -96,6 +96,7 @@ serve(async (req) => {
         )
       `)
       .eq('id', employeeId)
+      .eq('company_id', adminRole.company_id)
       .single();
 
     console.log('🔍 Employee role query result:', { employeeRole, error: employeeRoleError });
