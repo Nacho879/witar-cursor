@@ -22,34 +22,49 @@ CREATE INDEX IF NOT EXISTS idx_employee_deletions_deleted_at ON employee_deletio
 -- Habilitar RLS
 ALTER TABLE employee_deletions ENABLE ROW LEVEL SECURITY;
 
--- Políticas RLS
--- Solo admins y owners pueden ver las eliminaciones de su empresa
-CREATE POLICY "Admins can view employee deletions" ON employee_deletions
-FOR SELECT
-TO authenticated
-USING (
-  EXISTS (
-    SELECT 1 FROM user_company_roles
-    WHERE user_id = auth.uid()
-    AND company_id = employee_deletions.company_id
-    AND role IN ('admin', 'owner')
-    AND is_active = true
-  )
-);
+-- Políticas RLS (con verificación de existencia)
+DO $$ 
+BEGIN
+  -- Política para SELECT
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies 
+    WHERE tablename = 'employee_deletions' 
+    AND policyname = 'Admins can view employee deletions'
+  ) THEN
+    CREATE POLICY "Admins can view employee deletions" ON employee_deletions
+    FOR SELECT
+    TO authenticated
+    USING (
+      EXISTS (
+        SELECT 1 FROM user_company_roles
+        WHERE user_id = auth.uid()
+        AND company_id = employee_deletions.company_id
+        AND role IN ('admin', 'owner')
+        AND is_active = true
+      )
+    );
+  END IF;
 
--- Solo admins y owners pueden insertar registros de eliminación
-CREATE POLICY "Admins can insert employee deletions" ON employee_deletions
-FOR INSERT
-TO authenticated
-WITH CHECK (
-  EXISTS (
-    SELECT 1 FROM user_company_roles
-    WHERE user_id = auth.uid()
-    AND company_id = employee_deletions.company_id
-    AND role IN ('admin', 'owner')
-    AND is_active = true
-  )
-);
+  -- Política para INSERT
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies 
+    WHERE tablename = 'employee_deletions' 
+    AND policyname = 'Admins can insert employee deletions'
+  ) THEN
+    CREATE POLICY "Admins can insert employee deletions" ON employee_deletions
+    FOR INSERT
+    TO authenticated
+    WITH CHECK (
+      EXISTS (
+        SELECT 1 FROM user_company_roles
+        WHERE user_id = auth.uid()
+        AND company_id = employee_deletions.company_id
+        AND role IN ('admin', 'owner')
+        AND is_active = true
+      )
+    );
+  END IF;
+END $$;
 
 -- Agregar columnas de auditoría a user_company_roles si no existen
 DO $$ 

@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import InviteUserModal from '@/components/InviteUserModal';
 import EmployeeProfileModal from '@/components/EmployeeProfileModal';
+import DeleteEmployeeModal from '@/components/DeleteEmployeeModal';
 
 export default function Employees() {
   const [employees, setEmployees] = React.useState([]);
@@ -31,6 +32,8 @@ export default function Employees() {
   const [showActionsMenu, setShowActionsMenu] = React.useState(null);
   const [companySettings, setCompanySettings] = React.useState(null);
   const [employeeLocationSettings, setEmployeeLocationSettings] = React.useState({});
+  const [showDeleteModal, setShowDeleteModal] = React.useState(false);
+  const [employeeToDelete, setEmployeeToDelete] = React.useState(null);
   const [stats, setStats] = React.useState({
     totalEmployees: 0,
     activeEmployees: 0,
@@ -280,40 +283,13 @@ export default function Employees() {
     }
   }
 
-  async function deleteEmployee(employee) {
-    if (!confirm(`¿Estás seguro de que quieres eliminar a ${employee.profile?.full_name || 'este empleado'}? Esta acción no se puede deshacer.`)) {
-      return;
-    }
-
-    try {
-
-      // Llamar a la función de Supabase para eliminar completamente el empleado
-      const { data, error } = await supabase.functions.invoke('delete-employee', {
-        body: { 
-          employeeId: employee.id,
-          companyId: companyId
-        }
-      });
-
-
-      if (error) {
-        console.error('Error calling delete function:', error);
-        alert(`Error al eliminar el empleado: ${error.message}`);
-        return;
-      }
-
-      if (data && data.success) {
-        alert('Empleado eliminado exitosamente');
-        await loadEmployees(companyId);
-        setShowActionsMenu(null);
-      } else {
-        alert(`Error al eliminar el empleado: ${data?.error || 'Error desconocido'}`);
-      }
-    } catch (error) {
-      console.error('Error deleting employee:', error);
-      alert('Error al eliminar el empleado');
-    }
-  }
+  const handleEmployeeDeleted = (employeeId, deletedEmployee) => {
+    // Remover el empleado de la lista
+    setEmployees(prev => prev.filter(emp => emp.id !== employeeId));
+    
+    // Mostrar notificación de éxito
+    alert(`Empleado ${deletedEmployee.name} eliminado exitosamente`);
+  };
 
   function getRoleDisplayName(role) {
     switch (role) {
@@ -610,6 +586,19 @@ export default function Employees() {
                           </>
                         )}
                       </button>
+                      {/* Solo mostrar botón de eliminar para empleados (no admins/owners) */}
+                      {employee.role === 'employee' && (
+                        <button
+                          onClick={() => {
+                            setEmployeeToDelete(employee);
+                            setShowDeleteModal(true);
+                          }}
+                          className="btn btn-ghost btn-sm text-red-600 hover:text-red-700 hover:bg-red-50"
+                          title="Eliminar empleado"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -635,6 +624,13 @@ export default function Employees() {
         isOpen={!!selectedEmployee}
         onClose={() => setSelectedEmployee(null)}
         employee={selectedEmployee}
+      />
+
+      <DeleteEmployeeModal
+        isOpen={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        employee={employeeToDelete}
+        onEmployeeDeleted={handleEmployeeDeleted}
       />
     </div>
   );
