@@ -58,6 +58,13 @@ export default function Profile() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
+      // Asegurar que el perfil esté completo
+      try {
+        await supabase.functions.invoke('ensure-user-profile');
+      } catch (error) {
+        console.error('Error ensuring user profile:', error);
+      }
+
       // Cargar perfil del usuario
       const { data: profile, error: profileError } = await supabase
         .from('user_profiles')
@@ -107,37 +114,9 @@ export default function Profile() {
           department: userRole.departments,
           role: userRole.role
         });
-
-        // Cargar información del manager
-        if (userRole.departments && userRole.departments.id) {
-          const { data: managerRole, error: managerError } = await supabase
-            .from('user_company_roles')
-            .select('user_id')
-            .eq('company_id', userRole.company_id)
-            .eq('department_id', userRole.departments.id)
-            .eq('role', 'manager')
-            .eq('is_active', true)
-            .maybeSingle();
-
-          if (!managerError && managerRole) {
-            const { data: managerProfile, error: managerProfileError } = await supabase
-              .from('user_profiles')
-              .select('full_name')
-              .eq('user_id', managerRole.user_id)
-              .single();
-
-            if (!managerProfileError && managerProfile) {
-              setManagerInfo(managerProfile);
-            }
-          }
-        }
       }
-
     } catch (error) {
       console.error('Error loading profile data:', error);
-      setMessage('Error al cargar los datos del perfil');
-    } finally {
-      setLoading(false);
     }
   }
 

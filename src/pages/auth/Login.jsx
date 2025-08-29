@@ -157,6 +157,20 @@ export default function Login() {
           }
         }
 
+        // Asegurar que el perfil del usuario esté completo
+        console.log('🔍 Asegurando que el perfil del usuario esté completo');
+        try {
+          const { data: profileData, error: profileError } = await supabase.functions.invoke('ensure-user-profile');
+          
+          if (profileError) {
+            console.error('⚠️ Error ensuring user profile:', profileError);
+          } else {
+            console.log('✅ User profile ensured:', profileData);
+          }
+        } catch (error) {
+          console.error('⚠️ Error calling ensure-user-profile:', error);
+        }
+
         // Obtener el rol del usuario para redirigir correctamente (if not temp_user or invitation)
         console.log('🔍 Obteniendo rol del usuario para redirección');
         const { data: userRole, error: roleError } = await supabase
