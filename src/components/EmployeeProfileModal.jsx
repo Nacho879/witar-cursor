@@ -250,7 +250,8 @@ export default function EmployeeProfileModal({ isOpen, onClose, employee, onEmpl
                   </button>
                   
                   {/* Solo mostrar botón de eliminar para empleados (no admins/owners) */}
-                  {employee.role === 'employee' && (
+                  {console.log('Employee role:', employee.role)}
+                  {(employee.role === 'employee' || employee.role === 'manager') && (
                     <button
                       type="button"
                       onClick={() => setShowDeleteModal(true)}
