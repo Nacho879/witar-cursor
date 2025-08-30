@@ -78,8 +78,13 @@ serve(async (req) => {
         profileData.full_name = `Usuario ${invitation.role || 'Empleado'}`;
       }
     } else {
-      // Si no hay invitación, usar el email como nombre
-      profileData.full_name = user.email?.split('@')[0] || 'Usuario';
+      // Si no hay invitación, buscar en user_metadata o usar el email
+      const userMetadata = user.user_metadata;
+      if (userMetadata && userMetadata.full_name) {
+        profileData.full_name = userMetadata.full_name;
+      } else {
+        profileData.full_name = user.email?.split('@')[0] || 'Usuario';
+      }
     }
 
     // Si no hay perfil, crearlo
