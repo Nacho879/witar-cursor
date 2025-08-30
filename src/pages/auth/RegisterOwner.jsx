@@ -36,13 +36,14 @@ export default function RegisterOwner() {
 
       
 
-      // 1. Crear el usuario en Supabase Auth
+      // 1. Crear el usuario en Supabase Auth (sin email automático)
       const { data: { user }, error: authError } = await supabase.auth.signUp({
         email,
         password,
         options: { 
           data: { full_name: fullName },
-          emailRedirectTo: redirectUrl
+          emailRedirectTo: redirectUrl,
+          emailConfirm: false // Desactivar email automático de Supabase
         }
       });
 
@@ -155,6 +156,24 @@ export default function RegisterOwner() {
           // No fallamos aquí, el registro fue exitoso
         } else {
           console.log('Welcome email sent successfully:', welcomeEmailData);
+          
+          // 7. Confirmar el email del usuario manualmente (ya que desactivamos el email automático)
+          try {
+            const { error: confirmError } = await supabase.auth.admin.updateUserById(
+              user.id,
+              { email_confirm: true }
+            );
+            
+            if (confirmError) {
+              console.error('Error confirming user email:', confirmError);
+              // No fallamos aquí, el usuario puede confirmar manualmente después
+            } else {
+              console.log('User email confirmed successfully');
+            }
+          } catch (confirmError) {
+            console.error('Error in email confirmation process:', confirmError);
+            // No fallamos aquí, el usuario puede confirmar manualmente después
+          }
         }
       } catch (welcomeError) {
         console.error('Error invoking welcome email function:', welcomeError);
