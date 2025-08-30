@@ -139,6 +139,28 @@ export default function RegisterOwner() {
       } else {
       }
 
+      // 6. Enviar email de bienvenida usando Resend
+      try {
+        console.log('Sending welcome email to:', email);
+        const { data: welcomeEmailData, error: welcomeEmailError } = await supabase.functions.invoke('send-welcome-email', {
+          body: {
+            email: email,
+            fullName: fullName,
+            companyName: companyName
+          }
+        });
+
+        if (welcomeEmailError) {
+          console.error('Error sending welcome email:', welcomeEmailError);
+          // No fallamos aquí, el registro fue exitoso
+        } else {
+          console.log('Welcome email sent successfully:', welcomeEmailData);
+        }
+      } catch (welcomeError) {
+        console.error('Error invoking welcome email function:', welcomeError);
+        // No fallamos aquí, el registro fue exitoso
+      }
+
       setMsg('¡Cuenta creada exitosamente! Revisa tu email para confirmar la cuenta y luego inicia sesión.');
       setLoading(false);
       
