@@ -45,7 +45,7 @@ export class BillingService {
       // Obtener información de la empresa para verificar período de prueba
       const { data: company, error: companyError } = await supabase
         .from('companies')
-        .select('created_at, subscription_status')
+        .select('created_at, status')
         .eq('id', companyId)
         .single();
 
@@ -92,7 +92,7 @@ export class BillingService {
       
       // Si está en período de prueba, usar información especial del plan
       let planInfo;
-      if (daysSinceCreation < 14 && company.subscription_status !== 'active') {
+      if (daysSinceCreation < 14) {
         planInfo = {
           name: 'Período de Prueba',
           type: 'trial',
@@ -121,7 +121,7 @@ export class BillingService {
         invoices: invoices || [],
         planInfo,
         employeeCount,
-        isTrialPeriod: daysSinceCreation < 14 && company.subscription_status !== 'active',
+        isTrialPeriod: daysSinceCreation < 14,
         daysRemaining: Math.max(0, 14 - daysSinceCreation)
       };
     } catch (error) {
@@ -353,7 +353,7 @@ export class BillingService {
       // Primero verificar si la empresa está en período de prueba
       const { data: company, error: companyError } = await supabase
         .from('companies')
-        .select('created_at, subscription_status')
+        .select('created_at, status')
         .eq('id', companyId)
         .single();
 
@@ -367,8 +367,8 @@ export class BillingService {
       const now = new Date();
       const daysSinceCreation = Math.floor((now.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24));
 
-      // Si está en período de prueba (menos de 14 días) y no tiene suscripción activa, permitir empleados ilimitados
-      if (daysSinceCreation < 14 && company.subscription_status !== 'active') {
+      // Si está en período de prueba (menos de 14 días), permitir empleados ilimitados
+      if (daysSinceCreation < 14) {
         console.log('Empresa en período de prueba, permitiendo empleados ilimitados');
         return true;
       }
