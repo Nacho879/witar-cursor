@@ -42,6 +42,15 @@ export class BillingService {
   // Obtener datos de facturación de la empresa
   static async getBillingData(companyId) {
     try {
+      // Obtener información de la empresa para verificar período de prueba
+      const { data: company, error: companyError } = await supabase
+        .from('companies')
+        .select('created_at, subscription_status')
+        .eq('id', companyId)
+        .single();
+
+      if (companyError) throw companyError;
+
       // Obtener empleados activos (excluyendo al owner)
       const { data: employees, error: employeesError } = await supabase
         .from('user_company_roles')
@@ -75,14 +84,45 @@ export class BillingService {
       if (invoicesError) throw invoicesError;
 
       const employeeCount = employees?.length || 0;
-      const planInfo = this.getPlanInfo(employeeCount);
+      
+      // Calcular días desde la creación
+      const createdAt = new Date(company.created_at);
+      const now = new Date();
+      const daysSinceCreation = Math.floor((now.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24));
+      
+      // Si está en período de prueba, usar información especial del plan
+      let planInfo;
+      if (daysSinceCreation < 14 && company.subscription_status !== 'active') {
+        planInfo = {
+          name: 'Período de Prueba',
+          type: 'trial',
+          pricePerEmployee: 0,
+          employeeLimit: null, // Sin límite durante período de prueba
+          currentEmployees: employeeCount,
+          monthlyPrice: 0,
+          isLimitExceeded: false, // Nunca excedido durante período de prueba
+          status: 'trial',
+          features: [
+            'Control horario completo',
+            'Gestión de empleados ilimitados',
+            'Sistema de solicitudes',
+            'Gestión de documentos',
+            'Notificaciones en tiempo real',
+            'Configuración de empresa'
+          ]
+        };
+      } else {
+        planInfo = this.getPlanInfo(employeeCount);
+      }
 
       return {
         employees: employees || [],
         subscription: subscription || null,
         invoices: invoices || [],
         planInfo,
-        employeeCount
+        employeeCount,
+        isTrialPeriod: daysSinceCreation < 14 && company.subscription_status !== 'active',
+        daysRemaining: Math.max(0, 14 - daysSinceCreation)
       };
     } catch (error) {
       console.error('Error getting billing data:', error);
@@ -310,6 +350,30 @@ export class BillingService {
   // Verificar si la empresa puede agregar más empleados
   static async canAddEmployee(companyId) {
     try {
+      // Primero verificar si la empresa está en período de prueba
+      const { data: company, error: companyError } = await supabase
+        .from('companies')
+        .select('created_at, subscription_status')
+        .eq('id', companyId)
+        .single();
+
+      if (companyError) {
+        console.error('Error getting company info:', companyError);
+        return false;
+      }
+
+      // Calcular días desde la creación
+      const createdAt = new Date(company.created_at);
+      const now = new Date();
+      const daysSinceCreation = Math.floor((now.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24));
+
+      // Si está en período de prueba (menos de 14 días) y no tiene suscripción activa, permitir empleados ilimitados
+      if (daysSinceCreation < 14 && company.subscription_status !== 'active') {
+        console.log('Empresa en período de prueba, permitiendo empleados ilimitados');
+        return true;
+      }
+
+      // Si no está en período de prueba, aplicar límites normales
       const billingData = await this.getBillingData(companyId);
       return !billingData.planInfo.isLimitExceeded;
     } catch (error) {
