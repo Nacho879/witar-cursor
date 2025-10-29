@@ -204,7 +204,7 @@ export default function AdminLayout({ children }){
           {/* Main content area */}
           <main className='p-4 lg:pt-2 lg:px-6 lg:pb-6'>{children}</main>
           
-          {/* Floating Time Clock */}
+          {/* Floating Time Clock (verde clásico) */}
           <FloatingTimeClock />
         </div>
       </div>

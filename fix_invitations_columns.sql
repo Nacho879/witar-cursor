@@ -1,46 +1,42 @@
--- Script para añadir columnas faltantes a la tabla invitations
--- Ejecuta esto en el SQL Editor de Supabase
+-- Script para agregar las columnas faltantes a la tabla invitations
+-- Ejecutar en Supabase Dashboard > SQL Editor
 
--- 1. Añadir columna sent_at
-ALTER TABLE invitations 
-ADD COLUMN IF NOT EXISTS sent_at TIMESTAMP WITH TIME ZONE;
+-- 1. Verificar estructura actual de la tabla invitations
+SELECT column_name, data_type, is_nullable
+FROM information_schema.columns 
+WHERE table_name = 'invitations' 
+AND table_schema = 'public'
+ORDER BY ordinal_position;
 
--- 2. Añadir columna temp_password
-ALTER TABLE invitations 
-ADD COLUMN IF NOT EXISTS temp_password VARCHAR(255);
-
--- 3. Añadir columna expires_at si no existe
-ALTER TABLE invitations 
-ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP WITH TIME ZONE DEFAULT (NOW() + INTERVAL '7 days');
-
--- 4. Añadir columna token si no existe
-ALTER TABLE invitations 
-ADD COLUMN IF NOT EXISTS token UUID DEFAULT gen_random_uuid();
-
--- 5. Añadir comentarios
-COMMENT ON COLUMN invitations.sent_at IS 'Timestamp cuando se envió la invitación por email';
-COMMENT ON COLUMN invitations.temp_password IS 'Contraseña temporal generada para el usuario invitado';
-COMMENT ON COLUMN invitations.expires_at IS 'Fecha de expiración de la invitación';
-COMMENT ON COLUMN invitations.token IS 'Token único para el enlace de invitación';
-
--- 6. Crear índices para mejorar el rendimiento
-CREATE INDEX IF NOT EXISTS idx_invitations_sent_at ON invitations(sent_at);
-CREATE INDEX IF NOT EXISTS idx_invitations_token ON invitations(token);
-CREATE INDEX IF NOT EXISTS idx_invitations_expires_at ON invitations(expires_at);
-
--- 7. Verificar que la columna status existe
+-- 2. Agregar columnas faltantes si no existen
 DO $$
 BEGIN
+    -- Agregar first_name si no existe
     IF NOT EXISTS (
         SELECT 1 FROM information_schema.columns 
-        WHERE table_name = 'invitations' AND column_name = 'status'
+        WHERE table_name = 'invitations' 
+        AND column_name = 'first_name'
+        AND table_schema = 'public'
     ) THEN
-        ALTER TABLE invitations ADD COLUMN status VARCHAR(50) DEFAULT 'pending';
+        ALTER TABLE invitations ADD COLUMN first_name TEXT;
+    END IF;
+
+    -- Agregar last_name si no existe
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'invitations' 
+        AND column_name = 'last_name'
+        AND table_schema = 'public'
+    ) THEN
+        ALTER TABLE invitations ADD COLUMN last_name TEXT;
     END IF;
 END $$;
 
--- 8. Mostrar la estructura actual de la tabla
-SELECT column_name, data_type, is_nullable, column_default
+-- 3. Verificar estructura final
+SELECT column_name, data_type, is_nullable
 FROM information_schema.columns 
 WHERE table_name = 'invitations' 
-ORDER BY ordinal_position; 
+AND table_schema = 'public'
+ORDER BY ordinal_position;
+
+SELECT '✅ Columnas agregadas a la tabla invitations' as resultado;

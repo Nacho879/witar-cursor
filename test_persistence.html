@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prueba de Persistencia de Fichaje</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .success { background-color: #d4edda; color: #155724; }
+        .error { background-color: #f8d7da; color: #721c24; }
+        .info { background-color: #d1ecf1; color: #0c5460; }
+        .warning { background-color: #fff3cd; color: #856404; }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background-color: #0056b3; }
+        button:disabled { background-color: #6c757d; cursor: not-allowed; }
+        .clock-display {
+            font-size: 2em;
+            font-family: monospace;
+            text-align: center;
+            margin: 20px 0;
+            padding: 20px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+        }
+        .controls {
+            text-align: center;
+            margin: 20px 0;
+        }
+        .info-panel {
+            background-color: #e9ecef;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🕐 Prueba de Persistencia de Fichaje</h1>
+        
+        <div class="info-panel">
+            <h3>📋 Instrucciones de Prueba:</h3>
+            <ol>
+                <li>Haz clic en "Iniciar Fichaje" para comenzar</li>
+                <li>Cambia a otra pestaña del navegador</li>
+                <li>Vuelve a esta pestaña</li>
+                <li>Verifica que el tiempo continúa contando</li>
+                <li>Haz clic en "Finalizar Fichaje" para terminar</li>
+            </ol>
+        </div>
+
+        <div class="clock-display" id="clockDisplay">00:00:00</div>
+        
+        <div class="controls">
+            <button id="startBtn" onclick="startClock()">Iniciar Fichaje</button>
+            <button id="stopBtn" onclick="stopClock()" disabled>Finalizar Fichaje</button>
+            <button onclick="clearStorage()">Limpiar Almacenamiento</button>
+            <button onclick="checkStorage()">Verificar Almacenamiento</button>
+        </div>
+
+        <div id="status"></div>
+
+        <div class="info-panel">
+            <h3>📊 Estado del Almacenamiento:</h3>
+            <div id="storageInfo"></div>
+        </div>
+
+        <div class="info-panel">
+            <h3>🔄 Log de Eventos:</h3>
+            <div id="eventLog" style="max-height: 200px; overflow-y: auto; background: white; padding: 10px; border-radius: 4px;"></div>
+        </div>
+    </div>
+
+    <script>
+        // Variables de estado
+        let isActive = false;
+        let startTime = null;
+        let elapsedTime = 0;
+        let interval = null;
+
+        // Claves de almacenamiento
+        const STORAGE_KEYS = {
+            ACTIVE_SESSION: 'witar_active_session',
+            START_TIME: 'witar_start_time',
+            ELAPSED_TIME: 'witar_elapsed_time',
+            LAST_SYNC: 'witar_last_sync'
+        };
+
+        // Inicializar al cargar la página
+        window.onload = function() {
+            loadPersistentState();
+            updateDisplay();
+            checkStorage();
+            setupEventListeners();
+            logEvent('Página cargada');
+        };
+
+        function setupEventListeners() {
+            // Listener para cambios de visibilidad de pestaña
+            document.addEventListener('visibilitychange', function() {
+                if (!document.hidden && isActive) {
+                    logEvent('🔄 Pestaña activa - sincronizando estado...');
+                    syncWithStorage();
+                } else if (document.hidden && isActive) {
+                    logEvent('📱 Pestaña oculta - guardando estado...');
+                    saveToStorage();
+                }
+            });
+
+            // Listener para cambios de conexión
+            window.addEventListener('online', function() {
+                logEvent('🟢 Conexión restaurada');
+            });
+
+            window.addEventListener('offline', function() {
+                logEvent('🔴 Sin conexión');
+            });
+
+            // Listener para antes de cerrar la página
+            window.addEventListener('beforeunload', function() {
+                if (isActive) {
+                    saveToStorage();
+                    logEvent('💾 Guardando estado antes de cerrar');
+                }
+            });
+        }
+
+        function startClock() {
+            if (isActive) return;
+
+            isActive = true;
+            startTime = Date.now();
+            elapsedTime = 0;
+
+            // Actualizar botones
+            document.getElementById('startBtn').disabled = true;
+            document.getElementById('stopBtn').disabled = false;
+
+            // Iniciar contador
+            interval = setInterval(updateClock, 1000);
+
+            // Guardar en almacenamiento
+            saveToStorage();
+
+            showStatus('✅ Fichaje iniciado correctamente', 'success');
+            logEvent('🟢 Fichaje iniciado');
+        }
+
+        function stopClock() {
+            if (!isActive) return;
+
+            isActive = false;
+            startTime = null;
+            elapsedTime = 0;
+
+            // Actualizar botones
+            document.getElementById('startBtn').disabled = false;
+            document.getElementById('stopBtn').disabled = true;
+
+            // Detener contador
+            if (interval) {
+                clearInterval(interval);
+                interval = null;
+            }
+
+            // Limpiar almacenamiento
+            clearStorage();
+
+            showStatus('✅ Fichaje finalizado correctamente', 'success');
+            logEvent('🔴 Fichaje finalizado');
+        }
+
+        function updateClock() {
+            if (isActive && startTime) {
+                elapsedTime = Date.now() - startTime;
+                updateDisplay();
+                
+                // Guardar cada 10 segundos
+                if (Math.floor(elapsedTime / 1000) % 10 === 0) {
+                    saveToStorage();
+                }
+            }
+        }
+
+        function updateDisplay() {
+            const totalSeconds = Math.floor(elapsedTime / 1000);
+            const hours = Math.floor(totalSeconds / 3600);
+            const minutes = Math.floor((totalSeconds % 3600) / 60);
+            const seconds = totalSeconds % 60;
+            
+            const timeString = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            document.getElementById('clockDisplay').textContent = timeString;
+        }
+
+        function loadPersistentState() {
+            try {
+                const activeSession = localStorage.getItem(STORAGE_KEYS.ACTIVE_SESSION);
+                const startTimeStr = localStorage.getItem(STORAGE_KEYS.START_TIME);
+                const elapsedTimeStr = localStorage.getItem(STORAGE_KEYS.ELAPSED_TIME);
+
+                if (activeSession === 'true' && startTimeStr) {
+                    const savedStartTime = parseInt(startTimeStr);
+                    const savedElapsedTime = parseInt(elapsedTimeStr) || 0;
+                    
+                    isActive = true;
+                    startTime = savedStartTime;
+                    elapsedTime = savedElapsedTime;
+                    
+                    // Actualizar botones
+                    document.getElementById('startBtn').disabled = true;
+                    document.getElementById('stopBtn').disabled = false;
+                    
+                    // Iniciar contador
+                    interval = setInterval(updateClock, 1000);
+                    
+                    showStatus('📱 Estado persistente restaurado desde localStorage', 'info');
+                    logEvent('📱 Sesión persistente cargada');
+                }
+            } catch (error) {
+                console.error('Error loading persistent state:', error);
+                showStatus('❌ Error cargando estado persistente', 'error');
+            }
+        }
+
+        function saveToStorage() {
+            try {
+                localStorage.setItem(STORAGE_KEYS.ACTIVE_SESSION, isActive.toString());
+                if (startTime) {
+                    localStorage.setItem(STORAGE_KEYS.START_TIME, startTime.toString());
+                }
+                localStorage.setItem(STORAGE_KEYS.ELAPSED_TIME, elapsedTime.toString());
+                localStorage.setItem(STORAGE_KEYS.LAST_SYNC, Date.now().toString());
+                
+                logEvent('💾 Estado guardado en localStorage');
+            } catch (error) {
+                console.error('Error saving to storage:', error);
+                showStatus('❌ Error guardando en almacenamiento', 'error');
+            }
+        }
+
+        function clearStorage() {
+            try {
+                Object.values(STORAGE_KEYS).forEach(key => {
+                    localStorage.removeItem(key);
+                });
+                logEvent('🗑️ Almacenamiento limpiado');
+            } catch (error) {
+                console.error('Error clearing storage:', error);
+            }
+        }
+
+        function syncWithStorage() {
+            if (!isActive) return;
+            
+            try {
+                const startTimeStr = localStorage.getItem(STORAGE_KEYS.START_TIME);
+                if (startTimeStr) {
+                    const savedStartTime = parseInt(startTimeStr);
+                    const timeDiff = Math.abs(startTime - savedStartTime);
+                    
+                    if (timeDiff > 1000) { // Diferencia de más de 1 segundo
+                        startTime = savedStartTime;
+                        elapsedTime = Date.now() - startTime;
+                        logEvent('🔄 Tiempo sincronizado desde almacenamiento');
+                    }
+                }
+            } catch (error) {
+                console.error('Error syncing with storage:', error);
+            }
+        }
+
+        function checkStorage() {
+            const storageInfo = document.getElementById('storageInfo');
+            let info = '<ul>';
+            
+            Object.entries(STORAGE_KEYS).forEach(([key, value]) => {
+                const stored = localStorage.getItem(value);
+                info += `<li><strong>${key}:</strong> ${stored || 'No encontrado'}</li>`;
+            });
+            
+            info += '</ul>';
+            storageInfo.innerHTML = info;
+        }
+
+        function showStatus(message, type) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.innerHTML = `<div class="status ${type}">${message}</div>`;
+            
+            // Limpiar después de 3 segundos
+            setTimeout(() => {
+                statusDiv.innerHTML = '';
+            }, 3000);
+        }
+
+        function logEvent(message) {
+            const eventLog = document.getElementById('eventLog');
+            const timestamp = new Date().toLocaleTimeString();
+            eventLog.innerHTML += `<div>[${timestamp}] ${message}</div>`;
+            eventLog.scrollTop = eventLog.scrollHeight;
+        }
+    </script>
+</body>
+</html>

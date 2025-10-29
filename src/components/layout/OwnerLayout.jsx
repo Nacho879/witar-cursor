@@ -16,6 +16,8 @@ import {
 import InvitationBadge from '@/components/InvitationBadge';
 import FloatingTimeClock from '@/components/FloatingTimeClock';
 import WitarLogo from '@/components/WitarLogo';
+import SubscriptionStatus from '@/components/SubscriptionStatus';
+import CompanyBlocked from '@/components/CompanyBlocked';
 import { InvitationProvider } from '@/contexts/InvitationContext';
 import { supabase } from '@/lib/supabaseClient';
 import { useNavigate } from 'react-router-dom';
@@ -23,7 +25,40 @@ import React from 'react';
 
 export default function OwnerLayout({ children }){
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
+  const [companyId, setCompanyId] = React.useState(null);
+  const [subscriptionStatus, setSubscriptionStatus] = React.useState(null);
+  const [isBlocked, setIsBlocked] = React.useState(false);
   const navigate = useNavigate();
+
+  // Cargar companyId y verificar suscripción
+  React.useEffect(() => {
+    loadCompanyId();
+  }, []);
+
+  async function loadCompanyId() {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: userRole } = await supabase
+          .from('user_company_roles')
+          .select('company_id')
+          .eq('user_id', user.id)
+          .eq('is_active', true)
+          .single();
+
+        if (userRole) {
+          setCompanyId(userRole.company_id);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading company ID:', error);
+    }
+  }
+
+  function handleSubscriptionStatusChange(status) {
+    setSubscriptionStatus(status);
+    setIsBlocked(status.isBlocked);
+  }
 
   const handleLogout = async () => {
     try {
@@ -191,10 +226,28 @@ export default function OwnerLayout({ children }){
             </div>
           )}
 
-          {/* Main content area */}
-          <main className='p-4 lg:pt-2 lg:px-6 lg:pb-6'>{children}</main>
+          {/* Verificar si la empresa está bloqueada */}
+          {isBlocked ? (
+            <CompanyBlocked 
+              companyName={subscriptionStatus?.companyName || 'Tu empresa'}
+              daysSinceCreation={subscriptionStatus?.daysSinceCreation || 14}
+            />
+          ) : (
+            <>
+              {/* Status de suscripción */}
+              {companyId && (
+                <SubscriptionStatus 
+                  companyId={companyId}
+                  onStatusChange={handleSubscriptionStatusChange}
+                />
+              )}
+
+              {/* Main content area */}
+              <main className='p-4 lg:pt-2 lg:px-6 lg:pb-6'>{children}</main>
+            </>
+          )}
           
-          {/* Floating Time Clock */}
+          {/* Floating Time Clock (verde clásico) */}
           <FloatingTimeClock />
         </div>
       </div>

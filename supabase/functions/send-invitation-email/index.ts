@@ -339,6 +339,16 @@ async function sendEmailWithResend(email: string, company: any, invitation: any,
                        invitation.role === 'admin' ? 'Administrador' : 
                        invitation.role === 'employee' ? 'Empleado' : invitation.role;
 
+    // Sanitizar valores para tags (solo ASCII letters, numbers, underscores, dashes)
+    const sanitizeTagValue = (value: string): string => {
+      return value
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]/g, '_') // Reemplazar caracteres no válidos con guión bajo
+        .replace(/_+/g, '_') // Reemplazar múltiples guiones bajos con uno solo
+        .replace(/^_|_$/g, '') // Eliminar guiones bajos al inicio y final
+        .substring(0, 50); // Limitar longitud
+    };
+
     const emailData = {
       from: 'Witar <noreply@updates.witar.es>', // Usar el subdominio verificado
       to: [email],
@@ -346,8 +356,8 @@ async function sendEmailWithResend(email: string, company: any, invitation: any,
       html: htmlContent,
       tags: [
         { name: 'category', value: 'invitation' },
-        { name: 'company', value: company?.name || 'unknown' },
-        { name: 'role', value: invitation.role }
+        { name: 'company', value: sanitizeTagValue(company?.name || 'unknown') },
+        { name: 'role', value: sanitizeTagValue(invitation.role) }
       ]
     };
 

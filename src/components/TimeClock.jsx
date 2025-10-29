@@ -143,36 +143,66 @@ export default function TimeClock({ onTimeEntry }) {
 
       // Obtener ubicación si está disponible
       let locationData = {};
+      console.log('🌍 Intentando obtener ubicación GPS...');
+      
       if (navigator.geolocation) {
         try {
+          console.log('📍 Geolocalización disponible, solicitando posición...');
           const position = await new Promise((resolve, reject) => {
             navigator.geolocation.getCurrentPosition(resolve, reject, {
-              timeout: 5000,
-              enableHighAccuracy: false
+              timeout: 10000, // 10 segundos
+              enableHighAccuracy: true,
+              maximumAge: 300000 // Cache de 5 minutos
             });
+          });
+          
+          console.log('✅ Ubicación obtenida:', {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+            accuracy: position.coords.accuracy
           });
           
           locationData = {
             location_lat: position.coords.latitude,
             location_lng: position.coords.longitude
           };
+          
+          console.log('📍 Datos de ubicación preparados:', locationData);
         } catch (error) {
+          console.error('❌ Error obteniendo ubicación GPS:', error);
+          console.log('📍 Continuando sin ubicación...');
         }
+      } else {
+        console.log('❌ Geolocalización no disponible en este navegador');
       }
 
+      const insertData = {
+        user_id: user.id,
+        company_id: companyId,
+        entry_type: entryType,
+        entry_time: new Date().toISOString(),
+        ...locationData
+      };
+      
+      console.log('💾 Datos a insertar en time_entries:', insertData);
+      console.log('📍 Ubicación incluida:', Object.keys(locationData).length > 0 ? 'Sí' : 'No');
+      
       const { data, error } = await supabase
         .from('time_entries')
-        .insert({
-          user_id: user.id,
-          company_id: companyId,
-          entry_type: entryType,
-          entry_time: new Date().toISOString(),
-          ...locationData
-        })
+        .insert(insertData)
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Error insertando en base de datos:', error);
+        throw error;
+      }
+
+      console.log('✅ Fichaje insertado exitosamente:', data);
+      console.log('📍 Ubicación guardada:', {
+        lat: data.location_lat,
+        lng: data.location_lng
+      });
 
       setMessage('✅ Fichaje registrado exitosamente');
       

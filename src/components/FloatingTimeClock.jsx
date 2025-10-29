@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { Clock, ChevronDown, LogOut, User, Bell, Sun, Moon, Play, Pause, Square, X, Check, Trash2, Search, Filter } from 'lucide-react';
+import { Clock, ChevronDown, LogOut, User, Bell, Sun, Moon, Play, Pause, Square, X, Check, Trash2, Search } from 'lucide-react';
 import { useTheme } from '@/hooks/useTheme';
-import { NotificationService } from '@/lib/notificationService';
+// NotificationService no se utiliza y se elimina para evitar warnings
 
 export default function FloatingTimeClock() {
   const [isActive, setIsActive] = useState(false);
@@ -26,32 +26,25 @@ export default function FloatingTimeClock() {
     unread: 0,
     read: 0
   });
+  const [currentLocation, setCurrentLocation] = useState(null);
   const { theme, toggleTheme } = useTheme();
+  const syncInProgressRef = React.useRef(false);
 
   useEffect(() => {
+    // Restaurar estado persistido si existe
+    loadSessionFromStorage();
+
     loadUserProfile();
     checkUserRole();
     checkActiveSession();
     // Cargar notificaciones del usuario
     loadNotifications();
     
-    // Suscripción en tiempo real para notificaciones
-    const notificationsSubscription = supabase
-      .channel('notifications')
-      .on('postgres_changes', 
-        { 
-          event: '*', 
-          schema: 'public', 
-          table: 'notifications'
-        }, 
-        () => {
-          loadNotifications();
-        }
-      )
-      .subscribe();
+    // Configurar listeners para persistencia
+    const cleanup = setupPersistenceListeners();
 
     return () => {
-      supabase.removeChannel(notificationsSubscription);
+      cleanup && cleanup();
     };
   }, []);
 
@@ -61,6 +54,46 @@ export default function FloatingTimeClock() {
     }
   }, [companyId, notificationFilter, notificationSearch]);
 
+  // Rehidratar estado desde localStorage cuando tengamos companyId
+  useEffect(() => {
+    if (!companyId) return;
+    try {
+      const activeSession = localStorage.getItem('witar_active_session');
+      if (activeSession === 'true') {
+        loadSessionFromStorage();
+      }
+    } catch (_) {}
+  }, [companyId]);
+
+  // Suscripción en tiempo real filtrada por companyId
+  useEffect(() => {
+    let notificationsSubscription;
+    const setupRealtime = async () => {
+      try {
+        if (!companyId) return;
+        notificationsSubscription = supabase
+          .channel(`notifications:company:${companyId}`)
+          .on('postgres_changes', {
+            event: '*',
+            schema: 'public',
+            table: 'notifications',
+            filter: `company_id=eq.${companyId}`
+          }, () => {
+            loadNotifications();
+          })
+          .subscribe();
+      } catch (e) {
+        console.error('Error configurando realtime de notificaciones:', e);
+      }
+    };
+    setupRealtime();
+    return () => {
+      if (notificationsSubscription) {
+        supabase.removeChannel(notificationsSubscription);
+      }
+    };
+  }, [companyId]);
+
   useEffect(() => {
     let interval;
     if (isActive && !isPaused) {
@@ -68,6 +101,11 @@ export default function FloatingTimeClock() {
         const now = Date.now();
         const pausedTime = totalPausedTime + (pauseStartTime ? now - pauseStartTime : 0);
         setElapsedTime(now - startTime - pausedTime);
+        
+        // Guardar estado en localStorage cada 10 segundos
+        if (Math.floor((now - startTime) / 1000) % 10 === 0) {
+          saveSessionToStorage();
+        }
       }, 1000);
     }
     return () => clearInterval(interval);
@@ -117,10 +155,24 @@ export default function FloatingTimeClock() {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
+        // Asegurar companyId para cumplir RLS
+        let ensuredCompanyId = companyId;
+        if (!ensuredCompanyId) {
+          const { data: role } = await supabase
+            .from('user_company_roles')
+            .select('company_id')
+            .eq('user_id', user.id)
+            .eq('is_active', true)
+            .single();
+          ensuredCompanyId = role?.company_id || null;
+          if (ensuredCompanyId && !companyId) setCompanyId(ensuredCompanyId);
+        }
+
         const { data: activeEntry } = await supabase
           .from('time_entries')
           .select('entry_time')
           .eq('user_id', user.id)
+          .eq('company_id', ensuredCompanyId)
           .eq('entry_type', 'clock_in')
           .order('entry_time', { ascending: false })
           .limit(1);
@@ -130,6 +182,7 @@ export default function FloatingTimeClock() {
             .from('time_entries')
             .select('entry_time')
             .eq('user_id', user.id)
+            .eq('company_id', ensuredCompanyId)
             .eq('entry_type', 'clock_out')
             .gt('entry_time', activeEntry[0].entry_time)
             .order('entry_time', { ascending: false })
@@ -141,6 +194,7 @@ export default function FloatingTimeClock() {
               .from('time_entries')
               .select('entry_time')
               .eq('user_id', user.id)
+              .eq('company_id', ensuredCompanyId)
               .eq('entry_type', 'break_start')
               .gt('entry_time', activeEntry[0].entry_time)
               .order('entry_time', { ascending: false })
@@ -150,6 +204,7 @@ export default function FloatingTimeClock() {
               .from('time_entries')
               .select('entry_time')
               .eq('user_id', user.id)
+              .eq('company_id', ensuredCompanyId)
               .eq('entry_type', 'break_end')
               .gt('entry_time', activeEntry[0].entry_time)
               .order('entry_time', { ascending: false })
@@ -177,23 +232,24 @@ export default function FloatingTimeClock() {
               let totalPausedBefore = 0;
               if (lastBreakEnd.data && lastBreakEnd.data.length > 0) {
                 // Hay pausas anteriores, calcular tiempo total
-                const { data: allBreaks } = await supabase
+              const { data: allBreaks } = await supabase
                   .from('time_entries')
                   .select('entry_time, entry_type')
                   .eq('user_id', user.id)
+                .eq('company_id', ensuredCompanyId)
                   .in('entry_type', ['break_start', 'break_end'])
                   .gt('entry_time', activeEntry[0].entry_time)
                   .lt('entry_time', lastBreakStart.data[0].entry_time)
                   .order('entry_time', { ascending: true });
 
                 if (allBreaks) {
-                  let pauseStartTime = null;
+                  let currentPauseStartMs = null;
                   for (const entry of allBreaks) {
                     if (entry.entry_type === 'break_start') {
-                      pauseStartTime = new Date(entry.entry_time).getTime();
-                    } else if (entry.entry_type === 'break_end' && pauseStartTime) {
-                      totalPausedBefore += new Date(entry.entry_time).getTime() - pauseStartTime;
-                      pauseStartTime = null;
+                      currentPauseStartMs = new Date(entry.entry_time).getTime();
+                    } else if (entry.entry_type === 'break_end' && currentPauseStartMs) {
+                      totalPausedBefore += new Date(entry.entry_time).getTime() - currentPauseStartMs;
+                      currentPauseStartMs = null;
                     }
                   }
                 }
@@ -211,18 +267,19 @@ export default function FloatingTimeClock() {
                 .from('time_entries')
                 .select('entry_time, entry_type')
                 .eq('user_id', user.id)
+                .eq('company_id', ensuredCompanyId)
                 .in('entry_type', ['break_start', 'break_end'])
                 .gt('entry_time', activeEntry[0].entry_time)
                 .order('entry_time', { ascending: true });
 
               if (allBreaks) {
-                let pauseStartTime = null;
+                let currentPauseStartMs = null;
                 for (const entry of allBreaks) {
                   if (entry.entry_type === 'break_start') {
-                    pauseStartTime = new Date(entry.entry_time).getTime();
-                  } else if (entry.entry_type === 'break_end' && pauseStartTime) {
-                    totalPaused += new Date(entry.entry_time).getTime() - pauseStartTime;
-                    pauseStartTime = null;
+                    currentPauseStartMs = new Date(entry.entry_time).getTime();
+                  } else if (entry.entry_type === 'break_end' && currentPauseStartMs) {
+                    totalPaused += new Date(entry.entry_time).getTime() - currentPauseStartMs;
+                    currentPauseStartMs = null;
                   }
                 }
               }
@@ -251,11 +308,54 @@ export default function FloatingTimeClock() {
           .eq('is_active', true)
           .single();
 
+        // Intentar obtener geolocalización (no bloqueante)
+        let locationData = null;
+        try {
+          if (navigator.geolocation) {
+            const position = await new Promise((resolve, reject) => {
+              navigator.geolocation.getCurrentPosition(resolve, reject, {
+                timeout: 8000,
+                enableHighAccuracy: true,
+                maximumAge: 0
+              });
+            });
+            locationData = {
+              lat: position.coords.latitude,
+              lng: position.coords.longitude,
+              accuracy: position.coords.accuracy
+            };
+            setCurrentLocation(locationData);
+          }
+        } catch (geoErr) {
+          console.log('GPS no disponible o denegado:', geoErr?.message || geoErr);
+          try {
+            const code = geoErr && typeof geoErr === 'object' ? geoErr.code : undefined;
+            if (code === 1) {
+              // PERMISSION_DENIED
+              showToast('⚠️ Permiso de ubicación denegado. Puedes fichar sin GPS.', 'info');
+            } else if (code === 2) {
+              // POSITION_UNAVAILABLE
+              showToast('⚠️ Ubicación no disponible. Intentando fichar sin GPS.', 'info');
+            } else if (code === 3) {
+              // TIMEOUT
+              showToast('⏳ Tiempo de espera de GPS agotado. Fichando sin GPS.', 'info');
+            } else {
+              showToast('ℹ️ No se pudo obtener ubicación. Fichando sin GPS.', 'info');
+            }
+          } catch (_) {
+            // Silencioso
+          }
+        }
+
         const timeEntry = {
           user_id: user.id,
           company_id: userRole?.company_id,
           entry_type: 'clock_in',
-          entry_time: new Date().toISOString()
+          entry_time: new Date().toISOString(),
+          ...(locationData ? { 
+            location_lat: locationData.lat, 
+            location_lng: locationData.lng
+          } : {})
         };
 
         try {
@@ -266,14 +366,19 @@ export default function FloatingTimeClock() {
 
           if (!error) {
             setIsActive(true);
-            setStartTime(Date.now());
+            const startTimeMs = Date.now();
+            setStartTime(startTimeMs);
             setElapsedTime(0);
             setIsPaused(false);
             setTotalPausedTime(0);
             setPauseStartTime(null);
             
+            // Guardar en localStorage para persistencia
+            saveSessionToStorage();
+            
             showToast('✅ Fichaje iniciado correctamente', 'success');
           } else {
+            console.error('Error insertando fichaje (con GPS):', error);
             throw error;
           }
         } catch (dbError) {
@@ -282,11 +387,15 @@ export default function FloatingTimeClock() {
           saveOfflineTimeEntry(timeEntry);
           
           setIsActive(true);
-          setStartTime(Date.now());
+          const startTimeMs = Date.now();
+          setStartTime(startTimeMs);
           setElapsedTime(0);
           setIsPaused(false);
           setTotalPausedTime(0);
           setPauseStartTime(null);
+          
+          // Guardar en localStorage para persistencia
+          saveSessionToStorage();
           
           showToast('✅ Fichaje guardado offline', 'info');
         }
@@ -328,6 +437,9 @@ export default function FloatingTimeClock() {
           setIsPaused(false);
           setTotalPausedTime(0);
           setPauseStartTime(null);
+          
+          // Limpiar localStorage
+          clearSessionStorage();
           
           // Mostrar notificación de éxito
           showToast('✅ Fichaje finalizado correctamente', 'success');
@@ -556,6 +668,9 @@ export default function FloatingTimeClock() {
       
       // Limpiar sessionStorage antes de cerrar sesión
       sessionStorage.clear();
+      // Limpiar persistencia local del fichaje y entradas offline
+      clearSessionStorage();
+      try { localStorage.removeItem('witar_offline_entries'); } catch (_) {}
       
       await supabase.auth.signOut();
       window.location.href = '/login';
@@ -615,6 +730,9 @@ export default function FloatingTimeClock() {
         company_id: timeEntry.company_id,
         entry_type: timeEntry.entry_type,
         entry_time: timeEntry.entry_time,
+        location_lat: timeEntry.location_lat || null,
+        location_lng: timeEntry.location_lng || null,
+        location_accuracy: timeEntry.location_accuracy || null,
         notes: timeEntry.notes || null,
         offline: true,
         created_at: new Date().toISOString()
@@ -628,40 +746,94 @@ export default function FloatingTimeClock() {
 
   async function syncOfflineEntries() {
     try {
+      if (syncInProgressRef.current) {
+        return;
+      }
+      syncInProgressRef.current = true;
+
+      // Requiere usuario autenticado
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        syncInProgressRef.current = false;
+        return;
+      }
+
+      // Obtener company_id activo por si alguna entrada no lo trae
+      let activeCompanyId = companyId;
+      if (!activeCompanyId) {
+        try {
+          const { data: role } = await supabase
+            .from('user_company_roles')
+            .select('company_id')
+            .eq('user_id', user.id)
+            .eq('is_active', true)
+            .single();
+          activeCompanyId = role?.company_id || null;
+          if (activeCompanyId && !companyId) setCompanyId(activeCompanyId);
+        } catch (_) {}
+      }
+
       const offlineEntries = JSON.parse(localStorage.getItem('witar_offline_entries') || '[]');
       
       if (offlineEntries.length === 0) return;
 
       console.log('🔄 Sincronizando fichajes offline...');
       
+      const failedEntries = [];
       for (const entry of offlineEntries) {
         try {
+          const payload = {
+            user_id: entry.user_id || user.id,
+            company_id: entry.company_id || activeCompanyId,
+            entry_type: entry.entry_type,
+            entry_time: entry.entry_time,
+            notes: entry.notes || null,
+            ...(entry.location_lat && entry.location_lng ? {
+              location_lat: entry.location_lat,
+              location_lng: entry.location_lng
+            } : {})
+          };
+
+          if (!payload.company_id) {
+            // Sin company_id no pasará RLS: conservar para reintento
+            failedEntries.push(entry);
+            continue;
+          }
+
           const { error } = await supabase
             .from('time_entries')
-            .insert({
-              user_id: entry.user_id,
-              company_id: entry.company_id,
-              entry_type: entry.entry_type,
-              entry_time: entry.entry_time,
-              notes: entry.notes || null
-            });
+            .insert(payload);
 
           if (!error) {
             console.log('✅ Fichaje sincronizado:', entry.entry_type);
           } else {
-            console.error('❌ Error sincronizando fichaje:', error);
+            console.error('❌ Error sincronizando fichaje:', {
+              code: error.code,
+              message: error.message,
+              details: error.details,
+              hint: error.hint
+            });
+            failedEntries.push(entry);
           }
         } catch (error) {
           console.error('❌ Error sincronizando fichaje:', error);
+          failedEntries.push(entry);
         }
       }
 
-      // Limpiar entradas sincronizadas
-      localStorage.removeItem('witar_offline_entries');
+      // Mantener solo las que fallaron
+      if (failedEntries.length > 0) {
+        localStorage.setItem('witar_offline_entries', JSON.stringify(failedEntries));
+      } else {
+        localStorage.removeItem('witar_offline_entries');
+      }
       showToast('✅ Fichajes offline sincronizados', 'success');
       
     } catch (error) {
       console.error('Error sincronizando offline:', error);
+    }
+    finally {
+      syncInProgressRef.current = false;
     }
   }
 
@@ -691,7 +863,7 @@ export default function FloatingTimeClock() {
     }
   }
 
-  // Solo mostrar para empleados, managers y admins
+  // Mostrar solo para empleados, managers y admins (no para owners)
   if (!userRole || (userRole !== 'employee' && userRole !== 'manager' && userRole !== 'admin')) {
     return null;
   }
@@ -711,6 +883,7 @@ export default function FloatingTimeClock() {
               <button
                 onClick={handleClockIn}
                 disabled={loading}
+                aria-label="Fichar"
                 className="px-2 sm:px-3 py-1.5 bg-green-500 hover:bg-green-600 disabled:opacity-50 text-white rounded-full text-xs transition-colors font-medium flex items-center justify-center"
               >
                 <Play className="w-3 h-3" />
@@ -723,6 +896,7 @@ export default function FloatingTimeClock() {
                 <button
                   onClick={handlePause}
                   disabled={loading}
+                  aria-label={isPaused ? 'Reanudar' : 'Pausar'}
                   className="px-2 sm:px-3 py-1.5 bg-gray-500 hover:bg-gray-600 disabled:opacity-50 text-white rounded-full text-xs transition-colors font-medium flex items-center justify-center"
                 >
                   {isPaused ? <Play className="w-3 h-3" /> : <Pause className="w-3 h-3" />}
@@ -731,6 +905,7 @@ export default function FloatingTimeClock() {
                 <button
                   onClick={handleClockOut}
                   disabled={loading}
+                  aria-label="Finalizar fichaje"
                   className="px-2 sm:px-3 py-1.5 bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white rounded-full text-xs transition-colors font-medium flex items-center justify-center"
                 >
                   <Square className="w-3 h-3" />
@@ -744,6 +919,7 @@ export default function FloatingTimeClock() {
           <div className="relative flex items-center">
             <button
               onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+              aria-label="Menú de usuario"
               className="flex items-center gap-1 sm:gap-2 hover:bg-green-200 dark:hover:bg-green-800/30 rounded-full px-1 sm:px-2 py-1 transition-colors"
             >
               <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full border-2 border-green-300 dark:border-green-700 overflow-hidden shadow-md flex items-center justify-center">
@@ -870,6 +1046,7 @@ export default function FloatingTimeClock() {
                     onClick={markAllNotificationsAsRead}
                     className="p-1 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"
                     title="Marcar todas como leídas"
+                    aria-label="Marcar todas como leídas"
                   >
                     <Check className="w-4 h-4" />
                   </button>
@@ -877,6 +1054,7 @@ export default function FloatingTimeClock() {
                 <button
                   onClick={() => setShowNotifications(false)}
                   className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"
+                  aria-label="Cerrar panel de notificaciones"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -1003,6 +1181,7 @@ export default function FloatingTimeClock() {
                               }}
                               className="p-1 text-gray-400 hover:text-red-500 rounded-full hover:bg-red-50 dark:hover:bg-red-900/20"
                               title="Eliminar notificación"
+                              aria-label="Eliminar notificación"
                             >
                               <Trash2 className="w-3 h-3" />
                             </button>
@@ -1062,4 +1241,194 @@ export default function FloatingTimeClock() {
       </div>
     </div>
   );
+
+  // Funciones de persistencia
+  function setupPersistenceListeners() {
+    // Listener para cambios de visibilidad de pestaña
+    const handleVisibilityChange = () => {
+      if (!document.hidden && isActive) {
+        console.log('🔄 Pestaña activa - sincronizando estado...');
+        syncWithDatabase();
+      }
+    };
+
+    // Listener para cambios de conexión
+    const handleOnline = () => {
+      console.log('🟢 Conexión restaurada - sincronizando...');
+      syncWithDatabase();
+    };
+
+    const handleOffline = () => {
+      console.log('🔴 Sin conexión - guardando offline');
+    };
+
+    // Guardar inmediatamente antes de abandonar la página
+    const handleBeforeUnload = () => {
+      saveSessionToStorage();
+    };
+
+    // Listener para sincronizar cambios de localStorage (otras pestañas o rehidratación)
+    const handleStorage = (e) => {
+      try {
+        if (!e) return;
+        if (e.key && e.key.startsWith('witar_')) {
+          loadSessionFromStorage();
+        }
+      } catch (_) {}
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('storage', handleStorage);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('storage', handleStorage);
+    };
+  }
+
+  function saveSessionToStorage() {
+    try {
+      localStorage.setItem('witar_active_session', isActive.toString());
+      if (startTime) {
+        localStorage.setItem('witar_start_time', startTime.toString());
+      }
+      localStorage.setItem('witar_elapsed_time', elapsedTime.toString());
+      localStorage.setItem('witar_is_paused', isPaused.toString());
+      if (pauseStartTime) {
+        localStorage.setItem('witar_pause_start_time', pauseStartTime.toString());
+      }
+      localStorage.setItem('witar_total_paused_time', totalPausedTime.toString());
+      localStorage.setItem('witar_last_sync', Date.now().toString());
+    } catch (error) {
+      console.error('Error saving session to storage:', error);
+    }
+  }
+
+  function loadSessionFromStorage() {
+    try {
+      const activeSession = localStorage.getItem('witar_active_session');
+      const startTimeStr = localStorage.getItem('witar_start_time');
+      const elapsedTimeStr = localStorage.getItem('witar_elapsed_time');
+      const isPausedStr = localStorage.getItem('witar_is_paused');
+      const pauseStartTimeStr = localStorage.getItem('witar_pause_start_time');
+      const totalPausedTimeStr = localStorage.getItem('witar_total_paused_time');
+
+      if (activeSession === 'true' && startTimeStr) {
+        const savedStartTime = parseInt(startTimeStr);
+        const savedElapsedTime = parseInt(elapsedTimeStr) || 0;
+        const savedIsPaused = isPausedStr === 'true';
+        const savedPauseStartTime = pauseStartTimeStr ? parseInt(pauseStartTimeStr) : null;
+        const savedTotalPausedTime = parseInt(totalPausedTimeStr) || 0;
+        
+        setIsActive(true);
+        setStartTime(savedStartTime);
+        setElapsedTime(savedElapsedTime);
+        setIsPaused(savedIsPaused);
+        setPauseStartTime(savedPauseStartTime);
+        setTotalPausedTime(savedTotalPausedTime);
+        
+        console.log('📱 Sesión persistente cargada desde localStorage');
+        return true;
+      }
+    } catch (error) {
+      console.error('Error loading session from storage:', error);
+    }
+    return false;
+  }
+
+  function clearSessionStorage() {
+    try {
+      localStorage.removeItem('witar_active_session');
+      localStorage.removeItem('witar_start_time');
+      localStorage.removeItem('witar_elapsed_time');
+      localStorage.removeItem('witar_is_paused');
+      localStorage.removeItem('witar_pause_start_time');
+      localStorage.removeItem('witar_total_paused_time');
+      localStorage.removeItem('witar_last_sync');
+    } catch (error) {
+      console.error('Error clearing session storage:', error);
+    }
+  }
+
+  async function syncWithDatabase() {
+    if (!companyId || !isActive) return;
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Buscar fichaje activo en la base de datos
+      const { data: activeEntry, error } = await supabase
+        .from('time_entries')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('company_id', companyId)
+        .eq('entry_type', 'clock_in')
+        .order('entry_time', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (error && error.code !== 'PGRST116') {
+        console.error('Error syncing with database:', error);
+        return;
+      }
+
+      if (activeEntry) {
+        // Verificar si el tiempo local coincide con el de la base de datos
+        const dbStartTime = new Date(activeEntry.entry_time).getTime();
+        const timeDiff = Math.abs(startTime - dbStartTime);
+        
+        // Si hay diferencia significativa (> 5 minutos), usar el tiempo de la base de datos
+        if (timeDiff > 5 * 60 * 1000) {
+          console.log('🔄 Corrigiendo tiempo desde base de datos');
+          setStartTime(dbStartTime);
+          setElapsedTime(Date.now() - dbStartTime);
+          saveSessionToStorage();
+        }
+        
+        console.log('✅ Estado sincronizado con base de datos');
+      } else {
+        // No hay fichaje activo en la base de datos, pero sí en localStorage
+        console.log('⚠️ Fichaje activo en localStorage pero no en base de datos');
+        // Intentar restaurar el fichaje
+        await restoreActiveSession();
+      }
+    } catch (error) {
+      console.error('Error syncing with database:', error);
+    }
+  }
+
+  async function restoreActiveSession() {
+    if (!companyId || !isActive) return;
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const timeEntry = {
+        user_id: user.id,
+        company_id: companyId,
+        entry_type: 'clock_in',
+        entry_time: new Date(startTime).toISOString()
+      };
+
+      const { error } = await supabase
+        .from('time_entries')
+        .insert(timeEntry);
+
+      if (error) {
+        console.error('Error restoring session:', error);
+      } else {
+        console.log('✅ Sesión restaurada en base de datos');
+      }
+    } catch (error) {
+      console.error('Error restoring session:', error);
+    }
+  }
 } 

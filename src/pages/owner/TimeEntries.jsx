@@ -3,6 +3,8 @@ import { supabase } from '@/lib/supabaseClient';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import Button from '@/components/Button';
 import Card from '@/components/Card';
+import GPSDebugger from '@/components/GPSDebugger';
+import LocationMapModal from '@/components/LocationMapModal';
 import { 
   Clock, 
   Search, 
@@ -38,12 +40,16 @@ export default function TimeEntries() {
   const [departments, setDepartments] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState(null);
+  const [showGPSDebug, setShowGPSDebug] = React.useState(false);
+  const [selectedLocation, setSelectedLocation] = React.useState(null);
+  const [showLocationModal, setShowLocationModal] = React.useState(false);
   const [stats, setStats] = React.useState({
     total: 0,
     active: 0,
     completed: 0,
     totalHours: 0
   });
+  const [userNames, setUserNames] = React.useState({});
   
   // Estados para filtros
   const [filters, setFilters] = React.useState({
@@ -140,14 +146,40 @@ export default function TimeEntries() {
         setTimeEntries(timeEntriesData || []);
       }
 
+      // 5b. Cargar nombres de usuarios para los fichajes
+      try {
+        const uniqueUserIds = Array.from(new Set((timeEntriesData || []).map(e => e.user_id).filter(Boolean)));
+        if (uniqueUserIds.length > 0) {
+          const { data: profilesData, error: profilesError } = await supabase
+            .from('user_profiles')
+            .select('user_id, full_name')
+            .in('user_id', uniqueUserIds);
+
+          if (!profilesError && profilesData) {
+            const map = {};
+            for (const p of profilesData) {
+              map[p.user_id] = p.full_name || '';
+            }
+            setUserNames(map);
+          }
+        }
+      } catch (nameErr) {
+        console.warn('No se pudieron cargar nombres de usuarios:', nameErr);
+      }
+
       // 6. Calcular estadísticas
       console.log('🔄 Calculando estadísticas...');
       const total = timeEntriesData?.length || 0;
-      const active = timeEntriesData?.filter(entry => !entry.clock_out_time).length || 0;
-      const completed = total - active;
+      const active = timeEntriesData?.filter(entry => entry.status === 'active').length || 0;
+      const completed = timeEntriesData?.filter(entry => entry.status === 'completed').length || 0;
       
       const totalHours = timeEntriesData?.reduce((acc, entry) => {
-        if (entry.clock_out_time) {
+        if (entry.duration) {
+          // Si tenemos duration calculado, usarlo
+          const hours = entry.duration / (1000 * 60 * 60);
+          return acc + hours;
+        } else if (entry.clock_in_time && entry.clock_out_time) {
+          // Si no, calcular manualmente
           const duration = new Date(entry.clock_out_time) - new Date(entry.clock_in_time);
           return acc + (duration / (1000 * 60 * 60));
         }
@@ -175,6 +207,19 @@ export default function TimeEntries() {
   const handleRefresh = React.useCallback(() => {
     loadInitialData();
   }, []);
+
+  // Función para mostrar ubicación en mapa
+  const handleShowLocation = (entry) => {
+    if (entry.location_lat && entry.location_lng) {
+      setSelectedLocation({
+        lat: entry.location_lat,
+        lng: entry.location_lng,
+        accuracy: entry.location_accuracy,
+        timestamp: entry.entry_time || entry.created_at
+      });
+      setShowLocationModal(true);
+    }
+  };
 
   if (loading) {
     return (
@@ -233,6 +278,10 @@ export default function TimeEntries() {
           <Button onClick={handleRefresh} variant="outline">
             <RefreshCw className="w-4 h-4 mr-2" />
             Recargar
+          </Button>
+          <Button onClick={() => setShowGPSDebug(!showGPSDebug)} variant="outline">
+            <MapPin className="w-4 h-4 mr-2" />
+            Debug GPS
           </Button>
         </div>
       </div>
@@ -317,8 +366,8 @@ export default function TimeEntries() {
               </thead>
               <tbody>
                 {timeEntries.map((entry) => {
-                  const entryDate = new Date(entry.created_at);
-                  const isCompleted = entry.clock_out_time;
+                  const entryDate = new Date(entry.entry_time || entry.created_at);
+                  const isCompleted = entry.status === 'completed';
                   
                   return (
                     <tr key={entry.id} className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50">
@@ -328,7 +377,7 @@ export default function TimeEntries() {
                             <User className="w-4 h-4 text-gray-600 dark:text-gray-400" />
                           </div>
                           <span className="font-medium text-gray-900 dark:text-white">
-                            Empleado {entry.user_id?.slice(0, 8)}...
+                            {userNames[entry.user_id] || `Empleado ${entry.user_id?.slice(0, 8)}...`}
                           </span>
                         </div>
                       </td>
@@ -361,10 +410,14 @@ export default function TimeEntries() {
                       </td>
                       <td className="py-3 px-4">
                         {entry.location_lat && entry.location_lng ? (
-                          <div className="flex items-center gap-1 text-gray-600 dark:text-gray-400">
+                          <button
+                            onClick={() => handleShowLocation(entry)}
+                            className="flex items-center gap-1 text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
+                            title="Ver ubicación en mapa"
+                          >
                             <MapPin className="w-4 h-4" />
-                            <span className="text-xs">GPS</span>
-                          </div>
+                            <span className="text-xs">Ver mapa</span>
+                          </button>
                         ) : (
                           <span className="text-gray-400 dark:text-gray-500 text-xs">Sin GPS</span>
                         )}
@@ -394,6 +447,19 @@ export default function TimeEntries() {
           </div>
         </div>
       </Card>
+
+      {showGPSDebug && (
+        <div className="mt-8">
+          <GPSDebugger companyId={companyId} />
+        </div>
+      )}
+
+      {/* Modal de ubicación */}
+      <LocationMapModal
+        isOpen={showLocationModal}
+        onClose={() => setShowLocationModal(false)}
+        location={selectedLocation}
+      />
     </div>
   );
 }

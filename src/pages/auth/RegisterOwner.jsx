@@ -32,7 +32,7 @@ export default function RegisterOwner() {
 
     try {
       // Determinar la URL de redirección basada en el entorno
-      const redirectUrl = 'https://witar-cursor.vercel.app/login';
+      const redirectUrl = 'https://www.witar.es/login';
 
       
 
@@ -41,9 +41,7 @@ export default function RegisterOwner() {
         email,
         password,
         options: { 
-          data: { full_name: fullName },
-          emailRedirectTo: redirectUrl,
-          emailConfirm: false // Desactivar email automático de Supabase
+          data: { full_name: fullName }
         }
       });
 
@@ -157,9 +155,15 @@ export default function RegisterOwner() {
         } else {
           console.log('Welcome email sent successfully:', welcomeEmailData);
           
-          // 7. Confirmar el email del usuario manualmente (ya que desactivamos el email automático)
+          // 7. Confirmar el email del usuario manualmente usando el cliente de servicio
           try {
-            const { error: confirmError } = await supabase.auth.admin.updateUserById(
+            const { createClient } = await import('@supabase/supabase-js');
+            const supabaseServiceClient = createClient(
+              import.meta.env.VITE_SUPABASE_URL,
+              import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY
+            );
+            
+            const { error: confirmError } = await supabaseServiceClient.auth.admin.updateUserById(
               user.id,
               { email_confirm: true }
             );

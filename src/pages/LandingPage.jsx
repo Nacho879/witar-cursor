@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Helmet } from 'react-helmet';
+import { Helmet } from 'react-helmet-async';
 import { Link } from 'react-router-dom';
 import { 
   Clock, 
@@ -207,14 +207,6 @@ const LandingPage = () => {
         <section id="home" className="relative overflow-hidden pt-20 pb-32">
           {/* Background Elements */}
           <div className="absolute inset-0 bg-grid-slate-200 [mask-image:linear-gradient(0deg,white,rgba(255,255,255,0.6))] -z-10" />
-          <div className="absolute top-0 left-0 w-72 h-72 bg-primary/20 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob" />
-          <div className="absolute top-0 right-0 w-72 h-72 bg-cta/20 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob animation-delay-2000" />
-          <div className="absolute bottom-0 left-1/2 w-72 h-72 bg-secondary/20 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob animation-delay-4000" />
-          
-          {/* Floating Elements */}
-          <div className="absolute top-20 right-10 w-16 h-16 bg-gradient-to-br from-primary to-cta rounded-2xl opacity-20 animate-bounce animation-delay-1000" />
-          <div className="absolute top-40 left-10 w-12 h-12 bg-cta rounded-full opacity-30 animate-pulse" />
-          <div className="absolute bottom-20 right-20 w-20 h-20 bg-primary rounded-3xl opacity-25 animate-spin animation-delay-3000" style={{animationDuration: '20s'}} />
           
           <div className="relative container mx-auto px-4">
             <div className="max-w-5xl mx-auto text-center">
@@ -464,10 +456,6 @@ const LandingPage = () => {
                     </div>
                   </div>
                 </div>
-                
-                {/* Floating elements */}
-                <div className="absolute -top-4 -right-4 w-20 h-20 bg-primary/20 rounded-full animate-pulse" />
-                <div className="absolute -bottom-4 -left-4 w-16 h-16 bg-cta/20 rounded-full animate-pulse animation-delay-1000" />
               </motion.div>
             </div>
           </div>
@@ -1042,34 +1030,6 @@ const LandingPage = () => {
         </footer>
       </div>
 
-      <style>{`
-        @keyframes blob {
-          0% {
-            transform: translate(0px, 0px) scale(1);
-          }
-          33% {
-            transform: translate(30px, -50px) scale(1.1);
-          }
-          66% {
-            transform: translate(-20px, 20px) scale(0.9);
-          }
-          100% {
-            transform: translate(0px, 0px) scale(1);
-          }
-        }
-        .animate-blob {
-          animation: blob 7s infinite;
-        }
-        .animation-delay-2000 {
-          animation-delay: 2s;
-        }
-        .animation-delay-4000 {
-          animation-delay: 4s;
-        }
-        .animation-delay-1000 {
-          animation-delay: 1s;
-        }
-      `}</style>
     </>
   );
 };

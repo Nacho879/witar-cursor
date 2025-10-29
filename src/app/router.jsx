@@ -30,6 +30,9 @@ const OwnerSettings = React.lazy(() => import('@/pages/owner/Settings'));
 const OwnerBilling = React.lazy(() => import('@/pages/owner/Billing'));
 const OwnerReports = React.lazy(() => import('@/pages/owner/Reports'));
 
+// Debug pages
+const GPSDebugPage = React.lazy(() => import('@/pages/GPSDebugPage'));
+
 // Lazy load admin pages
 const AdminDashboard = React.lazy(() => import('@/pages/admin/Dashboard'));
 const AdminProfile = React.lazy(() => import('@/pages/admin/Profile'));
@@ -48,6 +51,9 @@ const DocumentsManagement = React.lazy(() => import('@/pages/manager/DocumentsMa
 // Lazy load employee pages
 const EmployeeDashboard = React.lazy(() => import('@/pages/employee/Dashboard'));
 const MyTimeEntries = React.lazy(() => import('@/pages/employee/MyTimeEntries'));
+
+// Lazy load example pages
+const ExampleWithTimeClock = React.lazy(() => import('@/pages/example/ExampleWithTimeClock'));
 const MyRequests = React.lazy(() => import('@/pages/employee/MyRequests'));
 const MyDocuments = React.lazy(() => import('@/pages/employee/MyDocuments'));
 const EmployeeProfile = React.lazy(() => import('@/pages/employee/Profile'));
@@ -198,7 +204,7 @@ const router = createBrowserRouter([
       </React.Suspense>
     )
   },
-  { 
+  {
     path: "/owner/notifications", 
     element: (
       <React.Suspense fallback={<LoadingFallback />}>
@@ -206,6 +212,16 @@ const router = createBrowserRouter([
           <OwnerLayout>
             <Notifications />
           </OwnerLayout>
+        </Protected>
+      </React.Suspense>
+    )
+  },
+  {
+    path: "/debug/gps", 
+    element: (
+      <React.Suspense fallback={<LoadingFallback />}>
+        <Protected roles={['owner', 'admin', 'manager', 'employee']}>
+          <GPSDebugPage />
         </Protected>
       </React.Suspense>
     )
@@ -526,6 +542,16 @@ const router = createBrowserRouter([
           <EmployeeLayout>
             <EmployeeProfile/>
           </EmployeeLayout>
+        </Protected>
+      </React.Suspense>
+    )
+  },
+  { 
+    path: "/employee/timeclock-test", 
+    element: (
+      <React.Suspense fallback={<LoadingFallback />}>
+        <Protected roles={['employee', 'manager', 'owner', 'admin']}>
+          <ExampleWithTimeClock/>
         </Protected>
       </React.Suspense>
     )

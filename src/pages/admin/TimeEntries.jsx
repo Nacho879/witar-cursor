@@ -15,6 +15,7 @@ import {
   Building,
   Users
 } from 'lucide-react';
+import LocationMapModal from '@/components/LocationMapModal';
 
 export default function AdminTimeEntries() {
   const [timeEntries, setTimeEntries] = React.useState([]);
@@ -350,8 +351,9 @@ export default function AdminTimeEntries() {
     
     const lastEntryWithLocation = entriesWithLocation[entriesWithLocation.length - 1];
     return {
-      latitude: lastEntryWithLocation.location_lat,
-      longitude: lastEntryWithLocation.location_lng,
+      lat: lastEntryWithLocation.location_lat,
+      lng: lastEntryWithLocation.location_lng,
+      accuracy: lastEntryWithLocation.location_accuracy,
       timestamp: lastEntryWithLocation.entry_time
     };
   }
@@ -752,92 +754,12 @@ export default function AdminTimeEntries() {
         </div>
       </div>
 
-      {/* Location Modal */}
-      {isLocationModalOpen && selectedLocation && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-background rounded-lg shadow-xl w-full max-w-md">
-            <div className="flex items-center justify-between p-6 border-b border-border">
-              <h3 className="text-lg font-semibold text-foreground">Detalles de Ubicación</h3>
-              <button
-                onClick={() => {
-                  setIsLocationModalOpen(false);
-                  setSelectedLocation(null);
-                }}
-                className="p-2 rounded-lg hover:bg-secondary transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="p-6">
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-2">
-                    Coordenadas
-                  </label>
-                  <div className="bg-secondary p-3 rounded-lg">
-                    <p className="text-sm">
-                      <strong>Latitud:</strong> {selectedLocation.latitude}
-                    </p>
-                    <p className="text-sm">
-                      <strong>Longitud:</strong> {selectedLocation.longitude}
-                    </p>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-2">
-                    Fecha y Hora
-                  </label>
-                  <div className="bg-secondary p-3 rounded-lg">
-                    <p className="text-sm">
-                      {selectedLocation.timestamp ? new Date(selectedLocation.timestamp).toLocaleString('es-ES') : 'N/A'}
-                    </p>
-                  </div>
-                </div>
-                
-                {selectedLocation.address && (
-                  <div>
-                    <label className="block text-sm font-medium text-foreground mb-2">
-                      Dirección
-                    </label>
-                    <div className="bg-secondary p-3 rounded-lg">
-                      <p className="text-sm">{selectedLocation.address}</p>
-                    </div>
-                  </div>
-                )}
-
-                {selectedLocation.accuracy && (
-                  <div>
-                    <label className="block text-sm font-medium text-foreground mb-2">
-                      Precisión
-                    </label>
-                    <div className="bg-secondary p-3 rounded-lg">
-                      <p className="text-sm">
-                        <strong>Precisión:</strong> {selectedLocation.accuracy} metros
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-2">
-                    Enlace a Google Maps
-                  </label>
-                  <a
-                    href={`https://www.google.com/maps?q=${selectedLocation.latitude},${selectedLocation.longitude}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="btn btn-primary w-full flex items-center justify-center gap-2"
-                  >
-                    <MapPin className="w-4 h-4" />
-                    Ver en Google Maps
-                  </a>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Location Modal unificado */}
+      <LocationMapModal
+        isOpen={isLocationModalOpen && !!selectedLocation}
+        onClose={() => { setIsLocationModalOpen(false); setSelectedLocation(null); }}
+        location={selectedLocation}
+      />
     </div>
   );
 } 
