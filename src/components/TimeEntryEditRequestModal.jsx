@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { supabase } from '../lib/supabaseClient';
+import { supabase } from '@/lib/supabaseClient';
 import { X, Clock, Edit, AlertCircle, CheckCircle } from 'lucide-react';
 
 export default function TimeEntryEditRequestModal({ 

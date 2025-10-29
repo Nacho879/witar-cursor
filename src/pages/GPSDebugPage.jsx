@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
-import GPSDebugger from '../components/GPSDebugger';
+import { supabase } from '@/lib/supabaseClient';
+import GPSDebugger from '@/components/GPSDebugger';
 
 const GPSDebugPage = () => {
   const [companyId, setCompanyId] = useState(null);
