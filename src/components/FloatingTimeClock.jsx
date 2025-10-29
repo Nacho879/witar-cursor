@@ -307,44 +307,52 @@ export default function FloatingTimeClock() {
           .eq('user_id', user.id)
           .eq('is_active', true)
           .single();
-
-        // Intentar obtener geolocalización (no bloqueante)
+        // Requerir geolocalización activa para fichar
         let locationData = null;
         try {
-          if (navigator.geolocation) {
-            const position = await new Promise((resolve, reject) => {
-              navigator.geolocation.getCurrentPosition(resolve, reject, {
-                timeout: 8000,
-                enableHighAccuracy: true,
-                maximumAge: 0
-              });
-            });
-            locationData = {
-              lat: position.coords.latitude,
-              lng: position.coords.longitude,
-              accuracy: position.coords.accuracy
-            };
-            setCurrentLocation(locationData);
+          // Verificar disponibilidad de API
+          if (!navigator.geolocation) {
+            showToast('❌ Este navegador no soporta GPS. Actívalo para fichar.', 'error');
+            return;
           }
-        } catch (geoErr) {
-          console.log('GPS no disponible o denegado:', geoErr?.message || geoErr);
+
+          // Intentar conocer el estado de permiso (no está disponible en todos los navegadores)
           try {
-            const code = geoErr && typeof geoErr === 'object' ? geoErr.code : undefined;
-            if (code === 1) {
-              // PERMISSION_DENIED
-              showToast('⚠️ Permiso de ubicación denegado. Puedes fichar sin GPS.', 'info');
-            } else if (code === 2) {
-              // POSITION_UNAVAILABLE
-              showToast('⚠️ Ubicación no disponible. Intentando fichar sin GPS.', 'info');
-            } else if (code === 3) {
-              // TIMEOUT
-              showToast('⏳ Tiempo de espera de GPS agotado. Fichando sin GPS.', 'info');
-            } else {
-              showToast('ℹ️ No se pudo obtener ubicación. Fichando sin GPS.', 'info');
+            if (navigator.permissions && navigator.permissions.query) {
+              const result = await navigator.permissions.query({ name: 'geolocation' });
+              if (result.state === 'denied') {
+                showToast('❌ Permiso de ubicación denegado. Activa el GPS para fichar.', 'error');
+                return;
+              }
             }
           } catch (_) {
-            // Silencioso
+            // Ignorar si la API de permisos no está disponible
           }
+
+          // Solicitar posición; si falla, bloquear el fichaje
+          const position = await new Promise((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, {
+              timeout: 12000,
+              enableHighAccuracy: true,
+              maximumAge: 0
+            });
+          });
+          locationData = {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+            accuracy: position.coords.accuracy
+          };
+          setCurrentLocation(locationData);
+        } catch (geoErr) {
+          const code = geoErr && typeof geoErr === 'object' ? geoErr.code : undefined;
+          if (code === 1) {
+            showToast('❌ Permiso de ubicación denegado. Activa el GPS para fichar.', 'error');
+          } else if (code === 3) {
+            showToast('⏳ Tiempo de GPS agotado. Asegúrate de tener el GPS activo.', 'error');
+          } else {
+            showToast('❌ No se pudo obtener tu ubicación. Activa el GPS para fichar.', 'error');
+          }
+          return;
         }
 
         const timeEntry = {
@@ -421,13 +429,58 @@ export default function FloatingTimeClock() {
           .eq('is_active', true)
           .single();
 
+        // Requerir geolocalización también al salir
+        let locationData = null;
+        try {
+          if (!navigator.geolocation) {
+            showToast('❌ Este navegador no soporta GPS. Actívalo para fichar.', 'error');
+            return;
+          }
+          try {
+            if (navigator.permissions && navigator.permissions.query) {
+              const result = await navigator.permissions.query({ name: 'geolocation' });
+              if (result.state === 'denied') {
+                showToast('❌ Permiso de ubicación denegado. Activa el GPS para fichar.', 'error');
+                return;
+              }
+            }
+          } catch (_) {}
+          const position = await new Promise((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, {
+              timeout: 12000,
+              enableHighAccuracy: true,
+              maximumAge: 0
+            });
+          });
+          locationData = {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+            accuracy: position.coords.accuracy
+          };
+          setCurrentLocation(locationData);
+        } catch (geoErr) {
+          const code = geoErr && typeof geoErr === 'object' ? geoErr.code : undefined;
+          if (code === 1) {
+            showToast('❌ Permiso de ubicación denegado. Activa el GPS para fichar.', 'error');
+          } else if (code === 3) {
+            showToast('⏳ Tiempo de GPS agotado. Asegúrate de tener el GPS activo.', 'error');
+          } else {
+            showToast('❌ No se pudo obtener tu ubicación. Activa el GPS para fichar.', 'error');
+          }
+          return;
+        }
+
         const { error } = await supabase
           .from('time_entries')
           .insert({
             user_id: user.id,
             company_id: userRole?.company_id,
             entry_type: 'clock_out',
-            entry_time: new Date().toISOString()
+            entry_time: new Date().toISOString(),
+            ...(locationData ? {
+              location_lat: locationData.lat,
+              location_lng: locationData.lng
+            } : {})
           });
 
         if (!error) {
