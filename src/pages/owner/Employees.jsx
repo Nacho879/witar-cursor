@@ -34,6 +34,7 @@ export default function Employees() {
   const [employeeLocationSettings, setEmployeeLocationSettings] = React.useState({});
   const [showDeleteModal, setShowDeleteModal] = React.useState(false);
   const [employeeToDelete, setEmployeeToDelete] = React.useState(null);
+  const [showInactive, setShowInactive] = React.useState(false);
   const [stats, setStats] = React.useState({
     totalEmployees: 0,
     activeEmployees: 0,
@@ -90,7 +91,6 @@ export default function Employees() {
           )
         `)
         .eq('company_id', companyId)
-        .eq('is_active', true) // Solo empleados activos
         .neq('role', 'owner') // Excluir al owner
         .order('joined_at', { ascending: false });
 
@@ -289,7 +289,7 @@ export default function Employees() {
     setEmployees(prev => prev.filter(emp => emp.id !== employeeId));
     
     // Mostrar notificación de éxito
-    alert(`Empleado ${deletedEmployee.name} eliminado exitosamente`);
+    alert(`Empleado ${deletedEmployee?.name || ''} desactivado temporalmente`);
   };
 
   function getRoleDisplayName(role) {
@@ -318,12 +318,16 @@ export default function Employees() {
       : 'bg-red-100 text-red-800';
   }
 
-  const filteredEmployees = employees.filter(employee =>
-    employee.profile?.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    employee.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    employee.role?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    employee.departments?.name?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredEmployees = React.useMemo(() => {
+    const byText = employees.filter(employee =>
+      employee.profile?.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      employee.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      employee.role?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      employee.departments?.name?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+    if (showInactive) return byText;
+    return byText.filter(e => e.is_active);
+  }, [employees, searchTerm, showInactive]);
 
   // Calcular estadísticas
   React.useEffect(() => {
@@ -420,7 +424,7 @@ export default function Employees() {
 
       {/* Search and Filters */}
       <div className="card p-4 lg:p-6">
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 justify-between flex-wrap">
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
             <input
@@ -431,6 +435,15 @@ export default function Employees() {
               className="input pl-10 w-full"
             />
           </div>
+          <label className="flex items-center gap-2 text-sm text-muted-foreground whitespace-nowrap">
+            <input
+              type="checkbox"
+              checked={showInactive}
+              onChange={(e) => setShowInactive(e.target.checked)}
+              className="checkbox checkbox-sm"
+            />
+            Mostrar inactivos
+          </label>
         </div>
       </div>
 

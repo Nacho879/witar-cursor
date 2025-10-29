@@ -93,10 +93,10 @@ export default function DeleteEmployeeModal({ isOpen, onClose, employee, onEmplo
           </div>
           <div className="flex-1">
             <h2 className="text-xl font-semibold text-foreground">
-              Eliminar Empleado
+              Desactivar empleado
             </h2>
             <p className="text-sm text-muted-foreground">
-              Esta acción no se puede deshacer
+              Podrás reactivarlo más adelante si lo necesitas
             </p>
           </div>
           <button
@@ -141,18 +141,17 @@ export default function DeleteEmployeeModal({ isOpen, onClose, employee, onEmplo
           </div>
 
           {/* Warning */}
-          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mb-6">
+          <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4 mb-6">
             <div className="flex items-start gap-3">
-              <AlertTriangle className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
+              <AlertTriangle className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
               <div>
-                <h4 className="font-semibold text-red-800 dark:text-red-200 mb-1">
-                  ⚠️ Acción Irreversible
+                <h4 className="font-semibold text-amber-800 dark:text-amber-200 mb-1">
+                  ⚠️ Desactivación temporal
                 </h4>
-                <ul className="text-sm text-red-700 dark:text-red-300 space-y-1">
-                  <li>• El empleado será desactivado inmediatamente</li>
-                  <li>• Se eliminarán sus fichajes futuros</li>
-                  <li>• Se cancelarán sus solicitudes pendientes</li>
-                  <li>• Esta acción se registrará en el historial</li>
+                <ul className="text-sm text-amber-700 dark:text-amber-300 space-y-1">
+                  <li>• El empleado quedará inactivo de forma temporal</li>
+                  <li>• Se eliminarán fichajes futuros y solicitudes pendientes</li>
+                  <li>• Podrás reactivarlo cuando quieras</li>
                 </ul>
               </div>
             </div>
@@ -161,13 +160,13 @@ export default function DeleteEmployeeModal({ isOpen, onClose, employee, onEmplo
           {/* Reason Input */}
           <div className="mb-6">
             <label className="block text-sm font-medium mb-2">
-              Motivo de la eliminación (opcional)
+              Motivo de la desactivación (opcional)
             </label>
             <textarea
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               className="input w-full h-20 resize-none"
-              placeholder="Especifica el motivo de la eliminación..."
+              placeholder="Especifica el motivo de la desactivación..."
               disabled={loading}
             />
           </div>
@@ -193,17 +192,17 @@ export default function DeleteEmployeeModal({ isOpen, onClose, employee, onEmplo
             <button
               onClick={handleDelete}
               disabled={loading}
-              className="btn btn-destructive flex-1 flex items-center gap-2"
+              className="btn btn-warning flex-1 flex items-center gap-2"
             >
               {loading ? (
                 <>
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                  Eliminando...
+                  Desactivando...
                 </>
               ) : (
                 <>
                   <Trash2 className="w-4 h-4" />
-                  Eliminar Empleado
+                  Desactivar empleado
                 </>
               )}
             </button>
