@@ -60,11 +60,30 @@ export default function TimeEntries() {
     dateTo: new Date().toISOString().split('T')[0],
     status: 'all'
   });
+  const [allEmployees, setAllEmployees] = React.useState(true);
+  const [selectedEmployee, setSelectedEmployee] = React.useState('all');
+  const [selectedRoles, setSelectedRoles] = React.useState(['employee', 'manager', 'admin']);
+  const [viewMode, setViewMode] = React.useState('day'); // 'day' | 'month' | 'range'
+  const [selectedDate, setSelectedDate] = React.useState(() => new Date().toISOString().split('T')[0]);
+  const [selectedMonth, setSelectedMonth] = React.useState(() => {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    return `${y}-${m}`;
+  });
+  const [rangeFrom, setRangeFrom] = React.useState(() => new Date().toISOString().split('T')[0]);
+  const [rangeTo, setRangeTo] = React.useState(() => new Date().toISOString().split('T')[0]);
 
   // Cargar datos iniciales
   React.useEffect(() => {
     loadInitialData();
   }, []);
+
+  // Recargar cuando cambien filtros de empleados/roles o rangos
+  React.useEffect(() => {
+    loadInitialData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allEmployees, selectedEmployee, selectedRoles, filters.dateFrom, filters.dateTo]);
 
   async function loadInitialData() {
     try {
@@ -128,15 +147,33 @@ export default function TimeEntries() {
         setDepartments(departmentsData || []);
       }
 
-      // 5. Cargar time entries (simplificado)
+      // 5. Determinar usuarios a incluir según filtros de empleados/roles
+      let filteredUserIds = (employeesData || []).map(e => e.user_id);
+      if (Array.isArray(selectedRoles) && selectedRoles.length > 0 && selectedRoles.length < 3) {
+        const roleUsers = (employeesData || []).filter(e => selectedRoles.includes(e.role));
+        filteredUserIds = filteredUserIds.filter(id => roleUsers.some(u => u.user_id === id));
+      }
+      // Si no está tildado "Todos los empleados", igualmente no se filtra por un empleado concreto
+
+      // 5a. Cargar time entries con filtros
       console.log('🔄 Cargando fichajes...');
-      const { data: timeEntriesData, error: timeEntriesError } = await supabase
-        .from('time_entries')
-        .select('*')
-        .eq('company_id', userRole.company_id)
-        .gte('created_at', `${filters.dateFrom}T00:00:00`)
-        .lte('created_at', `${filters.dateTo}T23:59:59`)
-        .order('created_at', { ascending: false });
+      let timeEntriesData = [];
+      let timeEntriesError = null;
+      if (filteredUserIds.length === 0) {
+        timeEntriesData = [];
+      } else {
+        const query = supabase
+          .from('time_entries')
+          .select('*')
+          .eq('company_id', userRole.company_id)
+          .in('user_id', filteredUserIds)
+          .gte('created_at', `${filters.dateFrom}T00:00:00`)
+          .lte('created_at', `${filters.dateTo}T23:59:59`)
+          .order('created_at', { ascending: false });
+        const { data, error } = await query;
+        timeEntriesData = data || [];
+        timeEntriesError = error || null;
+      }
 
       if (timeEntriesError) {
         console.log('❌ Error cargando fichajes:', timeEntriesError);
@@ -208,6 +245,34 @@ export default function TimeEntries() {
     loadInitialData();
   }, []);
 
+  // Actualiza dateFrom/dateTo automáticamente según modo de vista
+  React.useEffect(() => {
+    let startStr = filters.dateFrom;
+    let endStr = filters.dateTo;
+    if (viewMode === 'day' && selectedDate) {
+      startStr = selectedDate;
+      endStr = selectedDate;
+    } else if (viewMode === 'month' && selectedMonth) {
+      const [yearStr, monthStr] = selectedMonth.split('-');
+      const year = Number(yearStr);
+      const monthIndex = Number(monthStr) - 1;
+      const start = new Date(year, monthIndex, 1);
+      const end = new Date(year, monthIndex + 1, 0);
+      startStr = start.toISOString().split('T')[0];
+      endStr = end.toISOString().split('T')[0];
+    } else if (viewMode === 'range') {
+      startStr = rangeFrom || startStr;
+      endStr = rangeTo || endStr;
+    }
+    if (startStr !== filters.dateFrom || endStr !== filters.dateTo) {
+      setFilters(prev => ({ ...prev, dateFrom: startStr, dateTo: endStr }));
+      // Recargar datos al cambiar el rango
+      // Esperar a que el estado se aplique
+      setTimeout(() => loadInitialData(), 0);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode, selectedDate, selectedMonth, rangeFrom, rangeTo]);
+
   // Función para mostrar ubicación en mapa
   const handleShowLocation = (entry) => {
     if (entry.location_lat && entry.location_lng) {
@@ -220,6 +285,37 @@ export default function TimeEntries() {
       setShowLocationModal(true);
     }
   };
+
+  // Exportar CSV (similar a admin)
+  function exportToCSV() {
+    const headers = ['Empleado', 'Fecha', 'Hora', 'Tipo', 'Estado'];
+    const csvData = (timeEntries || []).map(entry => {
+      const entryDate = new Date(entry.entry_time || entry.created_at);
+      const isCompleted = entry.status === 'completed';
+      const employeeName = userNames[entry.user_id] || `Empleado ${entry.user_id?.slice(0, 8) || ''}`;
+      return [
+        employeeName,
+        entryDate.toLocaleDateString('es-ES'),
+        entryDate.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
+        entry.entry_type === 'clock_in' ? 'Entrada' : 'Salida',
+        isCompleted ? 'Completado' : 'En curso'
+      ];
+    });
+
+    const csvContent = [headers, ...csvData]
+      .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `fichajes_${filters.dateFrom}_${filters.dateTo}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
 
   if (loading) {
     return (
@@ -283,6 +379,137 @@ export default function TimeEntries() {
             <MapPin className="w-4 h-4 mr-2" />
             Debug GPS
           </Button>
+        </div>
+      </div>
+
+      {/* Filtros al estilo admin */}
+      <div className="card p-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+          <div className="flex flex-col gap-2 lg:col-span-2">
+            <label className="text-xs font-medium text-muted-foreground flex items-center gap-2">
+              <Search className="w-4 h-4" />
+              Buscar empleado
+            </label>
+            <input
+              type="text"
+              placeholder="Nombre, email..."
+              value={filters.search}
+              onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
+              className="input w-full"
+            />
+          </div>
+
+          {/* Empleados */}
+          <div className="flex flex-col gap-2 lg:col-span-2">
+            <label className="text-xs font-medium text-muted-foreground">Empleados</label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="accent-blue-600"
+                checked={allEmployees}
+                onChange={(e) => setAllEmployees(e.target.checked)}
+              />
+              Todos los empleados
+            </label>
+          </div>
+
+          {/* Roles */}
+          <div className="flex flex-col gap-2 lg:col-span-2">
+            <label className="text-xs font-medium text-muted-foreground">Roles</label>
+            <div className="flex flex-wrap gap-3">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="accent-blue-600"
+                  checked={selectedRoles.includes('employee')}
+                  onChange={(e) => {
+                    setSelectedRoles(prev => e.target.checked ? Array.from(new Set([...prev, 'employee'])) : prev.filter(r => r !== 'employee'));
+                  }}
+                />
+                Empleado
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="accent-blue-600"
+                  checked={selectedRoles.includes('manager')}
+                  onChange={(e) => {
+                    setSelectedRoles(prev => e.target.checked ? Array.from(new Set([...prev, 'manager'])) : prev.filter(r => r !== 'manager'));
+                  }}
+                />
+                Manager
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="accent-blue-600"
+                  checked={selectedRoles.includes('admin')}
+                  onChange={(e) => {
+                    setSelectedRoles(prev => e.target.checked ? Array.from(new Set([...prev, 'admin'])) : prev.filter(r => r !== 'admin'));
+                  }}
+                />
+                Administrador
+              </label>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2 lg:col-span-2">
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="owner-date-mode"
+                  className="accent-blue-600"
+                  checked={viewMode === 'day'}
+                  onChange={() => setViewMode('day')}
+                />
+                Día
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="owner-date-mode"
+                  className="accent-blue-600"
+                  checked={viewMode === 'range'}
+                  onChange={() => setViewMode('range')}
+                />
+                Rango
+              </label>
+            </div>
+            {viewMode === 'day' ? (
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                className="input w-full"
+              />
+            ) : (
+              <div className="grid grid-cols-2 gap-2 w-full">
+                <input
+                  type="date"
+                  value={rangeFrom}
+                  onChange={(e) => setRangeFrom(e.target.value)}
+                  className="input w-full"
+                />
+                <input
+                  type="date"
+                  value={rangeTo}
+                  onChange={(e) => setRangeTo(e.target.value)}
+                  className="input w-full"
+                />
+              </div>
+            )}
+          </div>
+          <div className="flex items-end lg:col-span-1 justify-start lg:justify-end">
+            <button
+              onClick={exportToCSV}
+              className="btn btn-secondary flex items-center gap-2"
+            >
+              <Download className="w-4 h-4" />
+              Exportar CSV
+            </button>
+          </div>
+          
         </div>
       </div>
 
