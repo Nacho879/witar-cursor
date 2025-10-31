@@ -381,6 +381,12 @@ export default function Login() {
             Crear cuenta de empresa
           </a>
         </p>
+        <p className="text-sm text-muted-foreground text-center">
+          ¿Olvidaste tu contraseña?{' '}
+          <a href="/forgot-password" className="text-primary hover:underline">
+            Recuperarla aquí
+          </a>
+        </p>
       </form>
       
       {/* Modal de cambio de contraseña */}

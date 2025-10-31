@@ -3,6 +3,8 @@ import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import Protected from './Protected';
 import LandingPage from '@/pages/LandingPage';
 import Login from '@/pages/auth/Login';
+import ForgotPassword from '@/pages/auth/ForgotPassword';
+import ResetPassword from '@/pages/auth/ResetPassword';
 import RegisterOwner from '@/pages/auth/RegisterOwner';
 import Welcome from '@/pages/auth/Welcome';
 import AcceptInvitation from '@/pages/auth/AcceptInvitation';
@@ -75,6 +77,8 @@ const router = createBrowserRouter([
   { path: "/", element: <LandingPage /> },
   { path: "/demo", element: <Demo /> },
   { path: "/login", element: <Login /> },
+  { path: "/forgot-password", element: <ForgotPassword /> },
+  { path: "/reset-password", element: <ResetPassword /> },
   { path: "/terminos-condiciones", element: <TerminosCondiciones /> },
   { path: "/politica-privacidad", element: <PoliticaPrivacidad /> },
   { path: "/politica-cookies", element: <PoliticaCookies /> },
