@@ -26,8 +26,11 @@ export default function AdminTimeEntries() {
   const [searchTerm, setSearchTerm] = React.useState('');
   const [selectedDate, setSelectedDate] = React.useState(new Date().toISOString().split('T')[0]);
   const [selectedEmployee, setSelectedEmployee] = React.useState('all');
-  const [selectedDepartment, setSelectedDepartment] = React.useState('all');
-  const [selectedRole, setSelectedRole] = React.useState('all');
+  const [allEmployees, setAllEmployees] = React.useState(true);
+  const [selectedRoles, setSelectedRoles] = React.useState(['employee', 'manager', 'admin']);
+  const [isRoundTrip, setIsRoundTrip] = React.useState(false); // false: ida (un día), true: ida y vuelta (rango)
+  const [rangeFrom, setRangeFrom] = React.useState(() => new Date().toISOString().split('T')[0]);
+  const [rangeTo, setRangeTo] = React.useState(() => new Date().toISOString().split('T')[0]);
   const [isLocationModalOpen, setIsLocationModalOpen] = React.useState(false);
   const [selectedLocation, setSelectedLocation] = React.useState(null);
   const [stats, setStats] = React.useState({
@@ -42,7 +45,14 @@ export default function AdminTimeEntries() {
   React.useEffect(() => {
     loadTimeEntriesData();
     loadEmployeesAndDepartments();
-  }, [selectedDate, selectedEmployee, selectedDepartment, selectedRole]);
+  }, [selectedDate, rangeFrom, rangeTo, isRoundTrip, selectedEmployee, selectedRoles]);
+
+  // Sincroniza el estado del toggle con el valor del empleado seleccionado
+  React.useEffect(() => {
+    if (allEmployees && selectedEmployee !== 'all') {
+      setSelectedEmployee('all');
+    }
+  }, [allEmployees]);
 
   // Suscripción en tiempo real para fichajes
   React.useEffect(() => {
@@ -129,7 +139,7 @@ export default function AdminTimeEntries() {
         .select('user_id, role, department_id')
         .eq('company_id', userRole.company_id)
         .eq('is_active', true)
-        .in('role', ['employee', 'manager']);
+        .in('role', ['employee', 'manager', 'admin']);
 
       if (!usersError && users) {
         const userIds = users.map(u => u.user_id);
@@ -180,7 +190,7 @@ export default function AdminTimeEntries() {
         .select('user_id, role, department_id')
         .eq('company_id', userRole.company_id)
         .eq('is_active', true)
-        .in('role', ['employee', 'manager']);
+        .in('role', ['employee', 'manager', 'admin']);
 
       if (usersError) {
         console.error('Error loading users:', usersError);
@@ -189,31 +199,30 @@ export default function AdminTimeEntries() {
 
       let filteredUserIds = allUsers.map(u => u.user_id);
 
-      // Aplicar filtros
-      if (selectedEmployee !== 'all') {
-        filteredUserIds = filteredUserIds.filter(id => id === selectedEmployee);
-      }
+      // Aplicar filtros (sin filtro por empleado específico)
 
-      if (selectedDepartment !== 'all') {
-        const deptUsers = allUsers.filter(u => u.department_id === selectedDepartment);
-        filteredUserIds = filteredUserIds.filter(id => 
-          deptUsers.some(u => u.user_id === id)
-        );
-      }
-
-      if (selectedRole !== 'all') {
-        const roleUsers = allUsers.filter(u => u.role === selectedRole);
-        filteredUserIds = filteredUserIds.filter(id => 
-          roleUsers.some(u => u.user_id === id)
-        );
+      if (Array.isArray(selectedRoles) && selectedRoles.length > 0 && selectedRoles.length < 3) {
+        const roleUsers = allUsers.filter(u => selectedRoles.includes(u.role));
+        filteredUserIds = filteredUserIds.filter(id => roleUsers.some(u => u.user_id === id));
       }
 
       if (filteredUserIds.length > 0) {
-        // Cargar fichajes
-        const startDate = new Date(selectedDate);
-        startDate.setHours(0, 0, 0, 0);
-        const endDate = new Date(selectedDate);
-        endDate.setHours(23, 59, 59, 999);
+        // Cargar fichajes según modo
+        let startDate;
+        let endDate;
+        if (!isRoundTrip) {
+          // Ida: un solo día
+          startDate = new Date(selectedDate);
+          startDate.setHours(0, 0, 0, 0);
+          endDate = new Date(selectedDate);
+          endDate.setHours(23, 59, 59, 999);
+        } else {
+          // Ida y vuelta: rango
+          startDate = new Date(rangeFrom);
+          startDate.setHours(0, 0, 0, 0);
+          endDate = new Date(rangeTo);
+          endDate.setHours(23, 59, 59, 999);
+        }
 
         const { data: entries, error } = await supabase
           .from('time_entries')
@@ -383,7 +392,10 @@ export default function AdminTimeEntries() {
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
     link.setAttribute('href', url);
-    link.setAttribute('download', `fichajes_${selectedDate}.csv`);
+    const fileTag = !isRoundTrip
+      ? new Date(selectedDate).toISOString().split('T')[0]
+      : `${rangeFrom}_${rangeTo}`;
+    link.setAttribute('download', `fichajes_${fileTag}.csv`);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
@@ -393,12 +405,8 @@ export default function AdminTimeEntries() {
   const filteredEmployees = employees.filter(employee => {
     const matchesSearch = searchTerm === '' || 
       employee.name.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesDepartment = selectedDepartment === 'all' || 
-      employee.department_id === selectedDepartment;
-    const matchesRole = selectedRole === 'all' || 
-      employee.role === selectedRole;
-    
-    return matchesSearch && matchesDepartment && matchesRole;
+    const matchesRole = selectedRoles.length === 0 || selectedRoles.includes(employee.role);
+    return matchesSearch && matchesRole;
   });
 
   if (loading) {
@@ -569,67 +577,130 @@ export default function AdminTimeEntries() {
       {/* Filters */}
       <div className="card p-6">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
-          <div className="flex items-center gap-2">
-            <Search className="w-4 h-4 text-muted-foreground" />
+          <div className="flex flex-col gap-2 lg:col-span-2">
+            <label className="text-xs font-medium text-muted-foreground flex items-center gap-2">
+              <Search className="w-4 h-4" />
+              Buscar empleado
+            </label>
             <input
               type="text"
-              placeholder="Buscar empleado..."
+              placeholder="Nombre, email..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="input"
+              className="input w-full"
             />
           </div>
           
-          <select
-            value={selectedEmployee}
-            onChange={(e) => setSelectedEmployee(e.target.value)}
-            className="input"
-          >
-            <option value="all">Todos los empleados</option>
-            {employees.map(employee => (
-              <option key={employee.id} value={employee.id}>
-                {employee.name}
-              </option>
-            ))}
-          </select>
+          <div className="flex flex-col gap-2 lg:col-span-2">
+            <label className="text-xs font-medium text-muted-foreground">Empleados</label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="accent-blue-600"
+                checked={allEmployees}
+                onChange={(e) => setAllEmployees(e.target.checked)}
+              />
+              Todos los empleados
+            </label>
+          </div>
 
-          <select
-            value={selectedDepartment}
-            onChange={(e) => setSelectedDepartment(e.target.value)}
-            className="input"
-          >
-            <option value="all">Todos los departamentos</option>
-            {departments.map(dept => (
-              <option key={dept.id} value={dept.id}>
-                {dept.name}
-              </option>
-            ))}
-          </select>
+          <div className="flex flex-col gap-2 lg:col-span-2">
+            <label className="text-xs font-medium text-muted-foreground">Roles</label>
+            <div className="flex flex-wrap gap-3">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="accent-blue-600"
+                  checked={selectedRoles.includes('employee')}
+                  onChange={(e) => {
+                    setSelectedRoles(prev => e.target.checked ? Array.from(new Set([...prev, 'employee'])) : prev.filter(r => r !== 'employee'));
+                  }}
+                />
+                Empleado
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="accent-blue-600"
+                  checked={selectedRoles.includes('manager')}
+                  onChange={(e) => {
+                    setSelectedRoles(prev => e.target.checked ? Array.from(new Set([...prev, 'manager'])) : prev.filter(r => r !== 'manager'));
+                  }}
+                />
+                Manager
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="accent-blue-600"
+                  checked={selectedRoles.includes('admin')}
+                  onChange={(e) => {
+                    setSelectedRoles(prev => e.target.checked ? Array.from(new Set([...prev, 'admin'])) : prev.filter(r => r !== 'admin'));
+                  }}
+                />
+                Administrador
+              </label>
+            </div>
+          </div>
 
-          <select
-            value={selectedRole}
-            onChange={(e) => setSelectedRole(e.target.value)}
-            className="input"
-          >
-            <option value="all">Todos los roles</option>
-            <option value="employee">Empleados</option>
-            <option value="manager">Managers</option>
-          </select>
-
-          <input
-            type="date"
-            value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
-            className="input"
-          />
-
-          <button
-            onClick={exportToCSV}
-            className="btn btn-secondary flex items-center gap-2"
-          >
-            <Download className="w-4 h-4" />
-            Exportar CSV
-          </button>
+          <div className="flex flex-col gap-2 lg:col-span-2">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <input
+                  id="mode-ida"
+                  type="radio"
+                  name="flight-mode"
+                  className="accent-blue-600"
+                  checked={!isRoundTrip}
+                  onChange={() => setIsRoundTrip(false)}
+                />
+                <label htmlFor="mode-ida" className="text-sm">Día</label>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  id="mode-ida-vuelta"
+                  type="radio"
+                  name="flight-mode"
+                  className="accent-blue-600"
+                  checked={isRoundTrip}
+                  onChange={() => setIsRoundTrip(true)}
+                />
+                <label htmlFor="mode-ida-vuelta" className="text-sm">Rango</label>
+              </div>
+            </div>
+            {!isRoundTrip ? (
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                className="input w-full"
+              />
+            ) : (
+              <div className="grid grid-cols-2 gap-2 w-full">
+                <input
+                  type="date"
+                  value={rangeFrom}
+                  onChange={(e) => setRangeFrom(e.target.value)}
+                  className="input w-full"
+                />
+                <input
+                  type="date"
+                  value={rangeTo}
+                  onChange={(e) => setRangeTo(e.target.value)}
+                  className="input w-full"
+                />
+              </div>
+            )}
+          </div>
+          <div className="flex items-end lg:col-span-1 justify-start lg:justify-end">
+            <button
+              onClick={exportToCSV}
+              className="btn btn-secondary flex items-center gap-2"
+            >
+              <Download className="w-4 h-4" />
+              Exportar CSV
+            </button>
+          </div>
         </div>
       </div>
 
@@ -637,7 +708,9 @@ export default function AdminTimeEntries() {
       <div className="card overflow-hidden">
         <div className="p-6 border-b border-border">
           <h3 className="text-lg font-semibold text-foreground">
-            Estado de Empleados - {new Date(selectedDate).toLocaleDateString('es-ES')}
+            Estado de Empleados - {!isRoundTrip
+              ? new Date(selectedDate).toLocaleDateString('es-ES')
+              : `${rangeFrom} a ${rangeTo}`}
           </h3>
         </div>
         
@@ -752,6 +825,7 @@ export default function AdminTimeEntries() {
             </tbody>
           </table>
         </div>
+      
       </div>
 
       {/* Location Modal unificado */}
