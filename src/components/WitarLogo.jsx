@@ -1,5 +1,5 @@
 import React from 'react';
-import { Clock } from 'lucide-react';
+// Icono sustituido por imagen PNG provista en public/
 
 export default function WitarLogo({ size = 'default', showText = true, className = '' }) {
   const getSizeClasses = () => {
@@ -29,8 +29,8 @@ export default function WitarLogo({ size = 'default', showText = true, className
 
   return (
     <div className={`flex items-center space-x-2 ${className}`}>
-      <div className={`${sizeClasses.container} bg-primary rounded-xl flex items-center justify-center`}>
-        <Clock className={`${sizeClasses.icon} text-primary-foreground`} />
+      <div className={`${sizeClasses.container} rounded-xl overflow-hidden flex items-center justify-center`}>
+        <img src="/logo.png" alt="Witar" className="w-full h-full object-contain" />
       </div>
       {showText && (
         <span className={`${sizeClasses.text} font-bold text-primary`}>

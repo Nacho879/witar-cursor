@@ -922,7 +922,7 @@ export default function FloatingTimeClock() {
   }
 
   return (
-    <div className="fixed top-4 right-4 z-50">
+    <div className="absolute top-4 right-4 z-40">
       <div className="bg-green-100 dark:bg-green-900/20 rounded-full px-3 sm:px-5 py-2 shadow-lg border border-green-200 dark:border-green-800">
         <div className="flex items-center justify-between gap-2 sm:gap-3">
           {/* Tiempo transcurrido */}

@@ -9,7 +9,11 @@ import {
   Menu,
   X,
   User,
-  Download
+  Download,
+  ChevronLeft,
+  ChevronRight,
+  Info,
+  Globe
 } from 'lucide-react';
 import InvitationBadge from '@/components/InvitationBadge';
 import FloatingTimeClock from '@/components/FloatingTimeClock';
@@ -19,10 +23,24 @@ import * as React from 'react';
 
 export default function AdminLayout({ children }){
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
+  const [isCollapsed, setIsCollapsed] = React.useState(() => {
+    try {
+      const stored = localStorage.getItem('sidebar-collapsed');
+      return stored === '1';
+    } catch {
+      return false;
+    }
+  });
+
+  React.useEffect(() => {
+    try {
+      localStorage.setItem('sidebar-collapsed', isCollapsed ? '1' : '0');
+    } catch {}
+  }, [isCollapsed]);
 
   return (
     <InvitationProvider>
-      <div className='min-h-screen bg-background text-foreground lg:grid lg:grid-cols-[256px_1fr]'>
+      <div className='min-h-screen bg-background text-foreground lg:grid lg:grid-cols-[auto_1fr]'>
         {/* Mobile sidebar overlay */}
         {sidebarOpen && (
           <div 
@@ -37,17 +55,26 @@ export default function AdminLayout({ children }){
           transform transition-transform duration-300 ease-in-out
           lg:relative lg:translate-x-0 lg:col-start-1
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-          w-64
+          ${isCollapsed ? 'w-16' : 'w-64'}
         `}>
           {/* Header with close button for mobile */}
           <div className='flex items-center justify-between p-4 border-b border-border'>
-            <WitarLogo size="small" />
-            <button
-              onClick={() => setSidebarOpen(false)}
-              className='lg:hidden p-1 rounded hover:bg-secondary'
-            >
-              <X className='w-5 h-5' />
-            </button>
+            <WitarLogo size="small" showText={!isCollapsed} />
+            <div className='flex items-center gap-2'>
+              <button
+                onClick={() => setIsCollapsed(v => !v)}
+                className='hidden lg:inline-flex p-1 rounded hover:bg-secondary'
+                aria-label={isCollapsed ? 'Expandir barra lateral' : 'Colapsar barra lateral'}
+              >
+                {isCollapsed ? <ChevronRight className='w-5 h-5' /> : <ChevronLeft className='w-5 h-5' />}
+              </button>
+              <button
+                onClick={() => setSidebarOpen(false)}
+                className='lg:hidden p-1 rounded hover:bg-secondary'
+              >
+                <X className='w-5 h-5' />
+              </button>
+            </div>
           </div>
 
           {/* Navigation */}
@@ -58,15 +85,17 @@ export default function AdminLayout({ children }){
               onClick={() => setSidebarOpen(false)}
             >
               <Home className='w-4 h-4' />
-              <span className='lg:block'>Dashboard</span>
+              <span className={isCollapsed ? 'hidden' : 'lg:block'}>Dashboard</span>
             </a>
             
             {/* Separador - Mi Perfil */}
-            <div className='px-3 py-2'>
-              <div className='text-xs font-medium text-muted-foreground uppercase tracking-wider'>
-                Mi Perfil
+            {!isCollapsed && (
+              <div className='px-3 py-2'>
+                <div className='text-xs font-medium text-muted-foreground uppercase tracking-wider'>
+                  Mi Perfil
+                </div>
               </div>
-            </div>
+            )}
             
             <a 
               className='px-3 py-2 rounded hover:bg-secondary flex items-center gap-2 transition-colors' 
@@ -74,7 +103,7 @@ export default function AdminLayout({ children }){
               onClick={() => setSidebarOpen(false)}
             >
               <User className='w-4 h-4' />
-              <span className='lg:block'>Mi Perfil</span>
+              <span className={isCollapsed ? 'hidden' : 'lg:block'}>Mi Perfil</span>
             </a>
             <a 
               className='px-3 py-2 rounded hover:bg-secondary flex items-center gap-2 transition-colors' 
@@ -82,7 +111,7 @@ export default function AdminLayout({ children }){
               onClick={() => setSidebarOpen(false)}
             >
               <Clock className='w-4 h-4' />
-              <span className='lg:block'>Mis Fichajes</span>
+              <span className={isCollapsed ? 'hidden' : 'lg:block'}>Mis Fichajes</span>
             </a>
             <a 
               className='px-3 py-2 rounded hover:bg-secondary flex items-center gap-2 transition-colors' 
@@ -90,7 +119,7 @@ export default function AdminLayout({ children }){
               onClick={() => setSidebarOpen(false)}
             >
               <FileText className='w-4 h-4' />
-              <span className='lg:block'>Mis Solicitudes</span>
+              <span className={isCollapsed ? 'hidden' : 'lg:block'}>Mis Solicitudes</span>
             </a>
             <a 
               className='px-3 py-2 rounded hover:bg-secondary flex items-center gap-2 transition-colors' 
@@ -98,23 +127,25 @@ export default function AdminLayout({ children }){
               onClick={() => setSidebarOpen(false)}
             >
               <Download className='w-4 h-4' />
-              <span className='lg:block'>Mis Documentos</span>
+              <span className={isCollapsed ? 'hidden' : 'lg:block'}>Mis Documentos</span>
             </a>
             
             {/* Separador - Empresa */}
-            <div className='px-3 py-2'>
-              <div className='text-xs font-medium text-muted-foreground uppercase tracking-wider'>
-                Empresa
+            {!isCollapsed && (
+              <div className='px-3 py-2'>
+                <div className='text-xs font-medium text-muted-foreground uppercase tracking-wider'>
+                  Empresa
+                </div>
               </div>
-            </div>
+            )}
             
             <a 
               className='px-3 py-2 rounded hover:bg-secondary flex items-center gap-2 transition-colors' 
               href='/admin/company'
               onClick={() => setSidebarOpen(false)}
             >
-              <Building className='w-4 h-4' />
-              <span className='lg:block'>Información de la Empresa</span>
+              <Info className='w-4 h-4' />
+              <span className={isCollapsed ? 'hidden' : 'lg:block'}>Empresa</span>
             </a>
             <a 
               className='px-3 py-2 rounded hover:bg-secondary flex items-center gap-2 transition-colors' 
@@ -122,7 +153,7 @@ export default function AdminLayout({ children }){
               onClick={() => setSidebarOpen(false)}
             >
               <Building className='w-4 h-4' />
-              <span className='lg:block'>Departamentos</span>
+              <span className={isCollapsed ? 'hidden' : 'lg:block'}>Departamentos</span>
             </a>
             <a 
               className='px-3 py-2 rounded hover:bg-secondary flex items-center gap-2 justify-between transition-colors' 
@@ -131,9 +162,9 @@ export default function AdminLayout({ children }){
             >
               <div className='flex items-center gap-2'>
                 <Mail className='w-4 h-4' />
-                <span className='lg:block'>Invitaciones</span>
+                <span className={isCollapsed ? 'hidden' : 'lg:block'}>Invitaciones</span>
               </div>
-              <InvitationBadge />
+              {!isCollapsed && <InvitationBadge />}
             </a>
             <a 
               className='px-3 py-2 rounded hover:bg-secondary flex items-center gap-2 transition-colors' 
@@ -141,15 +172,17 @@ export default function AdminLayout({ children }){
               onClick={() => setSidebarOpen(false)}
             >
               <BarChart3 className='w-4 h-4' />
-              <span className='lg:block'>Reportes</span>
+              <span className={isCollapsed ? 'hidden' : 'lg:block'}>Reportes</span>
             </a>
             
             {/* Separador - Equipo */}
-            <div className='px-3 py-2'>
-              <div className='text-xs font-medium text-muted-foreground uppercase tracking-wider'>
-                Equipo
+            {!isCollapsed && (
+              <div className='px-3 py-2'>
+                <div className='text-xs font-medium text-muted-foreground uppercase tracking-wider'>
+                  Equipo
+                </div>
               </div>
-            </div>
+            )}
             
             <a 
               className='px-3 py-2 rounded hover:bg-secondary flex items-center gap-2 transition-colors' 
@@ -157,15 +190,18 @@ export default function AdminLayout({ children }){
               onClick={() => setSidebarOpen(false)}
             >
               <Users className='w-4 h-4' />
-              <span className='lg:block'>Empleados</span>
+              <span className={isCollapsed ? 'hidden' : 'lg:block'}>Empleados</span>
             </a>
             <a 
               className='px-3 py-2 rounded hover:bg-secondary flex items-center gap-2 transition-colors' 
               href='/admin/time-entries'
               onClick={() => setSidebarOpen(false)}
             >
-              <Clock className='w-4 h-4' />
-              <span className='lg:block'>Fichajes</span>
+              <span className='relative inline-flex items-center justify-center w-4 h-4'>
+                <Globe className='w-4 h-4' />
+                <Clock className='w-2.5 h-2.5 absolute -right-1 -bottom-1 bg-card rounded-full' />
+              </span>
+              <span className={isCollapsed ? 'hidden' : 'lg:block'}>Fichajes</span>
             </a>
             <a 
               className='px-3 py-2 rounded hover:bg-secondary flex items-center gap-2 transition-colors' 
@@ -173,7 +209,7 @@ export default function AdminLayout({ children }){
               onClick={() => setSidebarOpen(false)}
             >
               <FileText className='w-4 h-4' />
-              <span className='lg:block'>Solicitudes</span>
+              <span className={isCollapsed ? 'hidden' : 'lg:block'}>Solicitudes</span>
             </a>
             <a 
               className='px-3 py-2 rounded hover:bg-secondary flex items-center gap-2 transition-colors' 
@@ -181,7 +217,7 @@ export default function AdminLayout({ children }){
               onClick={() => setSidebarOpen(false)}
             >
               <Download className='w-4 h-4' />
-              <span className='lg:block'>Documentos</span>
+              <span className={isCollapsed ? 'hidden' : 'lg:block'}>Documentos</span>
             </a>
           </nav>
         </aside>

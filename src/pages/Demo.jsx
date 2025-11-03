@@ -19,6 +19,7 @@ import {
   Send,
   ArrowLeft
 } from 'lucide-react';
+import { supabase } from '@/lib/supabaseClient';
 
 const Demo = () => {
   const [formData, setFormData] = useState({
@@ -33,23 +34,64 @@ const Demo = () => {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [error, setError] = useState('');
 
   const handleChange = (e) => {
     setFormData({
       ...formData,
       [e.target.name]: e.target.value
     });
+    // Limpiar error cuando el usuario modifica el formulario
+    if (error) setError('');
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
+    setError('');
     
-    // Simular envío del formulario
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    setIsSubmitting(false);
-    setIsSubmitted(true);
+    try {
+      console.log('📧 Enviando solicitud de demo...', formData);
+      
+      // Llamar a la edge function para enviar el email
+      const { data, error: functionError } = await supabase.functions.invoke('send-demo-request', {
+        body: {
+          nombre: formData.nombre,
+          empresa: formData.empresa,
+          email: formData.email,
+          telefono: formData.telefono,
+          empleados: formData.empleados,
+          interes: formData.interes,
+          mensaje: formData.mensaje
+        }
+      });
+
+      console.log('📧 Respuesta de la función:', { data, error: functionError });
+
+      if (functionError) {
+        console.error('❌ Error al invocar función:', functionError);
+        throw new Error(functionError.message || 'Error al enviar la solicitud');
+      }
+
+      if (!data) {
+        console.error('❌ No se recibió respuesta de la función');
+        throw new Error('No se recibió respuesta del servidor');
+      }
+
+      if (!data.success) {
+        console.error('❌ Error en respuesta:', data.error);
+        throw new Error(data.error || 'Error al enviar la solicitud');
+      }
+
+      console.log('✅ Solicitud enviada exitosamente:', data);
+      // Si todo salió bien, mostrar mensaje de éxito
+      setIsSubmitted(true);
+    } catch (err) {
+      console.error('❌ Error completo:', err);
+      setError(err.message || 'Ha ocurrido un error al enviar tu solicitud. Por favor, intenta de nuevo.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const fadeInUp = {
@@ -295,6 +337,12 @@ const Demo = () => {
                         placeholder="Cuéntanos más sobre tus necesidades específicas..."
                       />
                     </div>
+
+                    {error && (
+                      <div className="bg-destructive/10 border border-destructive/20 text-destructive px-4 py-3 rounded-lg text-sm">
+                        {error}
+                      </div>
+                    )}
 
                     <button
                       type="submit"

@@ -111,8 +111,8 @@ const LandingPage = () => {
             <div className="flex items-center justify-between h-16">
               {/* Logo */}
               <div className="flex items-center space-x-2">
-                <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center">
-                  <Clock className="w-6 h-6 text-primary-foreground" />
+                <div className="w-10 h-10 rounded-xl overflow-hidden">
+                  <img src="/logo.png" alt="Witar" className="w-10 h-10 object-contain" />
                 </div>
                 <span className="text-2xl font-bold text-primary">
                   Witar
@@ -948,8 +948,8 @@ const LandingPage = () => {
                 {/* Company Info */}
                 <div className="text-center md:text-left">
                   <div className="flex items-center justify-center md:justify-start space-x-2 mb-4">
-                    <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                      <Clock className="w-5 h-5 text-primary-foreground" />
+                    <div className="w-8 h-8 rounded-lg overflow-hidden">
+                      <img src="/logo.png" alt="Witar" className="w-8 h-8 object-contain" />
                     </div>
                     <span className="text-xl font-bold text-foreground">Witar</span>
                   </div>

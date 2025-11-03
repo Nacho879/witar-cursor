@@ -6,9 +6,21 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "generate-icons": "node scripts/generate-icons.js",
+    "cap:sync": "cap sync",
+    "cap:add:android": "cap add android",
+    "cap:add:ios": "cap add ios",
+    "cap:open:android": "cap open android",
+    "cap:open:ios": "cap open ios",
+    "build:apk:debug": "npm run build && npm run cap:sync && cd android && chmod +x gradlew && ./gradlew assembleDebug",
+    "build:apk:release": "npm run build && npm run cap:sync && cd android && chmod +x gradlew && ./gradlew assembleRelease",
+    "apk:debug": "cd android && chmod +x gradlew && ./gradlew assembleDebug",
+    "apk:release": "cd android && chmod +x gradlew && ./gradlew assembleRelease"
   },
   "dependencies": {
+    "@capacitor/android": "^7.4.4",
+    "@capacitor/ios": "^7.4.4",
     "@stripe/stripe-js": "^4.10.0",
     "@supabase/supabase-js": "^2.45.0",
     "axios": "^1.7.2",
@@ -28,12 +40,23 @@
     "stripe": "^18.4.0"
   },
   "devDependencies": {
+    "@capacitor/app": "^7.1.0",
+    "@capacitor/cli": "^7.4.4",
+    "@capacitor/core": "^7.4.4",
+    "@capacitor/haptics": "^7.0.2",
+    "@capacitor/keyboard": "^7.0.3",
+    "@capacitor/splash-screen": "^7.0.3",
+    "@capacitor/status-bar": "^7.0.3",
+    "@types/node": "^24.9.2",
     "@vitejs/plugin-react": "^4.3.1",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.41",
+    "sharp": "^0.34.4",
     "tailwind-merge": "^2.5.2",
     "tailwindcss": "^3.4.10",
     "terser": "^5.43.1",
-    "vite": "^5.4.2"
+    "typescript": "^5.9.3",
+    "vite": "^5.4.2",
+    "vite-plugin-pwa": "^1.1.0"
   }
 }
