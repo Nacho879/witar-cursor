@@ -5,6 +5,8 @@ import { useTheme } from '@/hooks/useTheme';
 // NotificationService no se utiliza y se elimina para evitar warnings
 
 export default function FloatingTimeClock() {
+  // CRÍTICO: Solo BD es la fuente de verdad - NO usar localStorage
+  // El estado se inicializa vacío y se carga desde BD al montar el componente
   const [isActive, setIsActive] = useState(false);
   const [startTime, setStartTime] = useState(null);
   const [elapsedTime, setElapsedTime] = useState(0);
@@ -29,19 +31,26 @@ export default function FloatingTimeClock() {
   const [currentLocation, setCurrentLocation] = useState(null);
   const { theme, toggleTheme } = useTheme();
   const syncInProgressRef = React.useRef(false);
+  const hasCheckedSessionRef = React.useRef(false);
 
   useEffect(() => {
-    // Restaurar estado persistido si existe
-    loadSessionFromStorage();
-
+    // CRÍTICO: Solo BD es la fuente de verdad - NO usar localStorage
+    // El estado se carga desde BD al montar el componente
+    
     loadUserProfile();
     checkUserRole();
-    checkActiveSession();
     // Cargar notificaciones del usuario
     loadNotifications();
     
-    // Configurar listeners para persistencia
+    // Configurar listeners para eventos (sin localStorage)
     const cleanup = setupPersistenceListeners();
+
+    // SIEMPRE verificar BD al montar el componente (es la única fuente de verdad)
+    if (!hasCheckedSessionRef.current) {
+      console.log('🔄 [useEffect] Verificando BD como fuente de verdad al montar componente...');
+      checkActiveSession();
+      hasCheckedSessionRef.current = true;
+    }
 
     return () => {
       cleanup && cleanup();
@@ -54,15 +63,20 @@ export default function FloatingTimeClock() {
     }
   }, [companyId, notificationFilter, notificationSearch]);
 
-  // Rehidratar estado desde localStorage cuando tengamos companyId
+  // Cuando tengamos companyId, verificar BD si aún no lo hemos hecho
+  // La BD es la fuente de verdad, localStorage es solo caché
   useEffect(() => {
     if (!companyId) return;
-    try {
-      const activeSession = localStorage.getItem('witar_active_session');
-      if (activeSession === 'true') {
-        loadSessionFromStorage();
-      }
-    } catch (_) {}
+    
+    // Si ya verificamos en el useEffect inicial, no hacer nada más
+    if (hasCheckedSessionRef.current) {
+      return;
+    }
+    
+    // Verificar BD ahora que tenemos companyId
+    console.log('🔄 [useEffect companyId] Verificando BD ahora que tenemos companyId...');
+    checkActiveSession();
+    hasCheckedSessionRef.current = true;
   }, [companyId]);
 
   // Suscripción en tiempo real filtrada por companyId
@@ -99,13 +113,10 @@ export default function FloatingTimeClock() {
     if (isActive && !isPaused) {
       interval = setInterval(() => {
         const now = Date.now();
-        const pausedTime = totalPausedTime + (pauseStartTime ? now - pauseStartTime : 0);
-        setElapsedTime(now - startTime - pausedTime);
-        
-        // Guardar estado en localStorage cada 10 segundos
-        if (Math.floor((now - startTime) / 1000) % 10 === 0) {
-          saveSessionToStorage();
-        }
+        const pausedTime = totalPausedTime + (pauseStartTime ? Math.max(0, now - pauseStartTime) : 0);
+        const elapsed = now - startTime - pausedTime;
+        setElapsedTime(Math.max(0, elapsed));
+        // NO guardar en localStorage - solo BD es la fuente de verdad
       }, 1000);
     }
     return () => clearInterval(interval);
@@ -152,6 +163,11 @@ export default function FloatingTimeClock() {
   }
 
   async function checkActiveSession() {
+    // CRÍTICO: La base de datos es la fuente de verdad
+    // localStorage es solo caché temporal para navegación y offline
+    // SIEMPRE consultar BD primero al iniciar sesión o montar el componente
+    console.log('🔄 [checkActiveSession] Consultando BD como fuente de verdad...');
+
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
@@ -168,27 +184,173 @@ export default function FloatingTimeClock() {
           if (ensuredCompanyId && !companyId) setCompanyId(ensuredCompanyId);
         }
 
-        const { data: activeEntry } = await supabase
+        if (!ensuredCompanyId) return; // evitar falsos negativos hasta tener companyId
+
+        // CRÍTICO: Primero buscar por status='active' para encontrar el fichaje activo actual
+        // Esto previene que se tome un fichaje viejo que ya está completado
+        let lastClockIn = null;
+        let clockInError = null;
+        
+        const { data: activeByStatus, error: statusError } = await supabase
           .from('time_entries')
-          .select('entry_time')
+          .select('*')
           .eq('user_id', user.id)
           .eq('company_id', ensuredCompanyId)
+          .eq('status', 'active')
           .eq('entry_type', 'clock_in')
           .order('entry_time', { ascending: false })
-          .limit(1);
+          .limit(1)
+          .single();
 
-        if (activeEntry && activeEntry.length > 0) {
-          const lastClockOut = await supabase
+        if (!statusError && activeByStatus) {
+          // CRÍTICO: Aunque encontramos por status='active', debemos verificar que NO tenga clock_out después
+          // Esto previene restaurar fichajes que ya fueron desfichados pero el status no se actualizó
+          const { data: clockOutsAfter, error: clockOutError } = await supabase
             .from('time_entries')
             .select('entry_time')
             .eq('user_id', user.id)
             .eq('company_id', ensuredCompanyId)
             .eq('entry_type', 'clock_out')
-            .gt('entry_time', activeEntry[0].entry_time)
+            .gte('entry_time', activeByStatus.entry_time)
+            .order('entry_time', { ascending: false })
+            .limit(1);
+          
+          if (!clockOutError && clockOutsAfter && clockOutsAfter.length > 0) {
+            // Hay un clock_out después, entonces NO está activo aunque tenga status='active'
+            // BD es la fuente de verdad - si hay clock_out, el fichaje está completado
+            console.log('🔍 [checkActiveSession] Clock_out detectado en BD - el fichaje está completado');
+            
+            // Actualizar el status a 'completed' si aún está como 'active'
+            if (activeByStatus.status === 'active') {
+              console.log('🔄 [checkActiveSession] Actualizando status a completed...');
+              await supabase
+                .from('time_entries')
+                .update({ status: 'completed' })
+                .eq('id', activeByStatus.id);
+            }
+            
+            // NO hay fichaje activo - el clock_out indica que está completado
+            clockInError = { code: 'PGRST116' }; // No hay fichaje activo
+          } else {
+            // No hay clock_out después, entonces sí está activo
+            lastClockIn = activeByStatus;
+            console.log('✅ Fichaje activo encontrado por status=active y sin clock_out');
+          }
+        } else {
+          // Si no encontramos por status, buscar el último clock_in sin clock_out correspondiente
+          // (fallback para casos donde el status no esté establecido)
+          const { data: lastClockInFallback, error: clockInErrorFallback } = await supabase
+            .from('time_entries')
+            .select('*')
+            .eq('user_id', user.id)
+            .eq('company_id', ensuredCompanyId)
+            .eq('entry_type', 'clock_in')
+            .order('entry_time', { ascending: false })
+            .limit(1)
+            .single();
+          
+          if (!clockInErrorFallback && lastClockInFallback) {
+            // Verificar que no tenga un clock_out después
+            const { data: clockOuts, error: clockOutError } = await supabase
+              .from('time_entries')
+              .select('entry_time')
+              .eq('user_id', user.id)
+              .eq('company_id', ensuredCompanyId)
+              .eq('entry_type', 'clock_out')
+              .gt('entry_time', lastClockInFallback.entry_time)
+              .order('entry_time', { ascending: false })
+              .limit(1);
+
+            if (!clockOutError && (!clockOuts || clockOuts.length === 0)) {
+              // No hay clock_out después, entonces este clock_in está activo
+              lastClockIn = lastClockInFallback;
+              console.log('✅ Fichaje activo encontrado por fallback (sin clock_out)');
+            } else {
+              clockInError = { code: 'PGRST116' }; // No hay fichaje activo
+            }
+          } else {
+            clockInError = clockInErrorFallback;
+          }
+        }
+
+        if (clockInError && clockInError.code !== 'PGRST116') {
+          console.error('❌ [checkActiveSession] Error buscando último clock_in:', clockInError);
+          // BD es la fuente de verdad - si hay error o no hay fichaje en BD, limpiar estado
+          setIsActive(false);
+          setStartTime(null);
+          setElapsedTime(0);
+          setIsPaused(false);
+          setPauseStartTime(null);
+          setTotalPausedTime(0);
+          console.log('🔍 [checkActiveSession] No hay fichaje activo en BD, estado limpiado');
+          return;
+        }
+
+        // Si no hay ningún clock_in, no hay sesión activa
+        if (!lastClockIn || clockInError?.code === 'PGRST116') {
+          // BD es la fuente de verdad - si no hay fichaje en BD, limpiar estado
+          setIsActive(false);
+          setStartTime(null);
+          setElapsedTime(0);
+          setIsPaused(false);
+          setPauseStartTime(null);
+          setTotalPausedTime(0);
+          console.log('🔍 [checkActiveSession] No hay clock_in en BD, estado limpiado');
+          return;
+        }
+
+        // Si encontramos un fichaje activo por status='active', ya sabemos que está activo
+        // Solo necesitamos verificar clock_out si lo encontramos por fallback (sin status)
+        const foundByStatus = lastClockIn && lastClockIn.status === 'active';
+        
+        if (!foundByStatus && lastClockIn) {
+          // Solo si encontramos por fallback, verificar si hay clock_out después
+          const { data: clockOutsAfter, error: clockOutError } = await supabase
+            .from('time_entries')
+            .select('entry_time, entry_type')
+            .eq('user_id', user.id)
+            .eq('company_id', ensuredCompanyId)
+            .eq('entry_type', 'clock_out')
+            .gte('entry_time', lastClockIn.entry_time)
             .order('entry_time', { ascending: false })
             .limit(1);
 
-          if (!lastClockOut.data || lastClockOut.data.length === 0) {
+          // Si hay un clock_out después del clock_in, entonces NO está activo
+          if (clockOutsAfter && clockOutsAfter.length > 0) {
+            // BD es la fuente de verdad - si hay clock_out en BD, el fichaje está completado
+            // Actualizar el status del clock_in a 'completed' si está como 'active'
+            if (lastClockIn.status === 'active') {
+              await supabase
+                .from('time_entries')
+                .update({ status: 'completed' })
+                .eq('id', lastClockIn.id);
+            }
+            
+            setIsActive(false);
+            setStartTime(null);
+            setElapsedTime(0);
+            setIsPaused(false);
+            setPauseStartTime(null);
+            setTotalPausedTime(0);
+            console.log('🔍 [checkActiveSession] Clock_out encontrado en BD, estado limpiado');
+            return;
+          }
+          
+          // Si no hay clock_out y encontramos por fallback, actualizar status a 'active'
+          if (lastClockIn.status !== 'active') {
+            await supabase
+              .from('time_entries')
+              .update({ status: 'active' })
+              .eq('id', lastClockIn.id);
+            console.log('✅ Status actualizado a active para fichaje encontrado por fallback');
+          }
+        }
+
+        // Si llegamos aquí, hay una sesión activa
+        const activeEntry = lastClockIn;
+        
+        // Restaurar el estado del fichaje
+        if (activeEntry) {
             // Hay una sesión activa, verificar si está en pausa
             const lastBreakStart = await supabase
               .from('time_entries')
@@ -196,7 +358,7 @@ export default function FloatingTimeClock() {
               .eq('user_id', user.id)
               .eq('company_id', ensuredCompanyId)
               .eq('entry_type', 'break_start')
-              .gt('entry_time', activeEntry[0].entry_time)
+              .gt('entry_time', activeEntry.entry_time)
               .order('entry_time', { ascending: false })
               .limit(1);
 
@@ -206,7 +368,7 @@ export default function FloatingTimeClock() {
               .eq('user_id', user.id)
               .eq('company_id', ensuredCompanyId)
               .eq('entry_type', 'break_end')
-              .gt('entry_time', activeEntry[0].entry_time)
+              .gt('entry_time', activeEntry.entry_time)
               .order('entry_time', { ascending: false })
               .limit(1);
 
@@ -216,7 +378,7 @@ export default function FloatingTimeClock() {
                lastBreakStart.data[0].entry_time > lastBreakEnd.data[0].entry_time);
 
             setIsActive(true);
-            setStartTime(new Date(activeEntry[0].entry_time).getTime());
+            setStartTime(new Date(activeEntry.entry_time).getTime());
             
             if (isCurrentlyPaused) {
               // Está en pausa, calcular tiempo pausado
@@ -226,7 +388,7 @@ export default function FloatingTimeClock() {
               // Calcular tiempo total pausado hasta ahora
               const now = Date.now();
               const pauseStart = new Date(lastBreakStart.data[0].entry_time).getTime();
-              const currentPauseTime = now - pauseStart;
+            const currentPauseTime = Math.max(0, now - pauseStart);
               
               // Calcular tiempo total pausado anterior
               let totalPausedBefore = 0;
@@ -238,7 +400,7 @@ export default function FloatingTimeClock() {
                   .eq('user_id', user.id)
                 .eq('company_id', ensuredCompanyId)
                   .in('entry_type', ['break_start', 'break_end'])
-                  .gt('entry_time', activeEntry[0].entry_time)
+                  .gt('entry_time', activeEntry.entry_time)
                   .lt('entry_time', lastBreakStart.data[0].entry_time)
                   .order('entry_time', { ascending: true });
 
@@ -256,7 +418,8 @@ export default function FloatingTimeClock() {
               }
               
               setTotalPausedTime(totalPausedBefore);
-              setElapsedTime(now - new Date(activeEntry[0].entry_time).getTime() - totalPausedBefore - currentPauseTime);
+              const elapsed = now - new Date(activeEntry.entry_time).getTime() - totalPausedBefore - currentPauseTime;
+              setElapsedTime(Math.max(0, elapsed));
             } else {
               // No está en pausa, calcular tiempo total pausado anterior
               setIsPaused(false);
@@ -269,7 +432,7 @@ export default function FloatingTimeClock() {
                 .eq('user_id', user.id)
                 .eq('company_id', ensuredCompanyId)
                 .in('entry_type', ['break_start', 'break_end'])
-                .gt('entry_time', activeEntry[0].entry_time)
+                .gt('entry_time', activeEntry.entry_time)
                 .order('entry_time', { ascending: true });
 
               if (allBreaks) {
@@ -285,13 +448,19 @@ export default function FloatingTimeClock() {
               }
               
               setTotalPausedTime(totalPaused);
-              setElapsedTime(Date.now() - new Date(activeEntry[0].entry_time).getTime() - totalPaused);
+              const elapsedNoPause = Date.now() - new Date(activeEntry.entry_time).getTime() - totalPaused;
+              setElapsedTime(Math.max(0, elapsedNoPause));
             }
+            
+            // NO guardar en localStorage - solo BD es la fuente de verdad
+            console.log('✅ Sesión activa restaurada correctamente desde BD');
           }
-        }
       }
     } catch (error) {
       console.error('Error checking active session:', error);
+      // En caso de error, NO limpiar el estado - ser conservador
+      // Si ya hay una sesión activa localmente, mantenerla
+      // Solo limpiar si estamos 100% seguros de que no hay sesión activa
     }
   }
 
@@ -360,6 +529,7 @@ export default function FloatingTimeClock() {
           company_id: userRole?.company_id,
           entry_type: 'clock_in',
           entry_time: new Date().toISOString(),
+          status: 'active', // CRÍTICO: Establecer status explícitamente para que se encuentre al buscar fichajes activos
           ...(locationData ? { 
             location_lat: locationData.lat, 
             location_lng: locationData.lng
@@ -373,17 +543,15 @@ export default function FloatingTimeClock() {
             .insert(timeEntry);
 
           if (!error) {
-            setIsActive(true);
             const startTimeMs = Date.now();
+            setIsActive(true);
             setStartTime(startTimeMs);
             setElapsedTime(0);
             setIsPaused(false);
             setTotalPausedTime(0);
             setPauseStartTime(null);
             
-            // Guardar en localStorage para persistencia
-            saveSessionToStorage();
-            
+            // NO guardar en localStorage - solo BD es la fuente de verdad
             showToast('✅ Fichaje iniciado correctamente', 'success');
           } else {
             console.error('Error insertando fichaje (con GPS):', error);
@@ -394,17 +562,16 @@ export default function FloatingTimeClock() {
           console.log('🔌 Sin conexión, guardando offline...');
           saveOfflineTimeEntry(timeEntry);
           
-          setIsActive(true);
           const startTimeMs = Date.now();
+          setIsActive(true);
           setStartTime(startTimeMs);
           setElapsedTime(0);
           setIsPaused(false);
           setTotalPausedTime(0);
           setPauseStartTime(null);
           
-          // Guardar en localStorage para persistencia
-          saveSessionToStorage();
-          
+          // NO guardar en localStorage - solo BD es la fuente de verdad
+          // El fichaje offline se guarda en witar_offline_entries para sincronizar después
           showToast('✅ Fichaje guardado offline', 'info');
         }
       }
@@ -419,90 +586,301 @@ export default function FloatingTimeClock() {
   async function handleClockOut() {
     try {
       setLoading(true);
+      console.log('🔄 Iniciando proceso de desfichar...');
+      
       const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        // Obtener información de la empresa
+      if (!user) {
+        console.error('❌ Usuario no autenticado');
+        showToast('❌ Usuario no autenticado', 'error');
+        return;
+      }
+      
+      console.log('✅ Usuario autenticado:', user.id);
+
+      // CRÍTICO: Usar companyId del estado si está disponible, sino obtenerlo
+      let currentCompanyId = companyId;
+      if (!currentCompanyId) {
+        console.log('⚠️ [handleClockOut] companyId no disponible en estado, obteniéndolo...');
         const { data: userRole } = await supabase
           .from('user_company_roles')
           .select('company_id')
           .eq('user_id', user.id)
           .eq('is_active', true)
           .single();
+        
+        if (!userRole?.company_id) {
+          console.error('❌ [handleClockOut] No se pudo obtener company_id');
+          showToast('❌ No se pudo identificar la empresa', 'error');
+          setLoading(false);
+          return;
+        }
+        currentCompanyId = userRole.company_id;
+        setCompanyId(currentCompanyId); // Guardar en estado para próximas veces
+      }
+      
+      console.log('✅ [handleClockOut] companyId:', currentCompanyId);
 
-        // Requerir geolocalización también al salir
-        let locationData = null;
-        try {
-          if (!navigator.geolocation) {
-            showToast('❌ Este navegador no soporta GPS. Actívalo para fichar.', 'error');
-            return;
-          }
+      // Geolocalización al salir (no bloquea si falla)
+      // Usar Promise.race para limitar el tiempo máximo de espera
+      let locationData = null;
+      try {
+        if (navigator.geolocation) {
           try {
             if (navigator.permissions && navigator.permissions.query) {
               const result = await navigator.permissions.query({ name: 'geolocation' });
               if (result.state === 'denied') {
-                showToast('❌ Permiso de ubicación denegado. Activa el GPS para fichar.', 'error');
-                return;
+                console.log('⚠️ GPS denegado, continuando sin ubicación');
               }
             }
           } catch (_) {}
-          const position = await new Promise((resolve, reject) => {
+          
+          // Limitar el tiempo máximo de espera a 5 segundos para no bloquear el desfichaje
+          const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('GPS timeout')), 5000)
+          );
+          
+          const positionPromise = new Promise((resolve, reject) => {
             navigator.geolocation.getCurrentPosition(resolve, reject, {
-              timeout: 12000,
-              enableHighAccuracy: true,
-              maximumAge: 0
+              timeout: 5000, // Reducido a 5 segundos
+              enableHighAccuracy: false, // Cambiado a false para más velocidad
+              maximumAge: 60000 // Aceptar ubicación de hasta 1 minuto de antigüedad
             });
           });
+          
+          const position = await Promise.race([positionPromise, timeoutPromise]);
           locationData = {
             lat: position.coords.latitude,
             lng: position.coords.longitude,
             accuracy: position.coords.accuracy
           };
           setCurrentLocation(locationData);
-        } catch (geoErr) {
-          const code = geoErr && typeof geoErr === 'object' ? geoErr.code : undefined;
-          if (code === 1) {
-            showToast('❌ Permiso de ubicación denegado. Activa el GPS para fichar.', 'error');
-          } else if (code === 3) {
-            showToast('⏳ Tiempo de GPS agotado. Asegúrate de tener el GPS activo.', 'error');
-          } else {
-            showToast('❌ No se pudo obtener tu ubicación. Activa el GPS para fichar.', 'error');
-          }
-          return;
+          console.log('✅ Ubicación obtenida para clock_out');
         }
+      } catch (error) {
+        console.log('⚠️ No se pudo obtener ubicación para clock_out, continuando sin GPS:', error.message || error);
+        // No mostrar toast para no molestar al usuario - es opcional
+      }
 
-        const { error } = await supabase
+      // Buscar el fichaje activo - primero por status 'active'
+      let activeEntry = null;
+      let fetchError = null;
+
+      // Intentar buscar por status 'active'
+      const { data: activeByStatus, error: statusError } = await supabase
+        .from('time_entries')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('company_id', currentCompanyId)
+        .eq('status', 'active')
+        .order('entry_time', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (!statusError && activeByStatus) {
+        activeEntry = activeByStatus;
+      } else {
+        // Si no hay por status, buscar el último clock_in sin clock_out correspondiente
+        const { data: lastClockIn, error: clockInError } = await supabase
           .from('time_entries')
-          .insert({
-            user_id: user.id,
-            company_id: userRole?.company_id,
-            entry_type: 'clock_out',
-            entry_time: new Date().toISOString(),
-            ...(locationData ? {
-              location_lat: locationData.lat,
-              location_lng: locationData.lng
-            } : {})
-          });
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('company_id', currentCompanyId)
+          .eq('entry_type', 'clock_in')
+          .order('entry_time', { ascending: false })
+          .limit(1)
+          .single();
 
-        if (!error) {
-          setIsActive(false);
-          setStartTime(null);
-          setElapsedTime(0);
-          setIsPaused(false);
-          setTotalPausedTime(0);
-          setPauseStartTime(null);
-          
-          // Limpiar localStorage
-          clearSessionStorage();
-          
-          // Mostrar notificación de éxito
-          showToast('✅ Fichaje finalizado correctamente', 'success');
+        if (!clockInError && lastClockIn) {
+          // Verificar que no tenga un clock_out después
+          const { data: clockOuts, error: clockOutError } = await supabase
+            .from('time_entries')
+            .select('entry_time')
+            .eq('user_id', user.id)
+            .eq('company_id', currentCompanyId)
+            .eq('entry_type', 'clock_out')
+            .gt('entry_time', lastClockIn.entry_time)
+            .order('entry_time', { ascending: false })
+            .limit(1);
+
+          if (!clockOutError && (!clockOuts || clockOuts.length === 0)) {
+            activeEntry = lastClockIn;
+          }
+        }
+        fetchError = clockInError;
+      }
+
+      if (!activeEntry) {
+        console.error('❌ No se encontró fichaje activo para desfichar:', {
+          userId: user.id,
+          companyId: currentCompanyId,
+          statusError: statusError,
+          fetchError: fetchError
+        });
+        showToast('❌ No se encontró fichaje activo', 'error');
+        // Limpiar estado local aunque no haya en BD
+        setIsActive(false);
+        setStartTime(null);
+        setElapsedTime(0);
+        setIsPaused(false);
+        setTotalPausedTime(0);
+        setPauseStartTime(null);
+        // NO limpiar localStorage - solo BD es la fuente de verdad
+        return;
+      }
+      
+      console.log('✅ Fichaje activo encontrado para desfichar:', {
+        id: activeEntry.id,
+        entryTime: activeEntry.entry_time,
+        status: activeEntry.status
+      });
+
+      const clockOutTime = new Date().toISOString();
+
+      // PRIMERO: Insertar el registro de clock_out (esto es lo más importante)
+      const { error: insertError } = await supabase
+        .from('time_entries')
+        .insert({
+          user_id: user.id,
+          company_id: currentCompanyId,
+          entry_type: 'clock_out',
+          entry_time: clockOutTime,
+          ...(locationData ? {
+            location_lat: locationData.lat,
+            location_lng: locationData.lng
+          } : {})
+        });
+
+      if (insertError) {
+        console.error('❌ Error insertando clock_out:', insertError);
+        showToast('❌ Error al finalizar fichaje: ' + (insertError.message || 'Error desconocido'), 'error');
+        return;
+      }
+      
+      console.log('✅ Clock_out insertado correctamente');
+
+      // SEGUNDO: Actualizar el fichaje existente (clock_in) a 'completed'
+      // Esto es importante para mantener consistencia, pero el clock_out ya fue insertado
+      const updateData = {
+        status: 'completed',
+        clock_out_time: clockOutTime
+      };
+      
+      // Calcular duración si tenemos clock_in_time o entry_time
+      const clockInTime = activeEntry.clock_in_time || activeEntry.entry_time;
+      if (clockInTime) {
+        const clockInTimeDate = new Date(clockInTime);
+        const clockOutTimeDate = new Date(clockOutTime);
+        const durationMs = clockOutTimeDate - clockInTimeDate;
+        
+        console.log('📊 Calculando duración:', {
+          clockInTime: clockInTime,
+          clockInTimeDate: clockInTimeDate.toISOString(),
+          clockOutTime: clockOutTime,
+          clockOutTimeDate: clockOutTimeDate.toISOString(),
+          durationMs: durationMs,
+          durationSeconds: Math.floor(durationMs / 1000)
+        });
+        
+        // CRÍTICO: Validar que la duración no sea negativa
+        // Si es negativa, no incluir el campo duration en el update
+        if (durationMs > 0) {
+          // Convertir milisegundos a segundos para PostgreSQL interval
+          const durationSeconds = Math.floor(durationMs / 1000);
+          // PostgreSQL interval format: 'HH:MM:SS'
+          const hours = Math.floor(durationSeconds / 3600);
+          const minutes = Math.floor((durationSeconds % 3600) / 60);
+          const seconds = durationSeconds % 60;
+          updateData.duration = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+          console.log('✅ Duración calculada:', updateData.duration);
         } else {
-          showToast('❌ Error al finalizar fichaje', 'error');
+          console.warn('⚠️ Duración negativa detectada. No se incluirá el campo duration en el update.', {
+            clockInTime: clockInTime,
+            clockInTimeDate: clockInTimeDate.toISOString(),
+            clockOutTime: clockOutTime,
+            clockOutTimeDate: clockOutTimeDate.toISOString(),
+            durationMs: durationMs,
+            activeEntry: activeEntry
+          });
+          // No incluir duration si es negativa - PostgreSQL lo rechazará
+          // El status y clock_out_time se actualizarán correctamente sin el campo duration
+        }
+      } else {
+        console.warn('⚠️ No se pudo calcular la duración: clock_in_time y entry_time no están disponibles', {
+          activeEntry: activeEntry
+        });
+      }
+
+      // Actualizar el clock_in a 'completed' - esto es crítico
+      console.log('🔄 Actualizando fichaje a completed:', {
+        id: activeEntry.id,
+        updateData: updateData
+      });
+      
+      const { error: updateError } = await supabase
+        .from('time_entries')
+        .update(updateData)
+        .eq('id', activeEntry.id);
+
+      if (updateError) {
+        console.error('⚠️ Error actualizando status del fichaje a completed:', updateError);
+        // NO retornar aquí - el clock_out ya fue insertado, eso es lo más importante
+        // Pero intentar de nuevo después de un pequeño delay con reintentos
+        let retries = 3;
+        const retryUpdate = async () => {
+          const { error: retryError } = await supabase
+            .from('time_entries')
+            .update({ 
+              status: 'completed', 
+              clock_out_time: clockOutTime,
+              ...(updateData.duration ? { duration: updateData.duration } : {})
+            })
+            .eq('id', activeEntry.id);
+          
+          if (retryError && retries > 0) {
+            retries--;
+            console.warn(`⚠️ Reintentando actualizar status (intentos restantes: ${retries})...`);
+            setTimeout(retryUpdate, 1000);
+          } else if (!retryError) {
+            console.log('✅ Status actualizado a completed después de reintento');
+          } else {
+            console.error('❌ Error persistente al actualizar status después de reintentos');
+          }
+        };
+        
+        setTimeout(retryUpdate, 1000);
+      } else {
+        console.log('✅ Status actualizado a completed correctamente');
+        
+        // Verificar que se actualizó correctamente
+        const { data: verifyEntry } = await supabase
+          .from('time_entries')
+          .select('status')
+          .eq('id', activeEntry.id)
+          .single();
+        
+        if (verifyEntry && verifyEntry.status !== 'completed') {
+          console.warn('⚠️ El status no se actualizó correctamente. Reintentando...');
+          await supabase
+            .from('time_entries')
+            .update({ status: 'completed' })
+            .eq('id', activeEntry.id);
         }
       }
+
+      // Actualizar estado local
+        setIsActive(false);
+        setStartTime(null);
+        setElapsedTime(0);
+        setIsPaused(false);
+        setTotalPausedTime(0);
+        setPauseStartTime(null);
+        
+        // NO limpiar localStorage - solo BD es la fuente de verdad
+        // Mostrar notificación de éxito
+        showToast('✅ Fichaje finalizado correctamente', 'success');
     } catch (error) {
       console.error('Error clocking out:', error);
-      showToast('❌ Error al finalizar fichaje', 'error');
+      showToast('❌ Error al finalizar fichaje: ' + (error.message || 'Error desconocido'), 'error');
     } finally {
       setLoading(false);
     }
@@ -511,60 +889,117 @@ export default function FloatingTimeClock() {
   async function handlePause() {
     try {
       setLoading(true);
+      console.log('🔄 [handlePause] Iniciando pausa/reanudar...');
+      
       const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        // Obtener información de la empresa
+      if (!user) {
+        console.error('❌ [handlePause] Usuario no autenticado');
+        showToast('❌ Usuario no autenticado', 'error');
+        setLoading(false);
+        return;
+      }
+
+      // CRÍTICO: Usar companyId del estado si está disponible, sino obtenerlo
+      let currentCompanyId = companyId;
+      if (!currentCompanyId) {
+        console.log('⚠️ [handlePause] companyId no disponible en estado, obteniéndolo...');
         const { data: userRole } = await supabase
           .from('user_company_roles')
           .select('company_id')
           .eq('user_id', user.id)
           .eq('is_active', true)
           .single();
-
-        if (isPaused) {
-          // Reanudar - registrar fin de pausa
-          const { error } = await supabase
-            .from('time_entries')
-            .insert({
-              user_id: user.id,
-              company_id: userRole?.company_id,
-              entry_type: 'break_end',
-              entry_time: new Date().toISOString()
-            });
-
-          if (!error) {
-            setTotalPausedTime(totalPausedTime + (Date.now() - pauseStartTime));
-            setPauseStartTime(null);
-            setIsPaused(false);
-            showToast('▶️ Pausa finalizada', 'info');
-          } else {
-            console.error('Error ending break:', error);
-            showToast('❌ Error al finalizar pausa', 'error');
-          }
-        } else {
-          // Pausar - registrar inicio de pausa
-          const { error } = await supabase
-            .from('time_entries')
-            .insert({
-              user_id: user.id,
-              company_id: userRole?.company_id,
-              entry_type: 'break_start',
-              entry_time: new Date().toISOString()
-            });
-
-          if (!error) {
-            setPauseStartTime(Date.now());
-            setIsPaused(true);
-            showToast('⏸️ Pausa iniciada', 'info');
-          } else {
-            console.error('Error starting break:', error);
-            showToast('❌ Error al iniciar pausa', 'error');
-          }
+        
+        if (!userRole?.company_id) {
+          console.error('❌ [handlePause] No se pudo obtener company_id');
+          showToast('❌ No se pudo identificar la empresa', 'error');
+          setLoading(false);
+          return;
         }
+        currentCompanyId = userRole.company_id;
+        setCompanyId(currentCompanyId); // Guardar en estado para próximas veces
+      }
+
+      console.log('✅ [handlePause] companyId:', currentCompanyId);
+      console.log('📊 [handlePause] Estado actual - isPaused:', isPaused, 'isActive:', isActive);
+
+      if (isPaused) {
+        // Reanudar - registrar fin de pausa
+        console.log('▶️ [handlePause] Reanudando fichaje...');
+        
+        const { error } = await supabase
+          .from('time_entries')
+          .insert({
+            user_id: user.id,
+            company_id: currentCompanyId,
+            entry_type: 'break_end',
+            entry_time: new Date().toISOString()
+          });
+
+        if (error) {
+          console.error('❌ [handlePause] Error insertando break_end:', error);
+          showToast('❌ Error al finalizar pausa: ' + (error.message || 'Error desconocido'), 'error');
+          setLoading(false);
+          return;
+        }
+
+        // CRÍTICO: Actualizar estado local DESPUÉS de confirmar inserción en BD
+        const now = Date.now();
+        const pauseDuration = pauseStartTime ? (now - pauseStartTime) : 0;
+        const newTotalPausedTime = totalPausedTime + pauseDuration;
+        
+        // Calcular el nuevo elapsedTime: tiempo transcurrido menos tiempo pausado total
+        const newElapsedTime = startTime ? Math.max(0, now - startTime - newTotalPausedTime) : 0;
+        
+        console.log('💾 [handlePause] Actualizando estado - nuevo totalPausedTime:', newTotalPausedTime, 'nuevo elapsedTime:', newElapsedTime);
+        
+        setTotalPausedTime(newTotalPausedTime);
+        setPauseStartTime(null);
+        setIsPaused(false);
+        setElapsedTime(newElapsedTime);
+        
+            // NO guardar en localStorage - solo BD es la fuente de verdad
+            console.log('✅ [handlePause] Pausa finalizada');
+            showToast('▶️ Pausa finalizada', 'info');
+      } else {
+        // Pausar - registrar inicio de pausa
+        console.log('⏸️ [handlePause] Pausando fichaje...');
+        
+        const pauseStart = Date.now();
+        const { error } = await supabase
+          .from('time_entries')
+          .insert({
+            user_id: user.id,
+            company_id: currentCompanyId,
+            entry_type: 'break_start',
+            entry_time: new Date().toISOString()
+          });
+
+        if (error) {
+          console.error('❌ [handlePause] Error insertando break_start:', error);
+          showToast('❌ Error al iniciar pausa: ' + (error.message || 'Error desconocido'), 'error');
+          setLoading(false);
+          return;
+        }
+
+        // CRÍTICO: Actualizar estado local DESPUÉS de confirmar inserción en BD
+        // Calcular el elapsedTime hasta el momento de la pausa
+        const now = Date.now();
+        const elapsedAtPause = startTime ? Math.max(0, now - startTime - totalPausedTime) : 0;
+        
+        console.log('💾 [handlePause] Actualizando estado - pauseStart:', pauseStart, 'elapsedAtPause:', elapsedAtPause);
+        
+        setPauseStartTime(pauseStart);
+        setIsPaused(true);
+        setElapsedTime(elapsedAtPause);
+        
+            // NO guardar en localStorage - solo BD es la fuente de verdad
+            console.log('✅ [handlePause] Pausa iniciada');
+            showToast('⏸️ Pausa iniciada', 'info');
       }
     } catch (error) {
-      console.error('Error handling pause:', error);
-      showToast('❌ Error al manejar pausa', 'error');
+      console.error('❌ [handlePause] Error general:', error);
+      showToast('❌ Error al manejar pausa: ' + (error.message || 'Error desconocido'), 'error');
     } finally {
       setLoading(false);
     }
@@ -719,12 +1154,21 @@ export default function FloatingTimeClock() {
     try {
       setLoading(true);
       
-      // Limpiar sessionStorage antes de cerrar sesión
-      sessionStorage.clear();
-      // Limpiar persistencia local del fichaje y entradas offline
-      clearSessionStorage();
-      try { localStorage.removeItem('witar_offline_entries'); } catch (_) {}
+      // IMPORTANTE: NO desfichar automáticamente al cerrar sesión
+      // El fichaje debe mantenerse activo en BD y solo se desficha cuando el usuario presiona "Salir"
+      // El estado del fichaje se mantiene en BD (status='active') para que persista al volver a iniciar sesión
+      if (isActive) {
+        console.log('ℹ️ [handleSignOut] Fichaje activo detectado - se mantendrá activo en BD después de cerrar sesión');
+        console.log('📝 [handleSignOut] El fichaje solo se finaliza cuando el usuario presiona el botón "Salir"');
+      }
       
+      // Limpiar sessionStorage (solo datos de sesión)
+      sessionStorage.clear();
+      
+      // NO limpiar el estado del fichaje - debe persistir en BD
+      // NO usar localStorage - solo BD es la fuente de verdad
+      
+      // Cerrar sesión de autenticación
       await supabase.auth.signOut();
       window.location.href = '/login';
     } catch (error) {
@@ -840,6 +1284,8 @@ export default function FloatingTimeClock() {
             company_id: entry.company_id || activeCompanyId,
             entry_type: entry.entry_type,
             entry_time: entry.entry_time,
+            // CRÍTICO: Establecer status='active' para clock_in, para que se encuentre al buscar fichajes activos
+            ...(entry.entry_type === 'clock_in' ? { status: 'active' } : {}),
             notes: entry.notes || null,
             ...(entry.location_lat && entry.location_lng ? {
               location_lat: entry.location_lat,
@@ -915,6 +1361,31 @@ export default function FloatingTimeClock() {
       default: return '📢';
     }
   }
+
+  // Funciones de persistencia - solo para eventos, NO localStorage
+  function setupPersistenceListeners() {
+    // Listener para cambios de conexión
+    const handleOnline = () => {
+      console.log('🟢 Conexión restaurada - sincronizando entradas offline...');
+      // Solo sincronizar entradas offline
+      syncOfflineEntries();
+    };
+
+    const handleOffline = () => {
+      console.log('🔴 Sin conexión');
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }
+
+  // FUNCIONES ELIMINADAS: syncWithDatabase y restoreActiveSession
+  // Ya no se usan - solo BD es la fuente de verdad, checkActiveSession maneja todo
 
   // Mostrar solo para empleados, managers y admins (no para owners)
   if (!userRole || (userRole !== 'employee' && userRole !== 'manager' && userRole !== 'admin')) {
@@ -1294,194 +1765,4 @@ export default function FloatingTimeClock() {
       </div>
     </div>
   );
-
-  // Funciones de persistencia
-  function setupPersistenceListeners() {
-    // Listener para cambios de visibilidad de pestaña
-    const handleVisibilityChange = () => {
-      if (!document.hidden && isActive) {
-        console.log('🔄 Pestaña activa - sincronizando estado...');
-        syncWithDatabase();
-      }
-    };
-
-    // Listener para cambios de conexión
-    const handleOnline = () => {
-      console.log('🟢 Conexión restaurada - sincronizando...');
-      syncWithDatabase();
-    };
-
-    const handleOffline = () => {
-      console.log('🔴 Sin conexión - guardando offline');
-    };
-
-    // Guardar inmediatamente antes de abandonar la página
-    const handleBeforeUnload = () => {
-      saveSessionToStorage();
-    };
-
-    // Listener para sincronizar cambios de localStorage (otras pestañas o rehidratación)
-    const handleStorage = (e) => {
-      try {
-        if (!e) return;
-        if (e.key && e.key.startsWith('witar_')) {
-          loadSessionFromStorage();
-        }
-      } catch (_) {}
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    window.addEventListener('storage', handleStorage);
-
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-      window.removeEventListener('storage', handleStorage);
-    };
-  }
-
-  function saveSessionToStorage() {
-    try {
-      localStorage.setItem('witar_active_session', isActive.toString());
-      if (startTime) {
-        localStorage.setItem('witar_start_time', startTime.toString());
-      }
-      localStorage.setItem('witar_elapsed_time', elapsedTime.toString());
-      localStorage.setItem('witar_is_paused', isPaused.toString());
-      if (pauseStartTime) {
-        localStorage.setItem('witar_pause_start_time', pauseStartTime.toString());
-      }
-      localStorage.setItem('witar_total_paused_time', totalPausedTime.toString());
-      localStorage.setItem('witar_last_sync', Date.now().toString());
-    } catch (error) {
-      console.error('Error saving session to storage:', error);
-    }
-  }
-
-  function loadSessionFromStorage() {
-    try {
-      const activeSession = localStorage.getItem('witar_active_session');
-      const startTimeStr = localStorage.getItem('witar_start_time');
-      const elapsedTimeStr = localStorage.getItem('witar_elapsed_time');
-      const isPausedStr = localStorage.getItem('witar_is_paused');
-      const pauseStartTimeStr = localStorage.getItem('witar_pause_start_time');
-      const totalPausedTimeStr = localStorage.getItem('witar_total_paused_time');
-
-      if (activeSession === 'true' && startTimeStr) {
-        const savedStartTime = parseInt(startTimeStr);
-        const savedElapsedTime = parseInt(elapsedTimeStr) || 0;
-        const savedIsPaused = isPausedStr === 'true';
-        const savedPauseStartTime = pauseStartTimeStr ? parseInt(pauseStartTimeStr) : null;
-        const savedTotalPausedTime = parseInt(totalPausedTimeStr) || 0;
-        
-        setIsActive(true);
-        setStartTime(savedStartTime);
-        setElapsedTime(savedElapsedTime);
-        setIsPaused(savedIsPaused);
-        setPauseStartTime(savedPauseStartTime);
-        setTotalPausedTime(savedTotalPausedTime);
-        
-        console.log('📱 Sesión persistente cargada desde localStorage');
-        return true;
-      }
-    } catch (error) {
-      console.error('Error loading session from storage:', error);
-    }
-    return false;
-  }
-
-  function clearSessionStorage() {
-    try {
-      localStorage.removeItem('witar_active_session');
-      localStorage.removeItem('witar_start_time');
-      localStorage.removeItem('witar_elapsed_time');
-      localStorage.removeItem('witar_is_paused');
-      localStorage.removeItem('witar_pause_start_time');
-      localStorage.removeItem('witar_total_paused_time');
-      localStorage.removeItem('witar_last_sync');
-    } catch (error) {
-      console.error('Error clearing session storage:', error);
-    }
-  }
-
-  async function syncWithDatabase() {
-    if (!companyId || !isActive) return;
-
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      // Buscar fichaje activo en la base de datos
-      const { data: activeEntry, error } = await supabase
-        .from('time_entries')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('company_id', companyId)
-        .eq('entry_type', 'clock_in')
-        .order('entry_time', { ascending: false })
-        .limit(1)
-        .single();
-
-      if (error && error.code !== 'PGRST116') {
-        console.error('Error syncing with database:', error);
-        return;
-      }
-
-      if (activeEntry) {
-        // Verificar si el tiempo local coincide con el de la base de datos
-        const dbStartTime = new Date(activeEntry.entry_time).getTime();
-        const timeDiff = Math.abs(startTime - dbStartTime);
-        
-        // Si hay diferencia significativa (> 5 minutos), usar el tiempo de la base de datos
-        if (timeDiff > 5 * 60 * 1000) {
-          console.log('🔄 Corrigiendo tiempo desde base de datos');
-          setStartTime(dbStartTime);
-          setElapsedTime(Date.now() - dbStartTime);
-          saveSessionToStorage();
-        }
-        
-        console.log('✅ Estado sincronizado con base de datos');
-      } else {
-        // No hay fichaje activo en la base de datos, pero sí en localStorage
-        console.log('⚠️ Fichaje activo en localStorage pero no en base de datos');
-        // Intentar restaurar el fichaje
-        await restoreActiveSession();
-      }
-    } catch (error) {
-      console.error('Error syncing with database:', error);
-    }
-  }
-
-  async function restoreActiveSession() {
-    if (!companyId || !isActive) return;
-
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const timeEntry = {
-        user_id: user.id,
-        company_id: companyId,
-        entry_type: 'clock_in',
-        entry_time: new Date(startTime).toISOString()
-      };
-
-      const { error } = await supabase
-        .from('time_entries')
-        .insert(timeEntry);
-
-      if (error) {
-        console.error('Error restoring session:', error);
-      } else {
-        console.log('✅ Sesión restaurada en base de datos');
-      }
-    } catch (error) {
-      console.error('Error restoring session:', error);
-    }
-  }
-} 
+}
