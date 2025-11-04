@@ -1,7 +1,8 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { Helmet } from 'react-helmet-async';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { supabase } from '@/lib/supabaseClient';
 import { 
   Clock, 
   CalendarOff, 
@@ -36,6 +37,60 @@ import {
 const LandingPage = () => {
   const [activeSection, setActiveSection] = React.useState('home');
   const [isScrolled, setIsScrolled] = React.useState(false);
+  const navigate = useNavigate();
+
+  // Función para manejar el acceso a la cuenta
+  const handleAccessAccount = async (e) => {
+    e.preventDefault();
+    
+    try {
+      // Verificar si hay sesión activa
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError || !session) {
+        // No hay sesión, redirigir al login
+        navigate('/login');
+        return;
+      }
+
+      // Hay sesión activa, obtener el rol del usuario
+      const { data: userRole, error: roleError } = await supabase
+        .from('user_company_roles')
+        .select('role, company_id, companies(id, name, slug)')
+        .eq('user_id', session.user.id)
+        .eq('is_active', true)
+        .single();
+
+      if (roleError || !userRole) {
+        // Si no hay rol activo, verificar si hay invitaciones pendientes
+        const { data: pendingInvitation } = await supabase
+          .from('invitations')
+          .select('*')
+          .eq('email', session.user.email)
+          .in('status', ['pending', 'sent'])
+          .single();
+
+        if (pendingInvitation) {
+          navigate(`/accept-invitation?token=${pendingInvitation.token}`);
+          return;
+        } else {
+          // Por defecto, redirigir a employee
+          navigate('/employee');
+          return;
+        }
+      }
+
+      // Redirigir según el rol
+      const redirectPath = userRole.role === 'owner' ? '/owner' : 
+                         userRole.role === 'admin' ? '/admin' : 
+                         userRole.role === 'manager' ? '/manager' : '/employee';
+      navigate(redirectPath);
+    } catch (error) {
+      console.error('Error verificando sesión:', error);
+      // En caso de error, redirigir al login
+      navigate('/login');
+    }
+  };
 
   // Detectar scroll para cambiar el estilo del header y sección activa
   React.useEffect(() => {
@@ -181,12 +236,12 @@ const LandingPage = () => {
                 >
                   Solicitar Demo
                 </Link>
-                <Link
-                  to="/login"
+                <button
+                  onClick={handleAccessAccount}
                   className="px-4 py-2 text-muted-foreground hover:text-foreground transition-colors"
                 >
                   Iniciar Sesión
-                </Link>
+                </button>
                 <Link
                   to="/register"
                   className="px-6 py-2 bg-cta text-cta-foreground rounded-lg hover:bg-cta/90 transition-all duration-200 shadow-lg hover:shadow-xl"
@@ -266,13 +321,13 @@ const LandingPage = () => {
                     Solicitar Demo
                   </Link>
                   
-                  <Link
-                    to="/login"
+                  <button
+                    onClick={handleAccessAccount}
                     className="inline-flex items-center justify-center gap-3 px-6 sm:px-8 py-3 sm:py-4 border-2 border-border text-foreground font-semibold rounded-xl hover:bg-secondary transition-all duration-200 w-full sm:w-auto"
                   >
                     <LogIn className="w-4 h-4 sm:w-5 sm:h-5" />
                     Acceder a mi cuenta
-                  </Link>
+                  </button>
                 </div>
 
 
@@ -912,13 +967,13 @@ const LandingPage = () => {
                   <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                 </Link>
                 
-                <Link
-                  to="/login"
+                <button
+                  onClick={handleAccessAccount}
                   className="inline-flex items-center gap-3 px-8 py-4 border-2 border-primary-foreground/30 text-primary-foreground font-semibold rounded-xl hover:bg-primary-foreground/10 transition-all duration-200"
                 >
                   <LogIn className="w-5 h-5" />
                   Acceder ahora
-                </Link>
+                </button>
               </div>
 
               <div className="flex flex-wrap justify-center gap-8 pt-8 text-sm opacity-80">
