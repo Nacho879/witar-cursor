@@ -1,25 +1,15 @@
-import * as React from 'react';
+import React, { useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { 
-  Calendar, 
-  Clock, 
-  CheckCircle, 
-  XCircle, 
-  AlertCircle,
-  Filter,
-  Search,
-  Eye,
-  MoreHorizontal,
-  Edit,
-  Plus,
-  XCircle as XCircleIcon
-} from 'lucide-react';
+import { Check, X, Eye, Calendar, Clock, AlertCircle, FileText, LogIn, LogOut, Coffee, Edit, Plus, XCircle, CheckCircle, Search, User } from 'lucide-react';
+import RequestDetailsModal from '@/components/RequestDetailsModal';
+import RequestActionModal from '@/components/RequestActionModal';
 
 export default function Requests() {
   const [requests, setRequests] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
-  const [filter, setFilter] = React.useState('all');
   const [searchTerm, setSearchTerm] = React.useState('');
+  const [statusFilter, setStatusFilter] = React.useState('all');
+  const [typeFilter, setTypeFilter] = React.useState('all');
   const [companyId, setCompanyId] = React.useState(null);
   const [stats, setStats] = React.useState({
     total: 0,
@@ -27,6 +17,11 @@ export default function Requests() {
     approved: 0,
     rejected: 0
   });
+  const [selectedRequest, setSelectedRequest] = React.useState(null);
+  const [isModalOpen, setIsModalOpen] = React.useState(false);
+  const [actionModalOpen, setActionModalOpen] = useState(false);
+  const [actionType, setActionType] = useState(null);
+  const [actionRequest, setActionRequest] = useState(null);
 
   React.useEffect(() => {
     loadRequests();
@@ -69,40 +64,131 @@ export default function Requests() {
       // Cargar solicitudes de edición de fichajes
       const { data: timeEditRequests, error: timeEditError } = await supabase
         .from('time_entry_edit_requests')
-        .select('*')
+        .select(`
+          *,
+          time_entries (
+            id,
+            entry_type,
+            entry_time,
+            notes
+          )
+        `)
         .eq('company_id', companyId)
         .order('created_at', { ascending: false });
 
       if (!error && !timeEditError) {
-        // Combinar y procesar las solicitudes
-        const allRequests = [];
-
-        // Agregar solicitudes normales
+        // Obtener todos los user_ids únicos
+        const allUserIds = new Set();
         if (normalRequests) {
-          normalRequests.forEach(request => {
-            allRequests.push({
-              ...request,
-              request_type: 'normal',
-              original_request_type: request.request_type
-            });
-          });
+          normalRequests.forEach(r => allUserIds.add(r.user_id));
         }
-
-        // Agregar solicitudes de edición de fichajes
         if (timeEditRequests) {
-          timeEditRequests.forEach(request => {
-            allRequests.push({
-              ...request,
-              request_type: 'time_edit'
-            });
-          });
+          timeEditRequests.forEach(r => allUserIds.add(r.user_id));
         }
+        const userIds = Array.from(allUserIds);
 
-        // Ordenar por fecha de creación
-        allRequests.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        if (userIds.length > 0) {
+          // Obtener los perfiles de usuario
+          const { data: profiles, error: profilesError } = await supabase
+            .from('user_profiles')
+            .select('user_id, full_name, avatar_url')
+            .in('user_id', userIds);
 
-        setRequests(allRequests);
-        calculateStats(allRequests);
+          // Obtener los emails usando la Edge Function
+          const { data: emailsData, error: emailsError } = await supabase.functions.invoke('get-user-emails', {
+            body: { userIds }
+          });
+
+          // Obtener información de departamentos
+          const { data: roles, error: rolesError } = await supabase
+            .from('user_company_roles')
+            .select(`
+              user_id,
+              departments (
+                name
+              )
+            `)
+            .in('user_id', userIds)
+            .eq('company_id', companyId)
+            .eq('is_active', true);
+
+          if (!profilesError && !rolesError && profiles && roles) {
+            // Combinar los datos de solicitudes normales
+            const requestsWithProfiles = (normalRequests || []).map(request => {
+              const profile = profiles.find(p => p.user_id === request.user_id);
+              const role = roles.find(r => r.user_id === request.user_id);
+              const emailData = emailsData?.emails?.find(e => e.user_id === request.user_id);
+              
+              return {
+                ...request,
+                request_type: 'normal',
+                original_request_type: request.request_type,
+                user_company_roles: {
+                  user_profiles: {
+                    ...profile,
+                    email: emailData?.email || 'No disponible'
+                  } || { full_name: 'Usuario sin perfil', email: 'No disponible', avatar_url: null },
+                  departments: role?.departments || { name: 'Sin departamento' }
+                }
+              };
+            });
+
+            // Combinar los datos de solicitudes de edición de fichajes
+            const timeEditRequestsWithProfiles = (timeEditRequests || []).map(request => {
+              const profile = profiles.find(p => p.user_id === request.user_id);
+              const role = roles.find(r => r.user_id === request.user_id);
+              const emailData = emailsData?.emails?.find(e => e.user_id === request.user_id);
+              
+              return {
+                ...request,
+                request_type: 'time_edit', // Para identificar que es una solicitud de edición
+                original_request_type: request.request_type, // Preservar el tipo específico (delete_entry, edit_time, etc.)
+                user_company_roles: {
+                  user_profiles: {
+                    ...profile,
+                    email: emailData?.email || 'No disponible'
+                  } || { full_name: 'Usuario sin perfil', email: 'No disponible', avatar_url: null },
+                  departments: role?.departments || { name: 'Sin departamento' }
+                }
+              };
+            });
+
+            // Combinar ambas listas
+            const allRequests = [...requestsWithProfiles, ...timeEditRequestsWithProfiles];
+            
+            // Ordenar por fecha de creación (más recientes primero)
+            allRequests.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+            setRequests(allRequests);
+            calculateStats(allRequests);
+          } else {
+            // Fallback sin perfiles
+            const allRequests = [];
+            if (normalRequests) {
+              normalRequests.forEach(request => {
+                allRequests.push({
+                  ...request,
+                  request_type: 'normal',
+                  original_request_type: request.request_type
+                });
+              });
+            }
+            if (timeEditRequests) {
+              timeEditRequests.forEach(request => {
+                allRequests.push({
+                  ...request,
+                  request_type: 'time_edit'
+                });
+              });
+            }
+            allRequests.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+            setRequests(allRequests);
+            calculateStats(allRequests);
+          }
+        } else {
+          setRequests([]);
+          calculateStats([]);
+        }
       }
     } catch (error) {
       console.error('Error loading requests data:', error);
@@ -130,59 +216,49 @@ export default function Requests() {
       let companyId = null;
 
       if (requestType === 'normal') {
-        // Buscar la solicitud en la lista ya cargada para obtener el company_id
-        const existingRequest = requests.find(r => r.id === requestId && r.request_type === 'normal');
-        
-        if (!existingRequest) {
-          throw new Error('Solicitud no encontrada en la lista');
+        // Obtener datos de la solicitud antes de actualizar
+        const { data: request } = await supabase
+          .from('requests')
+          .select('*')
+          .eq('id', requestId)
+          .single();
+
+        if (request) {
+          requestData = request;
+          employeeUserId = request.user_id;
+          companyId = request.company_id;
         }
 
-        requestData = existingRequest;
-        employeeUserId = existingRequest.user_id;
-        companyId = existingRequest.company_id;
-
-        // Actualizar directamente sin verificar primero (las políticas RLS ya validaron que podemos verla)
         const { error } = await supabase
           .from('requests')
           .update(updateData)
           .eq('id', requestId);
 
-        if (error) {
-          console.error('Error actualizando solicitud:', error);
-          throw error;
-        }
+        if (error) throw error;
       } else if (requestType === 'time_edit') {
-        // Buscar la solicitud en la lista ya cargada para obtener los datos
-        const existingRequest = requests.find(r => r.id === requestId && r.request_type === 'time_edit');
-        
-        if (!existingRequest) {
-          throw new Error('Solicitud de edición no encontrada en la lista');
+        // Obtener datos de la solicitud antes de actualizar
+        const { data: request } = await supabase
+          .from('time_entry_edit_requests')
+          .select('*')
+          .eq('id', requestId)
+          .single();
+
+        if (request) {
+          requestData = request;
+          employeeUserId = request.user_id;
+          companyId = request.company_id;
         }
 
-        requestData = existingRequest;
-        employeeUserId = existingRequest.user_id;
-        companyId = existingRequest.company_id;
-
-        // Obtener el usuario actual para approved_by
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
-          throw new Error('Usuario no autenticado');
-        }
-
-        updateData.approved_by = user.id;
+        updateData.approved_by = (await supabase.auth.getUser()).data.user.id;
         updateData.approved_at = new Date().toISOString();
         updateData.approval_notes = comments;
 
-        // Actualizar directamente sin verificar primero (las políticas RLS ya validaron que podemos verla)
         const { error } = await supabase
           .from('time_entry_edit_requests')
           .update(updateData)
           .eq('id', requestId);
 
-        if (error) {
-          console.error('Error actualizando solicitud de edición:', error);
-          throw error;
-        }
+        if (error) throw error;
 
         // Si se aprueba, aplicar los cambios al fichaje
         if (newStatus === 'approved') {
@@ -195,13 +271,7 @@ export default function Requests() {
         await sendNotificationToEmployee(employeeUserId, companyId, newStatus, requestData, comments, requestType);
       }
 
-      // Solo recargar si tenemos un companyId válido
-      if (companyId) {
-        await loadRequestsData(companyId);
-      } else {
-        // Si no tenemos companyId, recargar usando el estado actual
-        await loadRequests();
-      }
+      await loadRequests();
     } catch (error) {
       console.error('Error updating request status:', error);
     }
@@ -313,21 +383,49 @@ export default function Requests() {
         .eq('id', requestId)
         .single();
 
-      if (!request) return;
+      if (!request) {
+        console.error('❌ No se encontró la solicitud:', requestId);
+        return;
+      }
 
+      // request.request_type aquí contiene el tipo específico de la BD (delete_entry, edit_time, etc.)
+      console.log('🔧 Aplicando cambios para solicitud:', request.request_type, requestId);
+
+      // Si es eliminar fichaje, eliminarlo PRIMERO
+      if (request.request_type === 'delete_entry') {
+        console.log('🗑️ Eliminando fichaje:', request.time_entry_id);
+        
+        const { error } = await supabase
+          .from('time_entries')
+          .delete()
+          .eq('id', request.time_entry_id);
+
+        if (error) {
+          console.error('❌ Error eliminando fichaje:', error);
+          throw error;
+        }
+        
+        console.log('✅ Fichaje eliminado correctamente');
+        return; // Salir después de eliminar
+      }
+
+      // Para otros tipos de solicitudes, actualizar el fichaje
       const updateData = {};
 
       // Aplicar cambios según el tipo de solicitud
       if (request.request_type === 'edit_time' && request.proposed_entry_time) {
         updateData.entry_time = request.proposed_entry_time;
+        console.log('⏰ Actualizando hora:', request.proposed_entry_time);
       }
 
       if (request.request_type === 'edit_type' && request.proposed_entry_type) {
         updateData.entry_type = request.proposed_entry_type;
+        console.log('📝 Actualizando tipo:', request.proposed_entry_type);
       }
 
       if (request.proposed_notes !== undefined) {
         updateData.notes = request.proposed_notes;
+        console.log('📋 Actualizando notas:', request.proposed_notes);
       }
 
       // Actualizar el fichaje
@@ -337,21 +435,18 @@ export default function Requests() {
           .update(updateData)
           .eq('id', request.time_entry_id);
 
-        if (error) throw error;
-      }
-
-      // Si es eliminar fichaje, eliminarlo
-      if (request.request_type === 'delete_entry') {
-        const { error } = await supabase
-          .from('time_entries')
-          .delete()
-          .eq('id', request.time_entry_id);
-
-        if (error) throw error;
+        if (error) {
+          console.error('❌ Error actualizando fichaje:', error);
+          throw error;
+        }
+        
+        console.log('✅ Fichaje actualizado correctamente');
       }
 
       // Si es agregar fichaje, crearlo
       if (request.request_type === 'add_entry') {
+        console.log('➕ Agregando nuevo fichaje');
+        
         const newEntry = {
           user_id: request.user_id,
           company_id: request.company_id,
@@ -364,40 +459,67 @@ export default function Requests() {
           .from('time_entries')
           .insert(newEntry);
 
-        if (error) throw error;
+        if (error) {
+          console.error('❌ Error agregando fichaje:', error);
+          throw error;
+        }
+        
+        console.log('✅ Nuevo fichaje agregado correctamente');
       }
 
     } catch (error) {
-      console.error('Error applying changes:', error);
+      console.error('❌ Error applying changes:', error);
       throw error;
     }
   }
 
-  function getStatusColor(status) {
-    switch (status) {
-      case 'pending': return 'bg-yellow-100 text-yellow-800';
-      case 'approved': return 'bg-green-100 text-green-800';
-      case 'rejected': return 'bg-red-100 text-red-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
-  }
-
-  function getStatusIcon(status) {
-    switch (status) {
-      case 'pending': return Clock;
-      case 'approved': return CheckCircle;
-      case 'rejected': return XCircle;
-      default: return AlertCircle;
-    }
-  }
-
-  function getRequestTypeDisplay(type) {
+  function getRequestTypeInfo(type) {
     switch (type) {
-      case 'vacation': return 'Vacaciones';
-      case 'sick_leave': return 'Baja por enfermedad';
-      case 'permission': return 'Permiso';
-      case 'other': return 'Otro';
-      default: return type;
+      // Solicitudes normales
+      case 'vacation':
+        return { label: 'Vacaciones', icon: Calendar, color: 'bg-blue-100 text-blue-800' };
+      case 'permission':
+        return { label: 'Permiso', icon: Clock, color: 'bg-green-100 text-green-800' };
+      case 'sick_leave':
+        return { label: 'Baja Médica', icon: AlertCircle, color: 'bg-red-100 text-red-800' };
+      case 'other':
+        return { label: 'Otro', icon: FileText, color: 'bg-purple-100 text-purple-800' };
+      
+      // Solicitudes de edición de fichajes
+      case 'edit_time':
+        return { label: 'Editar Fecha/Hora', icon: Clock, color: 'bg-orange-100 text-orange-800' };
+      case 'edit_type':
+        return { label: 'Editar Tipo', icon: Edit, color: 'bg-purple-100 text-purple-800' };
+      case 'delete_entry':
+        return { label: 'Eliminar Fichaje', icon: XCircle, color: 'bg-red-100 text-red-800' };
+      case 'add_entry':
+        return { label: 'Agregar Fichaje', icon: Plus, color: 'bg-green-100 text-green-800' };
+      
+      // Tipos de fichajes
+      case 'clock_in':
+        return { label: 'Entrada', icon: LogIn, color: 'bg-green-100 text-green-800' };
+      case 'clock_out':
+        return { label: 'Salida', icon: LogOut, color: 'bg-red-100 text-red-800' };
+      case 'break_start':
+        return { label: 'Inicio Pausa', icon: Coffee, color: 'bg-yellow-100 text-yellow-800' };
+      case 'break_end':
+        return { label: 'Fin Pausa', icon: Coffee, color: 'bg-yellow-100 text-yellow-800' };
+      
+      default:
+        return { label: type, icon: FileText, color: 'bg-gray-100 text-gray-800' };
+    }
+  }
+
+  function getStatusInfo(status) {
+    switch (status) {
+      case 'pending':
+        return { label: 'Pendiente', color: 'bg-yellow-100 text-yellow-800', icon: Clock };
+      case 'approved':
+        return { label: 'Aprobada', color: 'bg-green-100 text-green-800', icon: CheckCircle };
+      case 'rejected':
+        return { label: 'Rechazada', color: 'bg-red-100 text-red-800', icon: XCircle };
+      default:
+        return { label: status, color: 'bg-gray-100 text-gray-800', icon: FileText };
     }
   }
 
@@ -409,221 +531,403 @@ export default function Requests() {
     });
   }
 
+  function formatTime(timeString) {
+    return timeString ? timeString.substring(0, 5) : '';
+  }
+
+  function getDurationDisplay(request) {
+    if (request.request_type === 'permission' || request.original_request_type === 'permission') {
+      return `${request.duration_hours || 0}h`;
+    } else {
+      return `${request.duration_days || 0} día${(request.duration_days || 0) > 1 ? 's' : ''}`;
+    }
+  }
+
+  // Función de filtrado corregida
   const filteredRequests = requests.filter(request => {
-    if (filter !== 'all' && request.status !== filter) return false;
+    // Filtro por búsqueda
     if (searchTerm) {
       const searchLower = searchTerm.toLowerCase();
-      const type = getRequestTypeDisplay(request.request_type).toLowerCase();
-      const status = request.status.toLowerCase();
-      return type.includes(searchLower) || status.includes(searchLower);
+      const employeeName = request.user_company_roles?.user_profiles?.full_name?.toLowerCase() || '';
+      const reason = request.reason?.toLowerCase() || '';
+      const description = request.description?.toLowerCase() || '';
+      
+      const matchesSearch = employeeName.includes(searchLower) || 
+                           reason.includes(searchLower) || 
+                           description.includes(searchLower);
+      
+      if (!matchesSearch) return false;
     }
+
+    // Filtro por estado
+    if (statusFilter !== 'all' && request.status !== statusFilter) {
+      return false;
+    }
+
+    // Filtro por tipo de solicitud
+    if (typeFilter !== 'all') {
+      if (typeFilter === 'time_edit') {
+        if (request.request_type !== 'time_edit') {
+          return false;
+        }
+      } else {
+        // Para solicitudes normales, verificar el tipo específico
+        const originalType = request.original_request_type || request.request_type;
+        if (request.request_type !== 'normal' || originalType !== typeFilter) {
+          return false;
+        }
+      }
+    }
+
     return true;
   });
 
-  if (loading) {
-    return (
-      <div className="space-y-6">
-        <div className="animate-pulse">
-          <div className="h-8 bg-gray-200 rounded w-1/4 mb-4"></div>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            {[1, 2, 3, 4].map(i => (
-              <div key={i} className="card p-6">
-                <div className="h-4 bg-gray-200 rounded w-1/2 mb-4"></div>
-                <div className="h-8 bg-gray-200 rounded w-1/3"></div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const handleActionConfirm = async (comments) => {
+    const status = actionType === 'approve' ? 'approved' : 'rejected';
+    await updateRequestStatus(actionRequest.id, status, comments, actionRequest.request_type);
+    setActionModalOpen(false);
+    setActionRequest(null);
+    setActionType(null);
+  };
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* Header mejorado */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Solicitudes</h1>
-          <p className="text-muted-foreground mt-1">
-            Gestiona las solicitudes de tu equipo
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Solicitudes</h1>
+          <p className="text-gray-600 dark:text-gray-400 mt-1">
+            Gestiona y revisa las solicitudes de tu empresa
           </p>
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="card p-6">
+      {/* Stats Cards mejorados */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Total</p>
-              <p className="text-3xl font-bold text-foreground">{stats.total}</p>
+              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Total</p>
+              <p className="text-3xl font-bold text-gray-900 dark:text-white">{stats.total}</p>
             </div>
-            <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-              <Calendar className="w-6 h-6 text-blue-600" />
+            <div className="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
+              <FileText className="w-6 h-6 text-blue-600 dark:text-blue-400" />
             </div>
           </div>
         </div>
-
-        <div className="card p-6">
+        
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Pendientes</p>
-              <p className="text-3xl font-bold text-foreground">{stats.pending}</p>
+              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Pendientes</p>
+              <p className="text-3xl font-bold text-yellow-600 dark:text-yellow-400">{stats.pending}</p>
             </div>
-            <div className="w-12 h-12 bg-yellow-100 rounded-lg flex items-center justify-center">
-              <Clock className="w-6 h-6 text-yellow-600" />
+            <div className="p-3 bg-yellow-100 dark:bg-yellow-900/30 rounded-lg">
+              <Clock className="w-6 h-6 text-yellow-600 dark:text-yellow-400" />
             </div>
           </div>
         </div>
-
-        <div className="card p-6">
+        
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Aprobadas</p>
-              <p className="text-3xl font-bold text-foreground">{stats.approved}</p>
+              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Aprobadas</p>
+              <p className="text-3xl font-bold text-green-600 dark:text-green-400">{stats.approved}</p>
             </div>
-            <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
-              <CheckCircle className="w-6 h-6 text-green-600" />
+            <div className="p-3 bg-green-100 dark:bg-green-900/30 rounded-lg">
+              <Check className="w-6 h-6 text-green-600 dark:text-green-400" />
             </div>
           </div>
         </div>
-
-        <div className="card p-6">
+        
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Rechazadas</p>
-              <p className="text-3xl font-bold text-foreground">{stats.rejected}</p>
+              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Rechazadas</p>
+              <p className="text-3xl font-bold text-red-600 dark:text-red-400">{stats.rejected}</p>
             </div>
-            <div className="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center">
-              <XCircle className="w-6 h-6 text-red-600" />
+            <div className="p-3 bg-red-100 dark:bg-red-900/30 rounded-lg">
+              <X className="w-6 h-6 text-red-600 dark:text-red-400" />
             </div>
           </div>
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="card p-6">
+      {/* Filtros mejorados */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
         <div className="flex flex-col sm:flex-row gap-4">
           <div className="flex-1">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Buscar solicitudes
+            </label>
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <input
                 type="text"
-                placeholder="Buscar solicitudes..."
+                placeholder="Buscar por empleado, motivo..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="input pl-10 w-full"
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
               />
+              <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
             </div>
           </div>
-          <div className="flex gap-2">
+          
+          <div className="sm:w-48">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Estado
+            </label>
             <select
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-              className="input"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
             >
-              <option value="all">Todos los estados</option>
+              <option value="all">Todos</option>
               <option value="pending">Pendientes</option>
               <option value="approved">Aprobadas</option>
               <option value="rejected">Rechazadas</option>
             </select>
           </div>
+          
+          <div className="sm:w-48">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Tipo
+            </label>
+            <select
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+            >
+              <option value="all">Todos</option>
+              <option value="vacation">Vacaciones</option>
+              <option value="permission">Permisos</option>
+              <option value="sick_leave">Baja Médica</option>
+              <option value="other">Otros</option>
+              <option value="time_edit">Edición Fichajes</option>
+            </select>
+          </div>
         </div>
       </div>
 
-      {/* Requests Table */}
-      <div className="card">
-        <div className="p-6 border-b border-border">
-          <h3 className="text-lg font-semibold text-foreground">Lista de Solicitudes</h3>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="table w-full">
-            <thead>
-              <tr>
-                <th className="th">Tipo</th>
-                <th className="th">Empleado</th>
-                <th className="th">Desde</th>
-                <th className="th">Hasta</th>
-                <th className="th">Duración</th>
-                <th className="th">Estado</th>
-                <th className="th">Fecha</th>
-                <th className="th">Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredRequests.length === 0 ? (
-                <tr>
-                  <td colSpan="8" className="td text-center text-muted-foreground py-8">
-                    <Calendar className="w-12 h-12 mx-auto mb-4 text-muted-foreground/50" />
-                    <p>No hay solicitudes {filter !== 'all' ? `con estado "${filter}"` : ''}</p>
-                  </td>
-                </tr>
-              ) : (
-                filteredRequests.map((request) => {
-                  const StatusIcon = getStatusIcon(request.status);
-                  
-                  return (
-                    <tr key={request.id}>
-                      <td className="td">
-                        <span className="font-medium">
-                          {getRequestTypeDisplay(request.request_type)}
-                        </span>
-                      </td>
-                      <td className="td">
-                        <span>Empleado</span>
-                      </td>
-                      <td className="td">
-                        {formatDate(request.start_date)}
-                      </td>
-                      <td className="td">
-                        {formatDate(request.end_date)}
-                      </td>
-                      <td className="td">
-                        {request.duration_days} días
-                      </td>
-                      <td className="td">
+      {/* Lista de solicitudes mejorada */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="flex items-center gap-3">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+              <span className="text-gray-600 dark:text-gray-400">Cargando solicitudes...</span>
+            </div>
+          </div>
+        ) : filteredRequests.length === 0 ? (
+          <div className="text-center py-12">
+            <div className="w-16 h-16 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
+              <FileText className="w-8 h-8 text-gray-400" />
+            </div>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">No hay solicitudes</h3>
+            <p className="text-gray-600 dark:text-gray-400">No se encontraron solicitudes para tu empresa.</p>
+          </div>
+        ) : (
+          <div className="divide-y divide-gray-200 dark:divide-gray-700">
+            {filteredRequests.map((request) => {
+              const typeInfo = getRequestTypeInfo(request.original_request_type || request.request_type);
+              const statusInfo = getStatusInfo(request.status);
+
+              return (
+                <div key={request.id} className="p-6 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1 min-w-0">
+                      {/* Header de la solicitud */}
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className="flex-shrink-0">
+                          <div className="w-10 h-10 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center">
+                            <User className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+                          </div>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <h3 className="text-lg font-semibold text-gray-900 dark:text-white truncate">
+                            {request.user_company_roles?.user_profiles?.full_name || 'Sin nombre'}
+                          </h3>
+                          <p className="text-sm text-gray-500 dark:text-gray-400">
+                            {request.user_company_roles?.user_profiles?.email || 'Sin email'}
+                          </p>
+                        </div>
                         <div className="flex items-center gap-2">
-                          <StatusIcon className="w-4 h-4" />
-                          <span className={`badge ${getStatusColor(request.status)}`}>
-                            {request.status === 'pending' ? 'Pendiente' : 
-                             request.status === 'approved' ? 'Aprobada' : 
-                             request.status === 'rejected' ? 'Rechazada' : request.status}
+                          {request.request_type !== 'time_edit' && (
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${typeInfo.color}`}>
+                              <typeInfo.icon className="w-3 h-3 mr-1" />
+                              {typeInfo.label}
+                            </span>
+                          )}
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusInfo.color}`}>
+                            <statusInfo.icon className="w-3 h-3 mr-1" />
+                            {statusInfo.label}
                           </span>
                         </div>
-                      </td>
-                      <td className="td">
-                        <span className="text-sm text-muted-foreground">
-                          {formatDate(request.created_at)}
-                        </span>
-                      </td>
-                      <td className="td">
-                        {request.status === 'pending' && (
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => updateRequestStatus(request.id, 'approved', '', request.request_type || 'normal')}
-                              className="btn btn-ghost btn-sm text-green-600"
-                              title="Aprobar"
-                            >
-                              <CheckCircle className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => updateRequestStatus(request.id, 'rejected', '', request.request_type || 'normal')}
-                              className="btn btn-ghost btn-sm text-red-600"
-                              title="Rechazar"
-                            >
-                              <XCircle className="w-4 h-4" />
-                            </button>
+                      </div>
+
+                      {/* Contenido de la solicitud */}
+                      <div className="ml-12">
+                        {request.request_type !== 'time_edit' && (
+                          <p className="text-gray-700 dark:text-gray-300 mb-3">
+                            {request.reason}
+                          </p>
+                        )}
+                        
+                        {request.request_type === 'time_edit' && (
+                          <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 mb-3">
+                            <h4 className="font-medium text-gray-900 dark:text-white mb-3">Detalles del Fichaje</h4>
+                            {request.time_entry_id && request.time_entries ? (
+                              <div className="space-y-2">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Actual:</span>
+                                  <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${getRequestTypeInfo(request.time_entries.entry_type).color}`}>
+                                    {React.createElement(getRequestTypeInfo(request.time_entries.entry_type).icon, { className: "w-3 h-3 mr-1" })}
+                                    {getRequestTypeInfo(request.time_entries.entry_type).label}
+                                  </span>
+                                  <span className="text-sm text-gray-700 dark:text-gray-300">
+                                    {new Date(request.time_entries.entry_time).toLocaleString('es-ES')}
+                                  </span>
+                                </div>
+                                {request.time_entries.notes && (
+                                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                                    Notas: {request.time_entries.notes}
+                                  </p>
+                                )}
+                              </div>
+                            ) : (
+                              <p className="text-sm text-gray-600 dark:text-gray-400">
+                                Fichaje original no disponible
+                              </p>
+                            )}
+
+                            {request.original_request_type !== 'delete_entry' && (
+                              <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
+                                <h5 className="font-medium text-gray-900 dark:text-white mb-2">Cambios propuestos</h5>
+                                <div className="space-y-2">
+                                  {request.proposed_entry_type && (
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Tipo:</span>
+                                      <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${getRequestTypeInfo(request.proposed_entry_type).color}`}>
+                                        {React.createElement(getRequestTypeInfo(request.proposed_entry_type).icon, { className: "w-3 h-3 mr-1" })}
+                                        {getRequestTypeInfo(request.proposed_entry_type).label}
+                                      </span>
+                                    </div>
+                                  )}
+                                  {request.proposed_entry_time && (
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Fecha/Hora:</span>
+                                      <span className="text-sm text-gray-700 dark:text-gray-300">
+                                        {new Date(request.proposed_entry_time).toLocaleString('es-ES')}
+                                      </span>
+                                    </div>
+                                  )}
+                                  {request.proposed_notes && (
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Notas:</span>
+                                      <span className="text-sm text-gray-700 dark:text-gray-300">{request.proposed_notes}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         )}
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+
+                        {/* Información adicional */}
+                        <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
+                          <span>Solicitada: {formatDate(request.created_at)}</span>
+                          {request.updated_at !== request.created_at && (
+                            <span>Actualizada: {formatDate(request.updated_at)}</span>
+                          )}
+                          {request.request_type !== 'time_edit' && (
+                            <>
+                              <span>Duración: {getDurationDisplay(request)}</span>
+                              <span>Desde: {formatDate(request.start_date)}</span>
+                              {request.original_request_type !== 'permission' && (
+                                <span>Hasta: {formatDate(request.end_date)}</span>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Acciones */}
+                    <div className="flex items-center gap-2 ml-4">
+                      {request.status === 'pending' && (
+                        <>
+                          <button
+                            onClick={() => {
+                              setActionRequest(request);
+                              setActionType('approve');
+                              setActionModalOpen(true);
+                            }}
+                            className="inline-flex items-center px-3 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors"
+                            title="Aprobar"
+                          >
+                            <Check className="w-4 h-4 mr-1" />
+                            Aprobar
+                          </button>
+                          <button
+                            onClick={() => {
+                              setActionRequest(request);
+                              setActionType('reject');
+                              setActionModalOpen(true);
+                            }}
+                            className="inline-flex items-center px-3 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-colors"
+                            title="Rechazar"
+                          >
+                            <X className="w-4 h-4 mr-1" />
+                            Rechazar
+                          </button>
+                        </>
+                      )}
+                      <button
+                        onClick={() => {
+                          setSelectedRequest(request);
+                          setIsModalOpen(true);
+                        }}
+                        className="inline-flex items-center px-3 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 text-sm font-medium rounded-lg transition-colors"
+                        title="Ver detalles"
+                      >
+                        <Eye className="w-4 h-4 mr-1" />
+                        Ver
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
+      
+      {/* Modales */}
+      <RequestDetailsModal
+        isOpen={isModalOpen}
+        onClose={() => {
+          setIsModalOpen(false);
+          setSelectedRequest(null);
+        }}
+        request={selectedRequest}
+        getRequestTypeInfo={getRequestTypeInfo}
+        formatDate={formatDate}
+        getDurationDisplay={getDurationDisplay}
+      />
+
+      <RequestActionModal
+        isOpen={actionModalOpen}
+        onClose={() => {
+          setActionModalOpen(false);
+          setActionRequest(null);
+          setActionType(null);
+        }}
+        request={actionRequest}
+        action={actionType}
+        onConfirm={handleActionConfirm}
+        getRequestTypeInfo={getRequestTypeInfo}
+        formatDate={formatDate}
+        getDurationDisplay={getDurationDisplay}
+      />
     </div>
   );
 }
