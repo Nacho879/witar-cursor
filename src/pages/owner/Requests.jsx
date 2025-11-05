@@ -130,49 +130,59 @@ export default function Requests() {
       let companyId = null;
 
       if (requestType === 'normal') {
-        // Obtener datos de la solicitud antes de actualizar
-        const { data: request } = await supabase
-          .from('requests')
-          .select('*')
-          .eq('id', requestId)
-          .single();
-
-        if (request) {
-          requestData = request;
-          employeeUserId = request.user_id;
-          companyId = request.company_id;
+        // Buscar la solicitud en la lista ya cargada para obtener el company_id
+        const existingRequest = requests.find(r => r.id === requestId && r.request_type === 'normal');
+        
+        if (!existingRequest) {
+          throw new Error('Solicitud no encontrada en la lista');
         }
 
+        requestData = existingRequest;
+        employeeUserId = existingRequest.user_id;
+        companyId = existingRequest.company_id;
+
+        // Actualizar directamente sin verificar primero (las políticas RLS ya validaron que podemos verla)
         const { error } = await supabase
           .from('requests')
           .update(updateData)
           .eq('id', requestId);
 
-        if (error) throw error;
+        if (error) {
+          console.error('Error actualizando solicitud:', error);
+          throw error;
+        }
       } else if (requestType === 'time_edit') {
-        // Obtener datos de la solicitud antes de actualizar
-        const { data: request } = await supabase
-          .from('time_entry_edit_requests')
-          .select('*')
-          .eq('id', requestId)
-          .single();
-
-        if (request) {
-          requestData = request;
-          employeeUserId = request.user_id;
-          companyId = request.company_id;
+        // Buscar la solicitud en la lista ya cargada para obtener los datos
+        const existingRequest = requests.find(r => r.id === requestId && r.request_type === 'time_edit');
+        
+        if (!existingRequest) {
+          throw new Error('Solicitud de edición no encontrada en la lista');
         }
 
-        updateData.approved_by = (await supabase.auth.getUser()).data.user.id;
+        requestData = existingRequest;
+        employeeUserId = existingRequest.user_id;
+        companyId = existingRequest.company_id;
+
+        // Obtener el usuario actual para approved_by
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          throw new Error('Usuario no autenticado');
+        }
+
+        updateData.approved_by = user.id;
         updateData.approved_at = new Date().toISOString();
         updateData.approval_notes = comments;
 
+        // Actualizar directamente sin verificar primero (las políticas RLS ya validaron que podemos verla)
         const { error } = await supabase
           .from('time_entry_edit_requests')
           .update(updateData)
           .eq('id', requestId);
 
-        if (error) throw error;
+        if (error) {
+          console.error('Error actualizando solicitud de edición:', error);
+          throw error;
+        }
 
         // Si se aprueba, aplicar los cambios al fichaje
         if (newStatus === 'approved') {
@@ -590,14 +600,14 @@ export default function Requests() {
                         {request.status === 'pending' && (
                           <div className="flex gap-2">
                             <button
-                              onClick={() => updateRequestStatus(request.id, 'approved')}
+                              onClick={() => updateRequestStatus(request.id, 'approved', '', request.request_type || 'normal')}
                               className="btn btn-ghost btn-sm text-green-600"
                               title="Aprobar"
                             >
                               <CheckCircle className="w-4 h-4" />
                             </button>
                             <button
-                              onClick={() => updateRequestStatus(request.id, 'rejected')}
+                              onClick={() => updateRequestStatus(request.id, 'rejected', '', request.request_type || 'normal')}
                               className="btn btn-ghost btn-sm text-red-600"
                               title="Rechazar"
                             >
