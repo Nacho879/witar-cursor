@@ -200,7 +200,7 @@ export default function FloatingTimeClock() {
           .eq('entry_type', 'clock_in')
           .order('entry_time', { ascending: false })
           .limit(1)
-          .single();
+          .maybeSingle();
 
         if (!statusError && activeByStatus) {
           // CRÍTICO: Aunque encontramos por status='active', debemos verificar que NO tenga clock_out después
@@ -247,7 +247,7 @@ export default function FloatingTimeClock() {
             .eq('entry_type', 'clock_in')
             .order('entry_time', { ascending: false })
             .limit(1)
-            .single();
+            .maybeSingle();
           
           if (!clockInErrorFallback && lastClockInFallback) {
             // Verificar que no tenga un clock_out después
@@ -498,29 +498,86 @@ export default function FloatingTimeClock() {
             // Ignorar si la API de permisos no está disponible
           }
 
-          // Solicitar posición; si falla, bloquear el fichaje
-          const position = await new Promise((resolve, reject) => {
-            navigator.geolocation.getCurrentPosition(resolve, reject, {
-              timeout: 12000,
-              enableHighAccuracy: true,
-              maximumAge: 0
+          // Intentar obtener ubicación con estrategia de reintentos
+          // Primero intentar con alta precisión, luego con configuración más tolerante
+          let position = null;
+          let lastError = null;
+
+          // Intento 1: Alta precisión con timeout corto
+          try {
+            console.log('🌍 [GPS] Intento 1: Alta precisión (10s timeout)');
+            position = await new Promise((resolve, reject) => {
+              navigator.geolocation.getCurrentPosition(resolve, reject, {
+                timeout: 10000,
+                enableHighAccuracy: true,
+                maximumAge: 60000 // Permitir caché de hasta 1 minuto
+              });
             });
-          });
-          locationData = {
-            lat: position.coords.latitude,
-            lng: position.coords.longitude,
-            accuracy: position.coords.accuracy
-          };
-          setCurrentLocation(locationData);
+            console.log('✅ [GPS] Ubicación obtenida con alta precisión');
+          } catch (err1) {
+            console.log('⚠️ [GPS] Intento 1 falló, intentando con configuración más tolerante...', err1);
+            lastError = err1;
+            
+            // Intento 2: Precisión estándar con timeout más largo
+            try {
+              console.log('🌍 [GPS] Intento 2: Precisión estándar (15s timeout)');
+              position = await new Promise((resolve, reject) => {
+                navigator.geolocation.getCurrentPosition(resolve, reject, {
+                  timeout: 15000,
+                  enableHighAccuracy: false, // No requerir alta precisión
+                  maximumAge: 300000 // Permitir caché de hasta 5 minutos
+                });
+              });
+              console.log('✅ [GPS] Ubicación obtenida con precisión estándar');
+            } catch (err2) {
+              console.log('⚠️ [GPS] Intento 2 falló, intentando con configuración más permisiva...', err2);
+              lastError = err2;
+              
+              // Intento 3: Configuración muy permisiva
+              try {
+                console.log('🌍 [GPS] Intento 3: Configuración permisiva (20s timeout)');
+                position = await new Promise((resolve, reject) => {
+                  navigator.geolocation.getCurrentPosition(resolve, reject, {
+                    timeout: 20000,
+                    enableHighAccuracy: false,
+                    maximumAge: 600000 // Permitir caché de hasta 10 minutos
+                  });
+                });
+                console.log('✅ [GPS] Ubicación obtenida con configuración permisiva');
+              } catch (err3) {
+                console.error('❌ [GPS] Todos los intentos fallaron');
+                lastError = err3;
+                throw err3;
+              }
+            }
+          }
+
+          if (position) {
+            locationData = {
+              lat: position.coords.latitude,
+              lng: position.coords.longitude,
+              accuracy: position.coords.accuracy
+            };
+            setCurrentLocation(locationData);
+            console.log('✅ [GPS] Ubicación final:', locationData);
+          }
         } catch (geoErr) {
           const code = geoErr && typeof geoErr === 'object' ? geoErr.code : undefined;
+          console.error('❌ [GPS] Error final:', geoErr, 'Code:', code);
+          
+          let errorMessage = '❌ No se pudo obtener tu ubicación. ';
+          
           if (code === 1) {
-            showToast('❌ Permiso de ubicación denegado. Activa el GPS para fichar.', 'error');
+            errorMessage += 'Permiso de ubicación denegado. Ve a la configuración del navegador y permite el acceso a la ubicación.';
+          } else if (code === 2) {
+            errorMessage += 'Ubicación no disponible. Verifica que el GPS esté activado en tu dispositivo y que tengas señal.';
           } else if (code === 3) {
-            showToast('⏳ Tiempo de GPS agotado. Asegúrate de tener el GPS activo.', 'error');
+            errorMessage += 'Tiempo de espera agotado. El GPS está tardando demasiado. Intenta salir al exterior o espera unos segundos y vuelve a intentar.';
           } else {
-            showToast('❌ No se pudo obtener tu ubicación. Activa el GPS para fichar.', 'error');
+            errorMessage += 'Asegúrate de tener el GPS activado y permisos de ubicación concedidos. Si el problema persiste, intenta recargar la página.';
           }
+          
+          showToast(errorMessage, 'error');
           return;
         }
 
@@ -674,7 +731,7 @@ export default function FloatingTimeClock() {
         .eq('status', 'active')
         .order('entry_time', { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
 
       if (!statusError && activeByStatus) {
         activeEntry = activeByStatus;
@@ -688,7 +745,7 @@ export default function FloatingTimeClock() {
           .eq('entry_type', 'clock_in')
           .order('entry_time', { ascending: false })
           .limit(1)
-          .single();
+          .maybeSingle();
 
         if (!clockInError && lastClockIn) {
           // Verificar que no tenga un clock_out después
@@ -1393,7 +1450,7 @@ export default function FloatingTimeClock() {
   }
 
   return (
-    <div className="absolute top-4 right-4 z-40">
+    <div className="absolute top-20 right-4 sm:top-4 lg:right-6 z-40">
       <div className="bg-green-100 dark:bg-green-900/20 rounded-full px-3 sm:px-5 py-2 shadow-lg border border-green-200 dark:border-green-800">
         <div className="flex items-center justify-between gap-2 sm:gap-3">
           {/* Tiempo transcurrido */}
@@ -1504,18 +1561,6 @@ export default function FloatingTimeClock() {
                   <span>Mi Perfil</span>
                 </button>
                 <button
-                  onClick={handleNotificationsClick}
-                  className="w-full px-4 py-3 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-3 transition-colors"
-                >
-                  <Bell className="w-5 h-5" />
-                  <span>Notificaciones</span>
-                  {notifications.length > 0 && (
-                    <span className="ml-auto bg-red-500 text-white text-xs rounded-full px-2 py-1 font-medium">
-                      {notifications.length}
-                    </span>
-                  )}
-                </button>
-                <button
                   onClick={() => {
                     toggleTheme();
                     setIsDropdownOpen(false);
@@ -1551,217 +1596,12 @@ export default function FloatingTimeClock() {
         </div>
       </div>
 
-      {/* Panel de notificaciones mejorado */}
-      {showNotifications && (
-        <div className="absolute right-0 top-full mt-2 w-96 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 max-h-[600px] overflow-hidden">
-          <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-3">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Notificaciones</h3>
-                {unreadCount > 0 && (
-                  <span className="px-2 py-1 bg-red-500 text-white text-xs rounded-full">
-                    {unreadCount}
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center gap-2">
-                {notificationStats.unread > 0 && (
-                  <button
-                    onClick={markAllNotificationsAsRead}
-                    className="p-1 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"
-                    title="Marcar todas como leídas"
-                    aria-label="Marcar todas como leídas"
-                  >
-                    <Check className="w-4 h-4" />
-                  </button>
-                )}
-                <button
-                  onClick={() => setShowNotifications(false)}
-                  className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"
-                  aria-label="Cerrar panel de notificaciones"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-
-            {/* Estadísticas rápidas */}
-            <div className="flex gap-2 text-xs text-gray-500 dark:text-gray-400">
-              <span>Total: {notificationStats.total}</span>
-              <span>•</span>
-              <span className="text-red-500">No leídas: {notificationStats.unread}</span>
-              <span>•</span>
-              <span className="text-green-500">Leídas: {notificationStats.read}</span>
-            </div>
-
-            {/* Filtros y búsqueda */}
-            <div className="mt-3 space-y-2">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Buscar notificaciones..."
-                  value={notificationSearch}
-                  onChange={(e) => setNotificationSearch(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              
-              <div className="flex gap-1">
-                <button
-                  onClick={() => setNotificationFilter('all')}
-                  className={`px-3 py-1 text-xs rounded-full transition-colors ${
-                    notificationFilter === 'all'
-                      ? 'bg-blue-500 text-white'
-                      : 'bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-500'
-                  }`}
-                >
-                  Todas
-                </button>
-                <button
-                  onClick={() => setNotificationFilter('unread')}
-                  className={`px-3 py-1 text-xs rounded-full transition-colors ${
-                    notificationFilter === 'unread'
-                      ? 'bg-red-500 text-white'
-                      : 'bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-500'
-                  }`}
-                >
-                  No leídas
-                </button>
-                <button
-                  onClick={() => setNotificationFilter('read')}
-                  className={`px-3 py-1 text-xs rounded-full transition-colors ${
-                    notificationFilter === 'read'
-                      ? 'bg-green-500 text-white'
-                      : 'bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-500'
-                  }`}
-                >
-                  Leídas
-                </button>
-              </div>
-            </div>
-          </div>
-          
-          <div className="overflow-y-auto max-h-[400px]">
-            {notifications.length === 0 ? (
-              <div className="text-center py-8">
-                <Bell className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-                <p className="text-gray-500 dark:text-gray-400 font-medium">No hay notificaciones</p>
-                <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">
-                  {notificationFilter === 'all' 
-                    ? 'No tienes notificaciones aún'
-                    : notificationFilter === 'unread'
-                    ? 'No tienes notificaciones sin leer'
-                    : 'No tienes notificaciones leídas'
-                  }
-                </p>
-              </div>
-            ) : (
-              <div className="p-3 space-y-2">
-                {notifications.map((notification) => (
-                  <div
-                    key={notification.id}
-                    className={`p-4 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors cursor-pointer border-l-4 ${
-                      notification.read_at ? '' : 'ring-2 ring-blue-500/20'
-                    } ${getNotificationColor(notification.type)}`}
-                    onClick={() => markNotificationAsRead(notification.id)}
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className="flex-shrink-0">
-                        <span className="text-2xl">{getNotificationIcon(notification.type)}</span>
-                      </div>
-                      
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                              {notification.title}
-                            </p>
-                            <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">
-                              {notification.message}
-                            </p>
-                            
-                            <div className="flex items-center gap-4 mt-2 text-xs text-gray-400 dark:text-gray-500">
-                              <span>{formatTimeAgo(notification.created_at)}</span>
-                              
-                              {notification.sender_name && (
-                                <>
-                                  <span>•</span>
-                                  <span>{notification.sender_name}</span>
-                                </>
-                              )}
-                            </div>
-                          </div>
-                          
-                          <div className="flex items-center gap-1 ml-2">
-                            {!notification.read_at && (
-                              <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
-                            )}
-                            
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                deleteNotification(notification.id);
-                              }}
-                              className="p-1 text-gray-400 hover:text-red-500 rounded-full hover:bg-red-50 dark:hover:bg-red-900/20"
-                              title="Eliminar notificación"
-                              aria-label="Eliminar notificación"
-                            >
-                              <Trash2 className="w-3 h-3" />
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-          
-          {notifications.length > 0 && (
-            <div className="p-3 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50">
-              <button
-                onClick={() => {
-                  setShowNotifications(false);
-                  // Navegar a la página completa de notificaciones según el rol
-                  if (userRole === 'owner') {
-                    window.location.href = '/owner/notifications';
-                  } else if (userRole === 'admin') {
-                    window.location.href = '/admin/notifications';
-                  } else if (userRole === 'manager') {
-                    window.location.href = '/manager/notifications';
-                  } else {
-                    window.location.href = '/employee/notifications';
-                  }
-                }}
-                className="w-full text-sm text-blue-600 dark:text-blue-400 hover:underline text-center"
-              >
-                Ver historial completo
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-
       {/* Iconos flotantes */}
       <div className="absolute -top-2 -right-2 flex gap-1">
         {/* Icono de reloj para fichajes */}
         <div className="w-6 h-6 bg-white dark:bg-gray-800 rounded-full shadow-lg flex items-center justify-center border border-gray-200 dark:border-gray-700">
           <Clock className="w-3 h-3 text-gray-600 dark:text-gray-400" />
         </div>
-        
-        {/* Icono de solicitudes nuevas */}
-        {notifications.filter(n => n.type === 'request' && !n.read_at).length > 0 && (
-          <div className="w-6 h-6 bg-orange-500 rounded-full shadow-lg flex items-center justify-center border-2 border-white dark:border-gray-800 relative">
-            <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-            <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full text-xs text-white flex items-center justify-center font-bold">
-              {notifications.filter(n => n.type === 'request' && !n.read_at).length}
-            </span>
-          </div>
-        )}
       </div>
     </div>
   );

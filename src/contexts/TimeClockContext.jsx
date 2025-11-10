@@ -225,6 +225,7 @@ export function TimeClockProvider({ children }) {
         company_id: companyId,
         entry_type: 'clock_in',
         entry_time: new Date(startTime).toISOString(),
+        status: 'active', // CRÍTICO: Establecer status explícitamente para que se encuentre al buscar fichajes activos
         ...(location && {
           location_lat: location.lat,
           location_lng: location.lng
@@ -291,17 +292,26 @@ export function TimeClockProvider({ children }) {
 
         // Si hay clock_out, el fichaje está completado
         if (clockOutEntry) {
-          console.log('📋 Fichaje completado en base de datos, actualizando estado local');
-          updateTimeClockState({
-            isActive: false,
-            startTime: null,
-            elapsedTime: 0,
-            isPaused: false,
-            totalPausedTime: 0,
-            pauseStartTime: null
-          });
-          clearLocalStorage();
-          return;
+          // Verificar que realmente hay un clock_out DESPUÉS del clock_in
+          const clockOutTime = new Date(clockOutEntry.entry_time).getTime();
+          const clockInTime = new Date(activeEntry.entry_time).getTime();
+          
+          if (clockOutTime > clockInTime) {
+            console.log('📋 [TimeClockContext] Fichaje completado en base de datos, actualizando estado local');
+            updateTimeClockState({
+              isActive: false,
+              startTime: null,
+              elapsedTime: 0,
+              isPaused: false,
+              totalPausedTime: 0,
+              pauseStartTime: null
+            });
+            clearLocalStorage();
+            return;
+          } else {
+            // Clock_out es anterior al clock_in, ignorar (inconsistencia de datos)
+            console.log('⚠️ [TimeClockContext] Clock_out anterior al clock_in detectado, ignorando');
+          }
         }
 
         // Verificar si el tiempo local coincide con el de la base de datos
@@ -326,9 +336,12 @@ export function TimeClockProvider({ children }) {
         console.log('✅ Estado sincronizado con base de datos');
       } else {
         // No hay fichaje activo en la base de datos, pero sí localmente
-        console.log('⚠️ Fichaje activo en localStorage pero no en base de datos');
-        // Intentar restaurar el fichaje
-        await restoreActiveSession();
+        // PROTECCIÓN: NO limpiar el estado automáticamente - puede ser que esté en proceso de fichaje
+        // Solo loguear la advertencia pero preservar el estado local durante la navegación
+        console.log('⚠️ Fichaje activo en localStorage pero no encontrado en BD por status');
+        console.log('🔒 Preservando estado local durante navegación - no se limpia automáticamente');
+        // NO llamar restoreActiveSession() aquí para evitar limpiar el estado durante navegación
+        // El estado se preservará hasta que el usuario desfichje manualmente
       }
     } catch (error) {
       console.error('Error syncing with database:', error);
@@ -342,15 +355,17 @@ export function TimeClockProvider({ children }) {
     checkUserCompany();
     
     // Sincronizar con la base de datos solo si hay un fichaje activo
+    // IMPORTANTE: Esperar más tiempo para evitar interferir con FloatingTimeClock durante navegación
     const syncTimer = setTimeout(() => {
       const hasActiveSession = localStorage.getItem(STORAGE_KEYS.ACTIVE_SESSION) === 'true';
       if (hasActiveSession) {
-        console.log('🔄 Fichaje activo detectado, sincronizando...');
+        console.log('🔄 [TimeClockContext] Fichaje activo detectado, sincronizando...');
+        // Sincronizar pero de forma conservadora - no limpiar si hay sesión activa
         syncWithDatabase();
       } else {
-        console.log('🔍 No hay fichaje activo, saltando sincronización inicial');
+        console.log('🔍 [TimeClockContext] No hay fichaje activo, saltando sincronización inicial');
       }
-    }, 3000);
+    }, 5000); // Aumentado a 5 segundos para dar tiempo a que FloatingTimeClock se monte primero
     
     return () => clearTimeout(syncTimer);
   }, []);
@@ -413,6 +428,7 @@ export function TimeClockProvider({ children }) {
         company_id: companyId,
         entry_type: 'clock_in',
         entry_time: now.toISOString(),
+        status: 'active', // CRÍTICO: Establecer status explícitamente para que se encuentre al buscar fichajes activos
         ...(locationData && {
           location_lat: locationData.lat,
           location_lng: locationData.lng
@@ -600,38 +616,78 @@ export function TimeClockProvider({ children }) {
   const getCurrentLocation = useCallback(async () => {
     console.log('🌍 [TimeClockContext] Intentando obtener ubicación GPS...');
     
-    if (navigator.geolocation) {
+    if (!navigator.geolocation) {
+      console.log('❌ [TimeClockContext] Geolocalización no disponible en este navegador');
+      return null;
+    }
+
+    // Estrategia de reintentos con diferentes configuraciones
+    let position = null;
+    
+    // Intento 1: Alta precisión con timeout corto
+    try {
+      console.log('🌍 [TimeClockContext] Intento 1: Alta precisión (10s timeout)');
+      position = await new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          timeout: 10000,
+          enableHighAccuracy: true,
+          maximumAge: 60000 // Permitir caché de hasta 1 minuto
+        });
+      });
+      console.log('✅ [TimeClockContext] Ubicación obtenida con alta precisión');
+    } catch (err1) {
+      console.log('⚠️ [TimeClockContext] Intento 1 falló, intentando con configuración más tolerante...', err1);
+      
+      // Intento 2: Precisión estándar con timeout más largo
       try {
-        console.log('📍 [TimeClockContext] Geolocalización disponible, solicitando posición...');
-        const position = await new Promise((resolve, reject) => {
+        console.log('🌍 [TimeClockContext] Intento 2: Precisión estándar (15s timeout)');
+        position = await new Promise((resolve, reject) => {
           navigator.geolocation.getCurrentPosition(resolve, reject, {
-            timeout: 10000, // Aumentar timeout a 10 segundos
-            enableHighAccuracy: true, // Habilitar alta precisión
-            maximumAge: 300000 // Cache de 5 minutos
+            timeout: 15000,
+            enableHighAccuracy: false, // No requerir alta precisión
+            maximumAge: 300000 // Permitir caché de hasta 5 minutos
           });
         });
+        console.log('✅ [TimeClockContext] Ubicación obtenida con precisión estándar');
+      } catch (err2) {
+        console.log('⚠️ [TimeClockContext] Intento 2 falló, intentando con configuración más permisiva...', err2);
         
-        console.log('✅ [TimeClockContext] Ubicación obtenida:', {
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
-          accuracy: position.coords.accuracy
-        });
-        
-        const newLocation = {
-          lat: position.coords.latitude,
-          lng: position.coords.longitude
-        };
-        setLocation(newLocation);
-        localStorage.setItem(STORAGE_KEYS.LOCATION, JSON.stringify(newLocation));
-        console.log('💾 [TimeClockContext] Ubicación guardada en localStorage');
-        return newLocation;
-      } catch (error) {
-        console.error('❌ [TimeClockContext] Error obteniendo ubicación GPS:', error);
-        return null;
+        // Intento 3: Configuración muy permisiva
+        try {
+          console.log('🌍 [TimeClockContext] Intento 3: Configuración permisiva (20s timeout)');
+          position = await new Promise((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, {
+              timeout: 20000,
+              enableHighAccuracy: false,
+              maximumAge: 600000 // Permitir caché de hasta 10 minutos
+            });
+          });
+          console.log('✅ [TimeClockContext] Ubicación obtenida con configuración permisiva');
+        } catch (err3) {
+          console.error('❌ [TimeClockContext] Todos los intentos fallaron:', err3);
+          return null;
+        }
       }
-    } else {
-      console.log('❌ [TimeClockContext] Geolocalización no disponible en este navegador');
     }
+
+    if (position) {
+      const newLocation = {
+        lat: position.coords.latitude,
+        lng: position.coords.longitude
+      };
+      
+      console.log('✅ [TimeClockContext] Ubicación obtenida:', {
+        lat: newLocation.lat,
+        lng: newLocation.lng,
+        accuracy: position.coords.accuracy
+      });
+      
+      setLocation(newLocation);
+      localStorage.setItem(STORAGE_KEYS.LOCATION, JSON.stringify(newLocation));
+      console.log('💾 [TimeClockContext] Ubicación guardada en localStorage');
+      return newLocation;
+    }
+    
     return null;
   }, []);
 
