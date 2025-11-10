@@ -21,6 +21,12 @@ export default defineConfig({
         start_url: '/',
         icons: [
           {
+            src: '/icons/icon-48x48.png',
+            sizes: '48x48',
+            type: 'image/png',
+            purpose: 'maskable any'
+          },
+          {
             src: '/icons/icon-72x72.png',
             sizes: '72x72',
             type: 'image/png',
@@ -82,6 +88,8 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        // Desactivar logs de workbox
+        mode: 'production',
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/.*\.supabase\.co\/.*/i,
@@ -100,9 +108,14 @@ export default defineConfig({
         ]
       },
       devOptions: {
-        enabled: true,
-        type: 'module'
-      }
+        enabled: false, // Desactivar completamente PWA en desarrollo para evitar logs molestos
+        type: 'module',
+        navigateFallback: undefined,
+        suppressWarnings: true,
+        disableDevLogs: true
+      },
+      // Configuración adicional para desactivar logs de workbox
+      injectRegister: 'inline'
     })
   ],
   resolve: {

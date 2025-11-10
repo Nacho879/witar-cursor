@@ -11,20 +11,50 @@ export class NotificationService {
     data = null
   }) {
     try {
-      const { data: notification, error } = await supabase
+      // Construir el objeto de inserción básico
+      const insertData = {
+        company_id: companyId,
+        recipient_id: recipientId,
+        type,
+        title,
+        message,
+        created_at: new Date().toISOString()
+      };
+
+      // Intentar primero con todas las columnas (si están disponibles)
+      if (senderId !== null) {
+        insertData.sender_id = senderId;
+      }
+      if (data !== null) {
+        insertData.data = data;
+      }
+
+      let { data: notification, error } = await supabase
         .from('notifications')
-        .insert({
+        .insert(insertData)
+        .select()
+        .single();
+
+      // Si falla por columnas faltantes, intentar sin las opcionales
+      if (error && (error.message?.includes("sender_id") || error.message?.includes("data"))) {
+        const fallbackData = {
           company_id: companyId,
           recipient_id: recipientId,
-          sender_id: senderId,
           type,
           title,
           message,
-          data,
           created_at: new Date().toISOString()
-        })
-        .select()
-        .single();
+        };
+        
+        const { data: fallbackNotification, error: fallbackError } = await supabase
+          .from('notifications')
+          .insert(fallbackData)
+          .select()
+          .single();
+
+        if (fallbackError) throw fallbackError;
+        return fallbackNotification;
+      }
 
       if (error) throw error;
       return notification;
@@ -248,6 +278,45 @@ export class NotificationService {
     }
   }
 
+  // Notificar cuando se sube un documento a un usuario específico
+  static async notifyDocumentUploadedToUser({
+    companyId,
+    documentTitle,
+    recipientUserId,
+    uploaderName,
+    documentId = null
+  }) {
+    try {
+      // Obtener información del destinatario
+      const { data: recipient } = await supabase
+        .from('user_company_roles')
+        .select('user_profiles(full_name)')
+        .eq('user_id', recipientUserId)
+        .eq('company_id', companyId)
+        .eq('is_active', true)
+        .single();
+
+      const recipientName = recipient?.user_profiles?.full_name || 'Usuario';
+
+      await this.createNotification({
+        companyId,
+        recipientId: recipientUserId,
+        senderId: null, // El sistema envía la notificación
+        type: 'document',
+        title: 'Nuevo documento disponible',
+        message: `${uploaderName} ha subido el documento "${documentTitle}" para ti`,
+        data: { 
+          documentTitle, 
+          uploaderName, 
+          recipientName,
+          documentId 
+        }
+      });
+    } catch (error) {
+      console.error('Error notifying document upload to user:', error);
+    }
+  }
+
   // Notificaciones de invitaciones
   static async notifyInvitationEvent({
     companyId,
@@ -400,6 +469,38 @@ export class NotificationService {
       return count || 0;
     } catch (error) {
       console.error('Error getting unread count:', error);
+      throw error;
+    }
+  }
+
+  // Obtener historial de notificaciones borradas
+  static async getDeletedNotifications(userId, companyId, limit = 50) {
+    try {
+      const { data, error } = await supabase
+        .from('deleted_notifications')
+        .select('*')
+        .eq('company_id', companyId)
+        .or(`recipient_id.eq.${userId},recipient_id.is.null,deleted_by.eq.${userId}`)
+        .order('deleted_at', { ascending: false })
+        .limit(limit);
+
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error getting deleted notifications:', error);
+      throw error;
+    }
+  }
+
+  // Limpiar notificaciones borradas mayores a 15 días (solo para admins)
+  static async cleanupOldDeletedNotifications() {
+    try {
+      const { data, error } = await supabase.rpc('cleanup_old_deleted_notifications');
+      
+      if (error) throw error;
+      return data || 0;
+    } catch (error) {
+      console.error('Error cleaning up deleted notifications:', error);
       throw error;
     }
   }

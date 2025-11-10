@@ -12,7 +12,8 @@ import {
   LogIn,
   LogOut,
   Coffee,
-  AlertCircle
+  AlertCircle,
+  Bell
 } from 'lucide-react';
 import TimeClock from '@/components/TimeClock';
 
@@ -71,6 +72,8 @@ export default function EmployeeDashboard() {
   const [loading, setLoading] = React.useState(true);
   const [currentTime, setCurrentTime] = React.useState(new Date());
   const [subscription, setSubscription] = React.useState(null);
+  const [notifications, setNotifications] = React.useState([]);
+  const [unreadNotificationsCount, setUnreadNotificationsCount] = React.useState(0);
 
   function handleTimeEntry(newEntry) {
     // Recargar los datos del dashboard cuando se crea un nuevo fichaje
@@ -138,10 +141,37 @@ export default function EmployeeDashboard() {
         )
         .subscribe();
 
+      // Suscripción para notificaciones
+      const notificationsSubscription = supabase
+        .channel('notifications_changes')
+        .on('postgres_changes', 
+          { 
+            event: '*', 
+            schema: 'public', 
+            table: 'notifications',
+            filter: `recipient_id=eq.${user.id}`
+          }, 
+          async () => {
+            // Recargar notificaciones cuando haya cambios
+            const { data: userRole } = await supabase
+              .from('user_company_roles')
+              .select('companies(id)')
+              .eq('user_id', user.id)
+              .eq('is_active', true)
+              .single();
+            
+            if (userRole?.companies?.id) {
+              loadNotifications(user.id, userRole.companies.id);
+            }
+          }
+        )
+        .subscribe();
+
       setSubscription({
         timeEntries: timeEntriesSubscription,
         requests: requestsSubscription,
-        timeEditRequests: timeEditRequestsSubscription
+        timeEditRequests: timeEditRequestsSubscription,
+        notifications: notificationsSubscription
       });
     };
 
@@ -159,6 +189,9 @@ export default function EmployeeDashboard() {
         }
         if (subscription.timeEditRequests) {
           supabase.removeChannel(subscription.timeEditRequests);
+        }
+        if (subscription.notifications) {
+          supabase.removeChannel(subscription.notifications);
         }
       }
     };
@@ -256,7 +289,8 @@ export default function EmployeeDashboard() {
         // Cargar estadísticas y otros datos...
         await Promise.all([
           loadUserStats(user.id),
-          loadRecentRequests(user.id)
+          loadRecentRequests(user.id),
+          loadNotifications(user.id, userRole.companies?.id)
         ]);
       }
     } catch (error) {
@@ -457,6 +491,75 @@ export default function EmployeeDashboard() {
       }
     } catch (error) {
       console.error('Error loading recent requests:', error);
+    }
+  }
+
+  async function loadNotifications(userId, companyId) {
+    try {
+      if (!userId || !companyId) return;
+
+      const { data, error } = await supabase
+        .from('notifications')
+        .select('*')
+        .eq('company_id', companyId)
+        .eq('recipient_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+      if (error) throw error;
+
+      setNotifications(data || []);
+      setUnreadNotificationsCount((data || []).filter(n => !n.read_at).length);
+    } catch (error) {
+      console.error('Error loading notifications:', error);
+    }
+  }
+
+  async function markNotificationAsRead(notificationId) {
+    try {
+      const { error } = await supabase
+        .from('notifications')
+        .update({ read_at: new Date().toISOString() })
+        .eq('id', notificationId);
+
+      if (error) throw error;
+
+      // Actualizar estado local
+      setNotifications(prev =>
+        prev.map(n =>
+          n.id === notificationId ? { ...n, read_at: new Date().toISOString() } : n
+        )
+      );
+      setUnreadNotificationsCount(prev => Math.max(0, prev - 1));
+    } catch (error) {
+      console.error('Error marking notification as read:', error);
+    }
+  }
+
+  function formatTimeAgo(dateString) {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffInSeconds = Math.floor((now - date) / 1000);
+
+    if (diffInSeconds < 60) return 'Hace un momento';
+    if (diffInSeconds < 3600) return `Hace ${Math.floor(diffInSeconds / 60)} min`;
+    if (diffInSeconds < 86400) return `Hace ${Math.floor(diffInSeconds / 3600)} h`;
+    if (diffInSeconds < 604800) return `Hace ${Math.floor(diffInSeconds / 86400)} días`;
+    return date.toLocaleDateString('es-ES');
+  }
+
+  function getNotificationIcon(type) {
+    switch (type) {
+      case 'request':
+        return <FileText className="w-4 h-4 text-blue-600" />;
+      case 'clock_in_reminder':
+        return <Clock className="w-4 h-4 text-green-600" />;
+      case 'approval':
+        return <CheckCircle className="w-4 h-4 text-green-600" />;
+      case 'rejection':
+        return <XCircle className="w-4 h-4 text-red-600" />;
+      default:
+        return <Bell className="w-4 h-4 text-gray-600" />;
     }
   }
 
@@ -778,57 +881,136 @@ export default function EmployeeDashboard() {
         )}
       </div>
 
-      {/* Recent Requests - Full Width */}
-      <div className="card">
-        <div className="p-6 border-b border-border">
-          <h3 className="text-lg font-semibold text-foreground">Mis Solicitudes Recientes</h3>
-        </div>
-        <div className="p-6">
-          {recentRequests.length === 0 ? (
-            <div className="text-center py-8">
-              <Calendar className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-muted-foreground">No hay solicitudes recientes</p>
+      {/* Notificaciones y Solicitudes Recientes - Grid de 2 columnas */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Notificaciones */}
+        <div className="card w-full flex flex-col min-h-[300px]">
+          <div className="border-b border-border flex-shrink-0 p-4 sm:p-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 md:w-10 md:h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                  <Bell className="w-4 h-4 md:w-5 md:h-5 text-green-600" />
+                </div>
+                <h3 className="text-base md:text-lg font-semibold text-foreground">
+                  Notificaciones
+                </h3>
+              </div>
+              {unreadNotificationsCount > 0 && (
+                <div className="w-6 h-6 bg-red-500 rounded-full flex items-center justify-center">
+                  <span className="text-xs font-semibold text-white">{unreadNotificationsCount}</span>
+                </div>
+              )}
             </div>
-          ) : (
-            <div className="space-y-4">
-              {recentRequests.map((request) => {
-                const StatusIcon = getStatusIcon(request.status);
-                
-                return (
-                  <div key={request.id} className="flex items-start gap-3 p-3 rounded-lg hover:bg-secondary transition-colors">
-                    <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center flex-shrink-0">
-                      <Calendar className="w-4 h-4 text-primary" />
+          </div>
+          
+          <div className="p-4 sm:p-6 flex-1 overflow-y-auto">
+            {notifications.length === 0 ? (
+              <div className="text-center py-4 md:py-8">
+                <Bell className="w-8 h-8 md:w-12 md:h-12 text-muted-foreground mx-auto mb-2 md:mb-4" />
+                <p className="text-muted-foreground">No hay notificaciones</p>
+              </div>
+            ) : (
+              <>
+                <div className="space-y-3">
+                  {notifications.slice(0, 5).map((notification) => (
+                    <div
+                      key={notification.id}
+                      className={`p-3 rounded-lg border border-border hover:shadow-md transition-shadow cursor-pointer ${
+                        !notification.read_at ? 'bg-green-50 dark:bg-green-900/10 border-green-200 dark:border-green-800' : ''
+                      }`}
+                      onClick={() => !notification.read_at && markNotificationAsRead(notification.id)}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="flex-shrink-0 mt-0.5">
+                          {getNotificationIcon(notification.type)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="text-sm font-medium text-foreground">
+                              {notification.title}
+                            </p>
+                            {!notification.read_at && (
+                              <div className="w-2 h-2 bg-green-500 rounded-full flex-shrink-0 mt-1"></div>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                            {notification.message}
+                          </p>
+                          <span className="text-xs text-muted-foreground mt-1 block">
+                            {formatTimeAgo(notification.created_at)}
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground">
-                        {getRequestTypeDisplay(request.request_type, request.request_type === 'time_edit' ? 'time_edit' : 'normal')}
-                      </p>
-                      {request.request_type === 'time_edit' ? (
-                        <p className="text-xs text-muted-foreground">
-                          {request.reason || 'Sin comentarios'}
-                        </p>
-                      ) : (
-                        <p className="text-xs text-muted-foreground">
-                          {request.start_date && request.end_date ? `${request.start_date} - ${request.end_date}` : 'Sin fechas especificadas'}
-                        </p>
-                      )}
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {new Date(request.created_at).toLocaleDateString()}
-                      </p>
-                    </div>
-                    <div className="flex-shrink-0">
-                      <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(request.status)}`}>
-                        <StatusIcon className="w-3 h-3" />
-                        {request.status === 'pending' ? 'Pendiente' : 
-                         request.status === 'approved' ? 'Aprobada' : 
-                         request.status === 'rejected' ? 'Rechazada' : request.status}
-                      </span>
-                    </div>
+                  ))}
+                </div>
+                {notifications.length > 5 && (
+                  <div className="mt-4 pt-4 border-t border-border">
+                    <button
+                      onClick={() => window.location.href = '/notifications'}
+                      className="w-full px-4 py-2 bg-green-100 hover:bg-green-200 dark:bg-green-900/20 dark:hover:bg-green-900/30 text-green-700 dark:text-green-400 rounded-lg font-medium transition-colors"
+                    >
+                      Ver todas ({notifications.length})
+                    </button>
                   </div>
-                );
-              })}
-            </div>
-          )}
+                )}
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Recent Requests */}
+        <div className="card">
+          <div className="p-6 border-b border-border">
+            <h3 className="text-lg font-semibold text-foreground">Mis Solicitudes Recientes</h3>
+          </div>
+          <div className="p-6">
+            {recentRequests.length === 0 ? (
+              <div className="text-center py-8">
+                <Calendar className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                <p className="text-muted-foreground">No hay solicitudes recientes</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {recentRequests.map((request) => {
+                  const StatusIcon = getStatusIcon(request.status);
+                  
+                  return (
+                    <div key={request.id} className="flex items-start gap-3 p-3 rounded-lg hover:bg-secondary transition-colors">
+                      <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center flex-shrink-0">
+                        <Calendar className="w-4 h-4 text-primary" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-foreground">
+                          {getRequestTypeDisplay(request.request_type, request.request_type === 'time_edit' ? 'time_edit' : 'normal')}
+                        </p>
+                        {request.request_type === 'time_edit' ? (
+                          <p className="text-xs text-muted-foreground">
+                            {request.reason || 'Sin comentarios'}
+                          </p>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">
+                            {request.start_date && request.end_date ? `${request.start_date} - ${request.end_date}` : 'Sin fechas especificadas'}
+                          </p>
+                        )}
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {new Date(request.created_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <div className="flex-shrink-0">
+                        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(request.status)}`}>
+                          <StatusIcon className="w-3 h-3" />
+                          {request.status === 'pending' ? 'Pendiente' : 
+                           request.status === 'approved' ? 'Aprobada' : 
+                           request.status === 'rejected' ? 'Rechazada' : request.status}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

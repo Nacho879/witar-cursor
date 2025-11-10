@@ -46,7 +46,8 @@ export default function MyRequests() {
         .order('created_at', { ascending: false });
 
       // Cargar solicitudes de edición de fichajes del usuario
-      const { data: timeEditRequests, error: timeEditError } = await supabase
+      let timeEditRequests = null;
+      const { data, error: timeEditError } = await supabase
         .from('time_entry_edit_requests')
         .select(`
           *,
@@ -60,12 +61,20 @@ export default function MyRequests() {
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
-      if (normalError) {
-        console.error('Error loading normal requests:', normalError);
+      if (timeEditError) {
+        // Si el error es porque la tabla no existe, simplemente ignorarlo
+        // y continuar sin cargar solicitudes de edición de fichajes
+        if (timeEditError.code === 'PGRST205' || timeEditError.message?.includes('Could not find the table')) {
+          console.warn('La tabla time_entry_edit_requests no existe. Ejecuta el script SQL create_time_entry_edit_requests_table.sql para crearla.');
+        } else {
+          console.error('Error loading time edit requests:', timeEditError);
+        }
+      } else {
+        timeEditRequests = data;
       }
 
-      if (timeEditError) {
-        console.error('Error loading time edit requests:', timeEditError);
+      if (normalError) {
+        console.error('Error loading normal requests:', normalError);
       }
 
       // Obtener el perfil del usuario por separado
@@ -144,6 +153,8 @@ export default function MyRequests() {
           return { label: 'Vacaciones', icon: Calendar, color: 'text-blue-600 bg-blue-100' };
         case 'permission':
           return { label: 'Permiso', icon: Clock, color: 'text-green-600 bg-green-100' };
+        case 'personal_leave':
+          return { label: 'Permiso Personal', icon: Clock, color: 'text-green-600 bg-green-100' };
         case 'sick_leave':
           return { label: 'Baja Médica', icon: AlertCircle, color: 'text-red-600 bg-red-100' };
         case 'other':
@@ -378,25 +389,25 @@ export default function MyRequests() {
                 const StatusIcon = statusInfo.icon;
 
                 return (
-                  <div key={request.id} className="card p-6 hover:shadow-lg transition-shadow">
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-start gap-4 flex-1">
-                        <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${typeInfo.color}`}>
-                          <TypeIcon className="w-6 h-6" />
+                  <div key={request.id} className="card p-4 sm:p-6 hover:shadow-lg transition-shadow">
+                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+                      <div className="flex items-start gap-3 sm:gap-4 flex-1 min-w-0">
+                        <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center flex-shrink-0 ${typeInfo.color}`}>
+                          <TypeIcon className="w-5 h-5 sm:w-6 sm:h-6" />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-2">
-                            <h4 className="font-semibold text-foreground">{typeInfo.label}</h4>
-                            <span className={`badge ${statusInfo.color}`}>
+                          <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-2">
+                            <h4 className="font-semibold text-foreground text-sm sm:text-base">{typeInfo.label}</h4>
+                            <span className={`badge ${statusInfo.color} self-start`}>
                               <StatusIcon className="w-3 h-3 mr-1" />
                               {statusInfo.label}
                             </span>
                           </div>
-                          <p className="text-sm text-muted-foreground mb-2">
+                          <p className="text-xs sm:text-sm text-muted-foreground mb-2 line-clamp-2">
                             {request.reason}
                           </p>
                           {request.notes && (
-                            <p className="text-sm text-muted-foreground mb-3">
+                            <p className="text-xs sm:text-sm text-muted-foreground mb-3 line-clamp-2">
                               {request.notes}
                             </p>
                           )}
@@ -404,12 +415,12 @@ export default function MyRequests() {
                           {/* Información específica según el tipo de solicitud */}
                           {request.request_type === 'time_edit' ? (
                             // Información para solicitudes de edición de fichajes
-                            <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-xs text-muted-foreground">
                               {request.time_entries && (
-                                <span>Fichaje: {new Date(request.time_entries.entry_time).toLocaleString('es-ES')}</span>
+                                <span className="break-words">Fichaje: {new Date(request.time_entries.entry_time).toLocaleString('es-ES')}</span>
                               )}
                               {request.proposed_entry_time && (
-                                <span>Nueva fecha: {new Date(request.proposed_entry_time).toLocaleString('es-ES')}</span>
+                                <span className="break-words">Nueva fecha: {new Date(request.proposed_entry_time).toLocaleString('es-ES')}</span>
                               )}
                               {request.proposed_entry_type && (
                                 <span>Nuevo tipo: {request.proposed_entry_type}</span>
@@ -417,7 +428,7 @@ export default function MyRequests() {
                             </div>
                           ) : (
                             // Información para solicitudes normales
-                            <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-xs text-muted-foreground">
                               <span>Duración: {getDurationDisplay(request)}</span>
                               <span>Desde: {formatDate(request.start_date)}</span>
                               {request.request_type !== 'permission' && (
@@ -430,20 +441,20 @@ export default function MyRequests() {
                           )}
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-shrink-0 sm:flex-col sm:items-end">
                         <button
                           onClick={() => {
                             // Implementar vista detallada
                             alert('Vista detallada próximamente');
                           }}
-                          className="btn btn-ghost btn-sm"
+                          className="btn btn-ghost btn-sm p-2 sm:p-1.5"
                         >
                           <Eye className="w-4 h-4" />
                         </button>
                       </div>
                     </div>
                     <div className="mt-4 pt-4 border-t border-border">
-                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-0 text-xs text-muted-foreground">
                         <span>Creada: {formatDate(request.created_at)}</span>
                         {request.updated_at !== request.created_at && (
                           <span>Actualizada: {formatDate(request.updated_at)}</span>

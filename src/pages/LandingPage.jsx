@@ -31,17 +31,25 @@ import {
   Quote,
   HeadphonesIcon,
   Menu,
+  X,
   Play
 } from 'lucide-react';
 
 const LandingPage = () => {
   const [activeSection, setActiveSection] = React.useState('home');
   const [isScrolled, setIsScrolled] = React.useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
   const navigate = useNavigate();
+
+  // Función para cerrar el menú móvil y hacer scroll a una sección
+  const handleMobileNavClick = (sectionId) => {
+    setIsMobileMenuOpen(false);
+    scrollToSection(sectionId);
+  };
 
   // Función para manejar el acceso a la cuenta
   const handleAccessAccount = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     
     try {
       // Verificar si hay sesión activa
@@ -251,11 +259,111 @@ const LandingPage = () => {
               </div>
 
               {/* Mobile menu button */}
-              <button className="md:hidden p-2 text-foreground hover:text-primary transition-colors">
-                <Menu className="w-6 h-6" />
+              <button 
+                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                className="md:hidden p-2 text-foreground hover:text-primary transition-colors"
+                aria-label="Toggle menu"
+              >
+                {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
               </button>
             </div>
           </div>
+
+          {/* Mobile Menu */}
+          {isMobileMenuOpen && (
+            <>
+              {/* Overlay */}
+              <div 
+                className="fixed inset-0 bg-black/50 z-40 md:hidden"
+                onClick={() => setIsMobileMenuOpen(false)}
+              />
+              
+              {/* Mobile Menu Panel */}
+              <div className="fixed top-16 left-0 right-0 bg-card border-b border-border z-50 md:hidden shadow-lg">
+                <nav className="container mx-auto px-4 py-4 space-y-4">
+                  {/* Navigation Links */}
+                  <button
+                    onClick={() => handleMobileNavClick('home')}
+                    className={`block w-full text-left px-4 py-2 rounded-lg transition-colors ${
+                      activeSection === 'home' 
+                        ? 'text-primary font-semibold bg-primary/10' 
+                        : 'text-foreground hover:bg-secondary'
+                    }`}
+                  >
+                    Inicio
+                  </button>
+                  <button
+                    onClick={() => handleMobileNavClick('features')}
+                    className={`block w-full text-left px-4 py-2 rounded-lg transition-colors ${
+                      activeSection === 'features' 
+                        ? 'text-primary font-semibold bg-primary/10' 
+                        : 'text-foreground hover:bg-secondary'
+                    }`}
+                  >
+                    Características
+                  </button>
+                  <button
+                    onClick={() => handleMobileNavClick('pricing')}
+                    className={`block w-full text-left px-4 py-2 rounded-lg transition-colors ${
+                      activeSection === 'pricing' 
+                        ? 'text-primary font-semibold bg-primary/10' 
+                        : 'text-foreground hover:bg-secondary'
+                    }`}
+                  >
+                    Precios
+                  </button>
+                  <button
+                    onClick={() => handleMobileNavClick('testimonials')}
+                    className={`block w-full text-left px-4 py-2 rounded-lg transition-colors ${
+                      activeSection === 'testimonials' 
+                        ? 'text-primary font-semibold bg-primary/10' 
+                        : 'text-foreground hover:bg-secondary'
+                    }`}
+                  >
+                    Testimonios
+                  </button>
+                  <button
+                    onClick={() => handleMobileNavClick('faq')}
+                    className={`block w-full text-left px-4 py-2 rounded-lg transition-colors ${
+                      activeSection === 'faq' 
+                        ? 'text-primary font-semibold bg-primary/10' 
+                        : 'text-foreground hover:bg-secondary'
+                    }`}
+                  >
+                    FAQ
+                  </button>
+                  
+                  {/* Divider */}
+                  <div className="border-t border-border my-4" />
+                  
+                  {/* Action Buttons */}
+                  <Link
+                    to="/demo"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="block w-full text-left px-4 py-2 rounded-lg text-muted-foreground hover:bg-secondary transition-colors"
+                  >
+                    Solicitar Demo
+                  </Link>
+                  <button
+                    onClick={(e) => {
+                      setIsMobileMenuOpen(false);
+                      handleAccessAccount(e);
+                    }}
+                    className="block w-full text-left px-4 py-2 rounded-lg text-muted-foreground hover:bg-secondary transition-colors"
+                  >
+                    Iniciar Sesión
+                  </button>
+                  <Link
+                    to="/register"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="block w-full text-center px-4 py-2 bg-cta text-cta-foreground rounded-lg hover:bg-cta/90 transition-all duration-200 font-semibold"
+                  >
+                    Empezar Gratis
+                  </Link>
+                </nav>
+              </div>
+            </>
+          )}
         </header>
 
         {/* Hero Section */}

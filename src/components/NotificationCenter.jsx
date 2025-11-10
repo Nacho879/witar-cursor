@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabaseClient';
 import { 
   Bell, 
@@ -18,16 +19,38 @@ import {
 } from 'lucide-react';
 
 export default function NotificationCenter() {
+  const navigate = useNavigate();
   const [isOpen, setIsOpen] = React.useState(false);
   const [notifications, setNotifications] = React.useState([]);
   const [unreadCount, setUnreadCount] = React.useState(0);
   const [loading, setLoading] = React.useState(false);
+  const [userRole, setUserRole] = React.useState(null);
 
   React.useEffect(() => {
     let channel = null;
     
     async function initialize() {
       try {
+        // Obtener el rol del usuario
+        const role = sessionStorage.getItem('userRole');
+        if (role) {
+          setUserRole(role);
+        } else {
+          // Si no está en sessionStorage, consultar directamente
+          const { data: { user } } = await supabase.auth.getUser();
+          if (user) {
+            const { data: userRoleData } = await supabase
+              .from('user_company_roles')
+              .select('role')
+              .eq('user_id', user.id)
+              .eq('is_active', true)
+              .single();
+            if (userRoleData) {
+              setUserRole(userRoleData.role);
+            }
+          }
+        }
+        
         await loadNotifications();
         channel = setupRealtimeSubscription();
       } catch (error) {
@@ -326,7 +349,14 @@ export default function NotificationCenter() {
           {notifications.length > 0 && (
             <div className="p-3 border-t border-border bg-secondary/20">
               <button
-                onClick={() => {/* TODO: Navigate to full notifications page */}}
+                onClick={() => {
+                  setIsOpen(false);
+                  const notificationsPath = userRole === 'owner' ? '/owner/notifications' :
+                                          userRole === 'admin' ? '/admin/notifications' :
+                                          userRole === 'manager' ? '/manager/notifications' :
+                                          '/employee/notifications';
+                  navigate(notificationsPath);
+                }}
                 className="w-full text-sm text-primary hover:underline"
               >
                 Ver todas las notificaciones

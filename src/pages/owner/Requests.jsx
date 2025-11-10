@@ -473,53 +473,50 @@ export default function Requests() {
     }
   }
 
-  function getRequestTypeInfo(type) {
-    switch (type) {
-      // Solicitudes normales
-      case 'vacation':
-        return { label: 'Vacaciones', icon: Calendar, color: 'bg-blue-100 text-blue-800' };
-      case 'permission':
-        return { label: 'Permiso', icon: Clock, color: 'bg-green-100 text-green-800' };
-      case 'sick_leave':
-        return { label: 'Baja Médica', icon: AlertCircle, color: 'bg-red-100 text-red-800' };
-      case 'other':
-        return { label: 'Otro', icon: FileText, color: 'bg-purple-100 text-purple-800' };
-      
+  function getRequestTypeInfo(type, requestType = 'normal') {
+    if (requestType === 'time_edit') {
       // Solicitudes de edición de fichajes
-      case 'edit_time':
-        return { label: 'Editar Fecha/Hora', icon: Clock, color: 'bg-orange-100 text-orange-800' };
-      case 'edit_type':
-        return { label: 'Editar Tipo', icon: Edit, color: 'bg-purple-100 text-purple-800' };
-      case 'delete_entry':
-        return { label: 'Eliminar Fichaje', icon: XCircle, color: 'bg-red-100 text-red-800' };
-      case 'add_entry':
-        return { label: 'Agregar Fichaje', icon: Plus, color: 'bg-green-100 text-green-800' };
-      
-      // Tipos de fichajes
-      case 'clock_in':
-        return { label: 'Entrada', icon: LogIn, color: 'bg-green-100 text-green-800' };
-      case 'clock_out':
-        return { label: 'Salida', icon: LogOut, color: 'bg-red-100 text-red-800' };
-      case 'break_start':
-        return { label: 'Inicio Pausa', icon: Coffee, color: 'bg-yellow-100 text-yellow-800' };
-      case 'break_end':
-        return { label: 'Fin Pausa', icon: Coffee, color: 'bg-yellow-100 text-yellow-800' };
-      
-      default:
-        return { label: type, icon: FileText, color: 'bg-gray-100 text-gray-800' };
+      switch (type) {
+        case 'edit_time':
+          return { label: 'Editar Fecha/Hora', icon: Clock, color: 'text-orange-600 bg-orange-100' };
+        case 'edit_type':
+          return { label: 'Editar Tipo', icon: Edit, color: 'text-purple-600 bg-purple-100' };
+        case 'delete_entry':
+          return { label: 'Eliminar Fichaje', icon: XCircle, color: 'text-red-600 bg-red-100' };
+        case 'add_entry':
+          return { label: 'Agregar Fichaje', icon: Plus, color: 'text-green-600 bg-green-100' };
+        default:
+          return { label: 'Edición de Fichaje', icon: Clock, color: 'text-gray-600 bg-gray-100' };
+      }
+    } else {
+      // Solicitudes normales
+      switch (type) {
+        case 'vacation':
+          return { label: 'Vacaciones', icon: Calendar, color: 'text-blue-600 bg-blue-100' };
+        case 'permission':
+          return { label: 'Permiso', icon: Clock, color: 'text-green-600 bg-green-100' };
+        case 'personal_leave':
+          return { label: 'Permiso Personal', icon: Clock, color: 'text-green-600 bg-green-100' };
+        case 'sick_leave':
+          return { label: 'Baja Médica', icon: AlertCircle, color: 'text-red-600 bg-red-100' };
+        case 'other':
+          return { label: 'Otro', icon: FileText, color: 'text-purple-600 bg-purple-100' };
+        default:
+          return { label: type, icon: FileText, color: 'text-gray-600 bg-gray-100' };
+      }
     }
   }
 
   function getStatusInfo(status) {
     switch (status) {
       case 'pending':
-        return { label: 'Pendiente', color: 'bg-yellow-100 text-yellow-800', icon: Clock };
+        return { label: 'Pendiente', color: 'text-yellow-600 bg-yellow-100', icon: Clock };
       case 'approved':
-        return { label: 'Aprobada', color: 'bg-green-100 text-green-800', icon: CheckCircle };
+        return { label: 'Aprobada', color: 'text-green-600 bg-green-100', icon: CheckCircle };
       case 'rejected':
-        return { label: 'Rechazada', color: 'bg-red-100 text-red-800', icon: XCircle };
+        return { label: 'Rechazada', color: 'text-red-600 bg-red-100', icon: XCircle };
       default:
-        return { label: status, color: 'bg-gray-100 text-gray-800', icon: FileText };
+        return { label: status, color: 'text-gray-600 bg-gray-100', icon: FileText };
     }
   }
 
@@ -537,9 +534,17 @@ export default function Requests() {
 
   function getDurationDisplay(request) {
     if (request.request_type === 'permission' || request.original_request_type === 'permission') {
-      return `${request.duration_hours || 0}h`;
+      // Para permisos, calcular duración basada en fechas
+      const start = new Date(request.start_date);
+      const end = new Date(request.end_date);
+      const days = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
+      return `${days} día${days > 1 ? 's' : ''}`;
     } else {
-      return `${request.duration_days || 0} día${(request.duration_days || 0) > 1 ? 's' : ''}`;
+      // Para otros tipos, calcular días
+      const start = new Date(request.start_date);
+      const end = new Date(request.end_date);
+      const days = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
+      return `${days} día${days > 1 ? 's' : ''}`;
     }
   }
 
@@ -592,112 +597,104 @@ export default function Requests() {
 
   return (
     <div className="space-y-6">
-      {/* Header mejorado */}
-      <div className="flex items-center justify-between">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Solicitudes</h1>
-          <p className="text-gray-600 dark:text-gray-400 mt-1">
+          <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Solicitudes</h1>
+          <p className="text-sm sm:text-base text-muted-foreground mt-1">
             Gestiona y revisa las solicitudes de tu empresa
           </p>
         </div>
       </div>
 
-      {/* Stats Cards mejorados */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+      {/* Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6">
+        <div className="card p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Total</p>
-              <p className="text-3xl font-bold text-gray-900 dark:text-white">{stats.total}</p>
+              <p className="text-sm font-medium text-muted-foreground">Total</p>
+              <p className="text-3xl font-bold text-foreground">{stats.total}</p>
             </div>
-            <div className="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
-              <FileText className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+            <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+              <FileText className="w-6 h-6 text-blue-600" />
             </div>
           </div>
         </div>
-        
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+
+        <div className="card p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Pendientes</p>
-              <p className="text-3xl font-bold text-yellow-600 dark:text-yellow-400">{stats.pending}</p>
+              <p className="text-sm font-medium text-muted-foreground">Pendientes</p>
+              <p className="text-3xl font-bold text-foreground">{stats.pending}</p>
             </div>
-            <div className="p-3 bg-yellow-100 dark:bg-yellow-900/30 rounded-lg">
-              <Clock className="w-6 h-6 text-yellow-600 dark:text-yellow-400" />
+            <div className="w-12 h-12 bg-yellow-100 rounded-lg flex items-center justify-center">
+              <Clock className="w-6 h-6 text-yellow-600" />
             </div>
           </div>
         </div>
-        
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+
+        <div className="card p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Aprobadas</p>
-              <p className="text-3xl font-bold text-green-600 dark:text-green-400">{stats.approved}</p>
+              <p className="text-sm font-medium text-muted-foreground">Aprobadas</p>
+              <p className="text-3xl font-bold text-foreground">{stats.approved}</p>
             </div>
-            <div className="p-3 bg-green-100 dark:bg-green-900/30 rounded-lg">
-              <Check className="w-6 h-6 text-green-600 dark:text-green-400" />
+            <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
+              <CheckCircle className="w-6 h-6 text-green-600" />
             </div>
           </div>
         </div>
-        
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+
+        <div className="card p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Rechazadas</p>
-              <p className="text-3xl font-bold text-red-600 dark:text-red-400">{stats.rejected}</p>
+              <p className="text-sm font-medium text-muted-foreground">Rechazadas</p>
+              <p className="text-3xl font-bold text-foreground">{stats.rejected}</p>
             </div>
-            <div className="p-3 bg-red-100 dark:bg-red-900/30 rounded-lg">
-              <X className="w-6 h-6 text-red-600 dark:text-red-400" />
+            <div className="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center">
+              <XCircle className="w-6 h-6 text-red-600" />
             </div>
           </div>
         </div>
       </div>
 
-      {/* Filtros mejorados */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-        <div className="flex flex-col sm:flex-row gap-4">
+      {/* Filters */}
+      <div className="card p-6">
+        <div className="flex flex-col md:flex-row gap-4">
           <div className="flex-1">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Buscar solicitudes
-            </label>
+            <label className="block text-sm font-medium mb-2">Buscar</label>
             <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <input
                 type="text"
-                placeholder="Buscar por empleado, motivo..."
+                placeholder="Buscar solicitudes..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                className="input pl-10"
               />
-              <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
             </div>
           </div>
-          
-          <div className="sm:w-48">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Estado
-            </label>
+          <div className="flex-1">
+            <label className="block text-sm font-medium mb-2">Estado</label>
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+              className="input"
             >
-              <option value="all">Todos</option>
+              <option value="all">Todos los estados</option>
               <option value="pending">Pendientes</option>
               <option value="approved">Aprobadas</option>
               <option value="rejected">Rechazadas</option>
             </select>
           </div>
-          
-          <div className="sm:w-48">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Tipo
-            </label>
+          <div className="flex-1">
+            <label className="block text-sm font-medium mb-2">Tipo</label>
             <select
               value={typeFilter}
               onChange={(e) => setTypeFilter(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+              className="input"
             >
-              <option value="all">Todos</option>
+              <option value="all">Todos los tipos</option>
               <option value="vacation">Vacaciones</option>
               <option value="permission">Permisos</option>
               <option value="sick_leave">Baja Médica</option>
@@ -708,197 +705,167 @@ export default function Requests() {
         </div>
       </div>
 
-      {/* Lista de solicitudes mejorada */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
-        {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="flex items-center gap-3">
-              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-              <span className="text-gray-600 dark:text-gray-400">Cargando solicitudes...</span>
+      {/* Lista de solicitudes - Estilo del empleado */}
+      <div className="card">
+        <div className="p-6 border-b border-border">
+          <h3 className="text-lg font-semibold text-foreground">
+            Historial de Solicitudes
+          </h3>
+        </div>
+        <div className="p-6">
+          {loading ? (
+            <div className="text-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+              <p className="text-muted-foreground">Cargando solicitudes...</p>
             </div>
-          </div>
-        ) : filteredRequests.length === 0 ? (
-          <div className="text-center py-12">
-            <div className="w-16 h-16 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
-              <FileText className="w-8 h-8 text-gray-400" />
+          ) : filteredRequests.length === 0 ? (
+            <div className="text-center py-8">
+              <FileText className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground">
+                {searchTerm || statusFilter !== 'all' || typeFilter !== 'all'
+                  ? 'No hay solicitudes que coincidan con los filtros' 
+                  : 'No hay solicitudes'}
+              </p>
             </div>
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">No hay solicitudes</h3>
-            <p className="text-gray-600 dark:text-gray-400">No se encontraron solicitudes para tu empresa.</p>
-          </div>
-        ) : (
-          <div className="divide-y divide-gray-200 dark:divide-gray-700">
-            {filteredRequests.map((request) => {
-              const typeInfo = getRequestTypeInfo(request.original_request_type || request.request_type);
-              const statusInfo = getStatusInfo(request.status);
+          ) : (
+            <div className="space-y-4">
+              {filteredRequests.map((request) => {
+                const typeInfo = getRequestTypeInfo(request.original_request_type || request.request_type, request.request_type === 'time_edit' ? 'time_edit' : 'normal');
+                const statusInfo = getStatusInfo(request.status);
+                const TypeIcon = typeInfo.icon;
+                const StatusIcon = statusInfo.icon;
 
-              return (
-                <div key={request.id} className="p-6 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1 min-w-0">
-                      {/* Header de la solicitud */}
-                      <div className="flex items-center gap-3 mb-3">
-                        <div className="flex-shrink-0">
-                          <div className="w-10 h-10 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center">
-                            <User className="w-5 h-5 text-gray-600 dark:text-gray-400" />
-                          </div>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <h3 className="text-lg font-semibold text-gray-900 dark:text-white truncate">
-                            {request.user_company_roles?.user_profiles?.full_name || 'Sin nombre'}
-                          </h3>
-                          <p className="text-sm text-gray-500 dark:text-gray-400">
-                            {request.user_company_roles?.user_profiles?.email || 'Sin email'}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {request.request_type !== 'time_edit' && (
-                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${typeInfo.color}`}>
-                              <typeInfo.icon className="w-3 h-3 mr-1" />
-                              {typeInfo.label}
+                return (
+                  <div key={request.id} className="card p-4 sm:p-6 hover:shadow-lg transition-shadow">
+                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+                      <div className="flex items-start gap-3 sm:gap-4 flex-1 min-w-0">
+                        <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center flex-shrink-0 bg-primary/10">
+                          {request.user_company_roles?.user_profiles?.avatar_url ? (
+                            <img 
+                              src={request.user_company_roles.user_profiles.avatar_url} 
+                              alt={request.user_company_roles.user_profiles.full_name || 'Usuario'}
+                              className="w-10 h-10 sm:w-12 sm:h-12 rounded-full object-cover"
+                            />
+                          ) : (
+                            <span className="text-base sm:text-lg font-medium text-primary">
+                              {request.user_company_roles?.user_profiles?.full_name?.charAt(0) || 'U'}
                             </span>
                           )}
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusInfo.color}`}>
-                            <statusInfo.icon className="w-3 h-3 mr-1" />
-                            {statusInfo.label}
-                          </span>
                         </div>
-                      </div>
-
-                      {/* Contenido de la solicitud */}
-                      <div className="ml-12">
-                        {request.request_type !== 'time_edit' && (
-                          <p className="text-gray-700 dark:text-gray-300 mb-3">
-                            {request.reason}
-                          </p>
-                        )}
-                        
-                        {request.request_type === 'time_edit' && (
-                          <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 mb-3">
-                            <h4 className="font-medium text-gray-900 dark:text-white mb-3">Detalles del Fichaje</h4>
-                            {request.time_entry_id && request.time_entries ? (
-                              <div className="space-y-2">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Actual:</span>
-                                  <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${getRequestTypeInfo(request.time_entries.entry_type).color}`}>
-                                    {React.createElement(getRequestTypeInfo(request.time_entries.entry_type).icon, { className: "w-3 h-3 mr-1" })}
-                                    {getRequestTypeInfo(request.time_entries.entry_type).label}
-                                  </span>
-                                  <span className="text-sm text-gray-700 dark:text-gray-300">
-                                    {new Date(request.time_entries.entry_time).toLocaleString('es-ES')}
-                                  </span>
-                                </div>
-                                {request.time_entries.notes && (
-                                  <p className="text-sm text-gray-600 dark:text-gray-400">
-                                    Notas: {request.time_entries.notes}
-                                  </p>
-                                )}
-                              </div>
-                            ) : (
-                              <p className="text-sm text-gray-600 dark:text-gray-400">
-                                Fichaje original no disponible
-                              </p>
-                            )}
-
-                            {request.original_request_type !== 'delete_entry' && (
-                              <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
-                                <h5 className="font-medium text-gray-900 dark:text-white mb-2">Cambios propuestos</h5>
-                                <div className="space-y-2">
-                                  {request.proposed_entry_type && (
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Tipo:</span>
-                                      <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${getRequestTypeInfo(request.proposed_entry_type).color}`}>
-                                        {React.createElement(getRequestTypeInfo(request.proposed_entry_type).icon, { className: "w-3 h-3 mr-1" })}
-                                        {getRequestTypeInfo(request.proposed_entry_type).label}
-                                      </span>
-                                    </div>
-                                  )}
-                                  {request.proposed_entry_time && (
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Fecha/Hora:</span>
-                                      <span className="text-sm text-gray-700 dark:text-gray-300">
-                                        {new Date(request.proposed_entry_time).toLocaleString('es-ES')}
-                                      </span>
-                                    </div>
-                                  )}
-                                  {request.proposed_notes && (
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Notas:</span>
-                                      <span className="text-sm text-gray-700 dark:text-gray-300">{request.proposed_notes}</span>
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            )}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-2">
+                            <h4 className="font-semibold text-foreground text-sm sm:text-base">{typeInfo.label}</h4>
+                            <span className={`badge ${statusInfo.color} self-start`}>
+                              <StatusIcon className="w-3 h-3 mr-1" />
+                              {statusInfo.label}
+                            </span>
                           </div>
-                        )}
-
-                        {/* Información adicional */}
-                        <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
-                          <span>Solicitada: {formatDate(request.created_at)}</span>
-                          {request.updated_at !== request.created_at && (
-                            <span>Actualizada: {formatDate(request.updated_at)}</span>
+                          <p className="text-xs sm:text-sm text-muted-foreground mb-1">
+                            <span className="font-medium">{request.user_company_roles?.user_profiles?.full_name || 'Sin nombre'}</span>
+                            {request.user_company_roles?.departments?.name && (
+                              <span className="ml-2 hidden sm:inline">• {request.user_company_roles.departments.name}</span>
+                            )}
+                          </p>
+                          {request.user_company_roles?.departments?.name && (
+                            <p className="text-xs text-muted-foreground mb-1 sm:hidden">
+                              {request.user_company_roles.departments.name}
+                            </p>
                           )}
-                          {request.request_type !== 'time_edit' && (
-                            <>
+                          {request.request_type !== 'time_edit' && request.reason && (
+                            <p className="text-xs sm:text-sm text-muted-foreground mb-2 line-clamp-2">
+                              {request.reason}
+                            </p>
+                          )}
+                          {request.notes && (
+                            <p className="text-xs sm:text-sm text-muted-foreground mb-3 line-clamp-2">
+                              {request.notes}
+                            </p>
+                          )}
+                          
+                          {/* Información específica según el tipo de solicitud */}
+                          {request.request_type === 'time_edit' ? (
+                            // Información para solicitudes de edición de fichajes
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-xs text-muted-foreground">
+                              {request.time_entries && (
+                                <span className="break-words">Fichaje: {new Date(request.time_entries.entry_time).toLocaleString('es-ES')}</span>
+                              )}
+                              {request.proposed_entry_time && (
+                                <span className="break-words">Nueva fecha: {new Date(request.proposed_entry_time).toLocaleString('es-ES')}</span>
+                              )}
+                              {request.proposed_entry_type && (
+                                <span>Nuevo tipo: {getRequestTypeInfo(request.proposed_entry_type).label}</span>
+                              )}
+                            </div>
+                          ) : (
+                            // Información para solicitudes normales
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-xs text-muted-foreground">
                               <span>Duración: {getDurationDisplay(request)}</span>
                               <span>Desde: {formatDate(request.start_date)}</span>
-                              {request.original_request_type !== 'permission' && (
+                              {request.request_type !== 'permission' && request.original_request_type !== 'permission' && (
                                 <span>Hasta: {formatDate(request.end_date)}</span>
                               )}
-                            </>
+                              {(request.request_type === 'permission' || request.original_request_type === 'permission') && (
+                                <span>Horario: {formatTime(request.start_time)} - {formatTime(request.end_time)}</span>
+                              )}
+                            </div>
                           )}
                         </div>
                       </div>
+                      <div className="flex items-center gap-2 flex-shrink-0 sm:flex-col sm:items-end">
+                        {request.status === 'pending' && (
+                          <>
+                            <button
+                              onClick={() => {
+                                setActionRequest(request);
+                                setActionType('approve');
+                                setActionModalOpen(true);
+                              }}
+                              className="px-2 sm:px-3 py-1.5 text-xs sm:text-sm bg-green-100 hover:bg-green-200 dark:bg-green-900/20 dark:hover:bg-green-900/30 text-green-600 dark:text-green-400 rounded-lg transition-colors flex items-center gap-1 sm:gap-1.5"
+                              title="Aprobar"
+                            >
+                              <Check className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                              <span className="hidden sm:inline">Aprobar</span>
+                            </button>
+                            <button
+                              onClick={() => {
+                                setActionRequest(request);
+                                setActionType('reject');
+                                setActionModalOpen(true);
+                              }}
+                              className="px-2 sm:px-3 py-1.5 text-xs sm:text-sm bg-red-100 hover:bg-red-200 dark:bg-red-900/20 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400 rounded-lg transition-colors flex items-center gap-1 sm:gap-1.5"
+                              title="Rechazar"
+                            >
+                              <X className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                              <span className="hidden sm:inline">Rechazar</span>
+                            </button>
+                          </>
+                        )}
+                        <button
+                          onClick={() => {
+                            setSelectedRequest(request);
+                            setIsModalOpen(true);
+                          }}
+                          className="btn btn-ghost btn-sm p-2 sm:p-1.5"
+                          title="Ver detalles"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
-
-                    {/* Acciones */}
-                    <div className="flex items-center gap-2 ml-4">
-                      {request.status === 'pending' && (
-                        <>
-                          <button
-                            onClick={() => {
-                              setActionRequest(request);
-                              setActionType('approve');
-                              setActionModalOpen(true);
-                            }}
-                            className="inline-flex items-center px-3 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors"
-                            title="Aprobar"
-                          >
-                            <Check className="w-4 h-4 mr-1" />
-                            Aprobar
-                          </button>
-                          <button
-                            onClick={() => {
-                              setActionRequest(request);
-                              setActionType('reject');
-                              setActionModalOpen(true);
-                            }}
-                            className="inline-flex items-center px-3 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-colors"
-                            title="Rechazar"
-                          >
-                            <X className="w-4 h-4 mr-1" />
-                            Rechazar
-                          </button>
-                        </>
-                      )}
-                      <button
-                        onClick={() => {
-                          setSelectedRequest(request);
-                          setIsModalOpen(true);
-                        }}
-                        className="inline-flex items-center px-3 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 text-sm font-medium rounded-lg transition-colors"
-                        title="Ver detalles"
-                      >
-                        <Eye className="w-4 h-4 mr-1" />
-                        Ver
-                      </button>
+                    <div className="mt-4 pt-4 border-t border-border">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-0 text-xs text-muted-foreground">
+                        <span>Creada: {formatDate(request.created_at)}</span>
+                        {request.updated_at !== request.created_at && (
+                          <span>Actualizada: {formatDate(request.updated_at)}</span>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
       
       {/* Modales */}

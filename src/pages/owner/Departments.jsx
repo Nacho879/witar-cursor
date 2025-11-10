@@ -21,6 +21,7 @@ export default function Departments() {
   const [showModal, setShowModal] = React.useState(false);
   const [selectedDepartment, setSelectedDepartment] = React.useState(null);
   const [showActionsMenu, setShowActionsMenu] = React.useState(null);
+  const [currentCompanyId, setCurrentCompanyId] = React.useState(null);
   const [stats, setStats] = React.useState({
     total: 0,
     active: 0,
@@ -37,19 +38,21 @@ export default function Departments() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { data: userRole } = await supabase
+      const { data: roles, error: rolesError } = await supabase
         .from('user_company_roles')
-        .select('company_id')
+        .select('company_id, role, is_active')
         .eq('user_id', user.id)
-        .eq('is_active', true)
-        .single();
+        .eq('is_active', true);
 
-      if (userRole) {
+      if (!rolesError && Array.isArray(roles) && roles.length > 0) {
+        const preferred = roles.find(r => ['owner', 'admin'].includes(r.role)) || roles[0];
+        const companyId = preferred.company_id;
+        setCurrentCompanyId(companyId);
         // Cargar departamentos básicos
         const { data: departmentsData, error } = await supabase
           .from('departments')
           .select('*')
-          .eq('company_id', userRole.company_id)
+          .eq('company_id', companyId)
           .order('name');
 
         if (!error && departmentsData) {
@@ -61,26 +64,30 @@ export default function Departments() {
               // Si hay manager_id, obtener información del manager
               if (dept.manager_id) {
                 try {
-                  const { data: managerRole } = await supabase
+                  const { data: managerRole, error: managerRoleError } = await supabase
                     .from('user_company_roles')
                     .select('user_id')
                     .eq('id', dept.manager_id)
                     .eq('is_active', true)
-                    .single();
+                    .maybeSingle();
 
-                  if (managerRole) {
-                    const { data: managerProfile } = await supabase
+                  if (managerRoleError) {
+                    console.warn('⚠️ Error obteniendo rol del manager:', managerRoleError);
+                  } else if (managerRole && managerRole.user_id) {
+                    const { data: managerProfile, error: managerProfileError } = await supabase
                       .from('user_profiles')
                       .select('full_name')
                       .eq('user_id', managerRole.user_id)
                       .maybeSingle();
 
-                    if (managerProfile) {
+                    if (managerProfileError) {
+                      console.warn('⚠️ Error obteniendo perfil del manager:', managerProfileError);
+                    } else if (managerProfile && managerProfile.full_name) {
                       managerName = managerProfile.full_name;
                     }
                   }
                 } catch (error) {
-                  console.error('Error loading manager info:', error);
+                  console.error('❌ Error cargando información del manager:', error);
                 }
               }
 
@@ -88,7 +95,7 @@ export default function Departments() {
               const { count: employeeCount } = await supabase
                 .from('user_company_roles')
                 .select('*', { count: 'exact', head: true })
-                .eq('company_id', userRole.company_id)
+                .eq('company_id', companyId)
                 .eq('department_id', dept.id)
                 .eq('is_active', true)
                 .neq('role', 'owner');
@@ -165,7 +172,15 @@ export default function Departments() {
 
   function handleDepartmentSaved(savedDepartment) {
     // Recargar todos los datos para obtener información actualizada
-    loadDepartments();
+    // Usar un pequeño delay para asegurar que el INSERT se haya completado
+    // Limpiar búsqueda para evitar que el nuevo departamento quede oculto por el filtro
+    setSearchTerm('');
+    if (savedDepartment?.company_id) {
+      setCurrentCompanyId(savedDepartment.company_id);
+    }
+    setTimeout(() => {
+      loadDepartments();
+    }, 300);
   }
 
   if (loading) {
@@ -196,16 +211,7 @@ export default function Departments() {
             Organiza la estructura de tu empresa
           </p>
         </div>
-        <button
-          onClick={() => {
-            setSelectedDepartment(null);
-            setShowModal(true);
-          }}
-          className="btn btn-primary flex items-center gap-2"
-        >
-          <Plus className="w-4 h-4" />
-          Nuevo Departamento
-        </button>
+        {/* Botón crear movido a la barra de búsqueda */}
       </div>
 
       {/* Stats */}
@@ -280,6 +286,16 @@ export default function Departments() {
               className="btn btn-ghost"
             >
               Limpiar
+            </button>
+            <button
+              onClick={() => {
+                setSelectedDepartment(null);
+                setShowModal(true);
+              }}
+              className="btn btn-primary flex items-center gap-2"
+            >
+              <Plus className="w-4 h-4" />
+              Nuevo Departamento
             </button>
           </div>
         </div>

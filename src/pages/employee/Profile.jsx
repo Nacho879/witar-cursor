@@ -20,7 +20,10 @@ import {
   Upload,
   Lock,
   FileDown,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Bell,
+  TrendingUp,
+  Activity
 } from 'lucide-react';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
 import jsPDF from 'jspdf';
@@ -47,10 +50,82 @@ export default function Profile() {
     requestsCount: 0,
     documentsCount: 0
   });
+  const [recentRequests, setRecentRequests] = useState([]);
+  const [recentTimeEntries, setRecentTimeEntries] = useState([]);
+  const [recentDocuments, setRecentDocuments] = useState([]);
+  const [notifications, setNotifications] = useState([]);
+  const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0);
 
   useEffect(() => {
     loadProfileData();
-    loadStats();
+  }, []);
+
+  useEffect(() => {
+    if (companyInfo?.company?.id) {
+      loadStats();
+      loadRecentData();
+      loadNotifications();
+    }
+  }, [companyInfo]);
+
+  useEffect(() => {
+    let statsInterval = null;
+    let timeEntriesSubscription = null;
+    const loadStatsTimeoutRef = { current: null };
+    
+    const setup = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        // Suscripción en tiempo real a cambios de fichajes del usuario
+        // IMPORTANTE: Usar debounce para evitar interferir con FloatingTimeClock durante fichajes
+        timeEntriesSubscription = supabase
+          .channel('employee_time_entries_stats')
+          .on('postgres_changes', {
+            event: '*',
+            schema: 'public',
+            table: 'time_entries',
+            filter: `user_id=eq.${user.id}`
+          }, () => {
+            // PROTECCIÓN: Si hay sesión activa en localStorage, esperar más tiempo antes de recargar
+            // Esto previene interferencias con FloatingTimeClock durante el proceso de fichaje
+            const hasActiveSession = localStorage.getItem('witar_active_session') === 'true';
+            const delay = hasActiveSession ? 3000 : 1000; // 3 segundos si hay fichaje activo, 1 segundo si no
+            
+            // Cancelar timeout anterior si existe
+            if (loadStatsTimeoutRef.current) {
+              clearTimeout(loadStatsTimeoutRef.current);
+            }
+            
+            // Ejecutar loadStats después del delay
+            loadStatsTimeoutRef.current = setTimeout(() => {
+              loadStats();
+              loadStatsTimeoutRef.current = null;
+            }, delay);
+          })
+          .subscribe();
+
+        // Refresco periódico (cada 60s) para contar sesión activa en curso
+        // IMPORTANTE: No ejecutar si hay un fichaje activo para evitar interferencias
+        statsInterval = setInterval(() => {
+          // Solo recargar si no hay fichaje activo para evitar interferencias con FloatingTimeClock
+          const hasActiveSession = localStorage.getItem('witar_active_session') === 'true';
+          if (!hasActiveSession) {
+            loadStats();
+          }
+        }, 60000);
+      } catch (e) {
+        console.error('Error configurando actualización de estadísticas:', e);
+      }
+    };
+    setup();
+
+    return () => {
+      if (statsInterval) clearInterval(statsInterval);
+      if (loadStatsTimeoutRef.current) clearTimeout(loadStatsTimeoutRef.current);
+      if (timeEntriesSubscription) supabase.removeChannel(timeEntriesSubscription);
+    };
   }, []);
 
   async function loadProfileData() {
@@ -148,23 +223,66 @@ export default function Profile() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
+      // Determinar company_id activo para cumplir RLS
+      let activeCompanyId = companyInfo?.company?.id || companyInfo?.company_id;
+      if (!activeCompanyId) {
+        const { data: roleData } = await supabase
+          .from('user_company_roles')
+          .select('company_id')
+          .eq('user_id', user.id)
+          .eq('is_active', true)
+          .single();
+        activeCompanyId = roleData?.company_id || null;
+      }
+      if (!activeCompanyId) {
+        // Si no hay companyId aún, no intentamos cargar para evitar errores de RLS
+        return;
+      }
+
+      // Actualizar companyInfo si no estaba disponible
+      if (!companyInfo?.company?.id && activeCompanyId) {
+        const { data: roleData } = await supabase
+          .from('user_company_roles')
+          .select(`
+            company_id,
+            companies (
+              id,
+              name
+            )
+          `)
+          .eq('user_id', user.id)
+          .eq('is_active', true)
+          .single();
+        
+        if (roleData) {
+          setCompanyInfo(prev => ({
+            ...prev,
+            company: roleData.companies,
+            company_id: activeCompanyId
+          }));
+        }
+      }
+
       // Obtener estadísticas de fichajes
       const { data: timeEntries, error: timeError } = await supabase
         .from('time_entries')
         .select('entry_time, entry_type')
-        .eq('user_id', user.id);
+        .eq('user_id', user.id)
+        .eq('company_id', activeCompanyId);
 
       // Obtener estadísticas de solicitudes
       const { data: requests, error: requestsError } = await supabase
         .from('requests')
         .select('id')
-        .eq('user_id', user.id);
+        .eq('user_id', user.id)
+        .eq('company_id', activeCompanyId);
 
       // Obtener estadísticas de documentos
       const { data: documents, error: documentsError } = await supabase
         .from('documents')
         .select('id')
-        .eq('user_id', user.id);
+        .eq('user_id', user.id)
+        .eq('company_id', activeCompanyId);
 
       if (!timeError && !requestsError && !documentsError) {
         // Calcular días trabajados (días únicos con fichajes)
@@ -178,29 +296,45 @@ export default function Profile() {
 
         // Calcular horas totales (aproximado)
         let totalHours = 0;
-        if (timeEntries) {
+        if (timeEntries && timeEntries.length > 0) {
+          // Ordenar por tiempo
+          const sorted = [...timeEntries].sort((a, b) => new Date(a.entry_time) - new Date(b.entry_time));
+
+          // Sumar pares entrada/salida por día
           const entriesByDay = {};
-          timeEntries.forEach(entry => {
-            const date = new Date(entry.entry_time).toDateString();
-            if (!entriesByDay[date]) entriesByDay[date] = [];
-            entriesByDay[date].push(entry);
-          });
+          for (const entry of sorted) {
+            const dateKey = new Date(entry.entry_time).toDateString();
+            if (!entriesByDay[dateKey]) entriesByDay[dateKey] = [];
+            entriesByDay[dateKey].push(entry);
+          }
 
           Object.values(entriesByDay).forEach(dayEntries => {
-            if (dayEntries.length >= 2) {
-              // Calcular horas entre entrada y salida
-              const sortedEntries = dayEntries.sort((a, b) => 
-                new Date(a.entry_time) - new Date(b.entry_time)
-              );
-              
-              for (let i = 0; i < sortedEntries.length - 1; i += 2) {
-                const start = new Date(sortedEntries[i].entry_time);
-                const end = new Date(sortedEntries[i + 1].entry_time);
-                const hours = (end - start) / (1000 * 60 * 60);
-                totalHours += hours;
+            const daySorted = dayEntries.sort((a, b) => new Date(a.entry_time) - new Date(b.entry_time));
+            for (let i = 0; i < daySorted.length - 1; i++) {
+              const a = daySorted[i];
+              const b = daySorted[i + 1];
+              if (a.entry_type === 'clock_in' && (b.entry_type === 'clock_out' || b.entry_type === 'break_start')) {
+                const start = new Date(a.entry_time).getTime();
+                const end = new Date(b.entry_time).getTime();
+                if (end > start) totalHours += (end - start) / (1000 * 60 * 60);
               }
+              // En caso de break_end seguido de clock_out, el tramo de trabajo se suma más abajo
             }
           });
+
+          // Incluir sesión activa en curso (último clock_in sin clock_out posterior)
+          const lastClockIn = [...sorted].reverse().find(e => e.entry_type === 'clock_in');
+          if (lastClockIn) {
+            const afterLastClockIn = sorted.filter(e => new Date(e.entry_time) > new Date(lastClockIn.entry_time));
+            const hasClockOutAfter = afterLastClockIn.some(e => e.entry_type === 'clock_out');
+            if (!hasClockOutAfter) {
+              const now = Date.now();
+              const start = new Date(lastClockIn.entry_time).getTime();
+              if (now > start) {
+                totalHours += (now - start) / (1000 * 60 * 60);
+              }
+            }
+          }
         }
 
         setStats({
@@ -213,6 +347,133 @@ export default function Profile() {
 
     } catch (error) {
       console.error('Error loading stats:', error);
+    }
+  }
+
+  async function loadRecentData() {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      let activeCompanyId = companyInfo?.company?.id || companyInfo?.company_id;
+      if (!activeCompanyId) {
+        const { data: roleData } = await supabase
+          .from('user_company_roles')
+          .select('company_id')
+          .eq('user_id', user.id)
+          .eq('is_active', true)
+          .single();
+        activeCompanyId = roleData?.company_id || null;
+      }
+      if (!activeCompanyId) return;
+
+      // Cargar solicitudes recientes
+      const { data: requests } = await supabase
+        .from('requests')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('company_id', activeCompanyId)
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+      if (requests) setRecentRequests(requests);
+
+      // Cargar fichajes recientes
+      const { data: timeEntries } = await supabase
+        .from('time_entries')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('company_id', activeCompanyId)
+        .order('entry_time', { ascending: false })
+        .limit(5);
+
+      if (timeEntries) setRecentTimeEntries(timeEntries);
+
+      // Cargar documentos recientes
+      const { data: documents } = await supabase
+        .from('documents')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('company_id', activeCompanyId)
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+      if (documents) setRecentDocuments(documents);
+    } catch (error) {
+      console.error('Error loading recent data:', error);
+    }
+  }
+
+  async function loadNotifications() {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user || !companyInfo?.company?.id) return;
+
+      const { data, error } = await supabase
+        .from('notifications')
+        .select('*')
+        .eq('company_id', companyInfo.company.id)
+        .eq('recipient_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+      if (error) throw error;
+
+      setNotifications(data || []);
+      setUnreadNotificationsCount((data || []).filter(n => !n.read_at).length);
+    } catch (error) {
+      console.error('Error loading notifications:', error);
+    }
+  }
+
+  async function markNotificationAsRead(notificationId) {
+    try {
+      const { error } = await supabase
+        .from('notifications')
+        .update({ read_at: new Date().toISOString() })
+        .eq('id', notificationId);
+
+      if (error) throw error;
+
+      setNotifications(prev =>
+        prev.map(n =>
+          n.id === notificationId ? { ...n, read_at: new Date().toISOString() } : n
+        )
+      );
+      setUnreadNotificationsCount(prev => Math.max(0, prev - 1));
+    } catch (error) {
+      console.error('Error marking notification as read:', error);
+    }
+  }
+
+  function formatTimeAgo(dateString) {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffInSeconds = Math.floor((now - date) / 1000);
+
+    if (diffInSeconds < 60) return 'Hace un momento';
+    if (diffInSeconds < 3600) return `Hace ${Math.floor(diffInSeconds / 60)} min`;
+    if (diffInSeconds < 86400) return `Hace ${Math.floor(diffInSeconds / 3600)} h`;
+    if (diffInSeconds < 604800) return `Hace ${Math.floor(diffInSeconds / 86400)} días`;
+    return date.toLocaleDateString('es-ES');
+  }
+
+  function getRequestStatusColor(status) {
+    switch (status) {
+      case 'pending': return 'text-yellow-600 bg-yellow-100 dark:bg-yellow-900/20';
+      case 'approved': return 'text-green-600 bg-green-100 dark:bg-green-900/20';
+      case 'rejected': return 'text-red-600 bg-red-100 dark:bg-red-900/20';
+      default: return 'text-gray-600 bg-gray-100 dark:bg-gray-900/20';
+    }
+  }
+
+  function getRequestTypeLabel(type) {
+    switch (type) {
+      case 'vacation': return 'Vacaciones';
+      case 'sick_leave': return 'Baja médica';
+      case 'personal_leave': return 'Día personal';
+      case 'permission': return 'Permiso';
+      default: return type || 'Solicitud';
     }
   }
 
@@ -557,23 +818,22 @@ export default function Profile() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="w-full p-4 sm:p-6 lg:px-6 lg:pt-6 lg:pb-[350px]">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Mi Perfil</h1>
-          <p className="text-gray-600 dark:text-gray-400 mt-1">
+          <h1 className="text-2xl sm:text-3xl font-bold text-foreground">
+            Mi Perfil
+          </h1>
+          <p className="text-muted-foreground mt-1 text-sm sm:text-base">
             Gestiona tu información personal y profesional
           </p>
-        </div>
-        <div className="flex items-center gap-3">
-          
         </div>
       </div>
 
       {/* Mensaje de estado */}
       {message && (
-        <div className={`p-4 rounded-lg ${
+        <div className={`p-4 rounded-lg mb-6 ${
           message.includes('Error') 
             ? 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800' 
             : 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800'
@@ -595,14 +855,65 @@ export default function Profile() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6">
+        <div className="card p-4 sm:p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs sm:text-sm font-medium text-muted-foreground">Días Trabajados</p>
+              <p className="text-2xl sm:text-3xl font-bold text-foreground">{stats.daysWorked}</p>
+            </div>
+            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-blue-100 dark:bg-blue-900/20 rounded-lg flex items-center justify-center">
+              <Calendar className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600 dark:text-blue-400" />
+            </div>
+          </div>
+        </div>
+
+        <div className="card p-4 sm:p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs sm:text-sm font-medium text-muted-foreground">Horas Totales</p>
+              <p className="text-2xl sm:text-3xl font-bold text-foreground">{stats.totalHours}h</p>
+            </div>
+            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-green-100 dark:bg-green-900/20 rounded-lg flex items-center justify-center">
+              <Clock className="w-5 h-5 sm:w-6 sm:h-6 text-green-600 dark:text-green-400" />
+            </div>
+          </div>
+        </div>
+
+        <div className="card p-4 sm:p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs sm:text-sm font-medium text-muted-foreground">Solicitudes</p>
+              <p className="text-2xl sm:text-3xl font-bold text-foreground">{stats.requestsCount}</p>
+            </div>
+            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-purple-100 dark:bg-purple-900/20 rounded-lg flex items-center justify-center">
+              <FileText className="w-5 h-5 sm:w-6 sm:h-6 text-purple-600 dark:text-purple-400" />
+            </div>
+          </div>
+        </div>
+
+        <div className="card p-4 sm:p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs sm:text-sm font-medium text-muted-foreground">Documentos</p>
+              <p className="text-2xl sm:text-3xl font-bold text-foreground">{stats.documentsCount}</p>
+            </div>
+            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-orange-100 dark:bg-orange-900/20 rounded-lg flex items-center justify-center">
+              <FileText className="w-5 h-5 sm:w-6 sm:h-6 text-orange-600 dark:text-orange-400" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
         {/* Información Personal */}
-        <div className="lg:col-span-2 space-y-6">
+        <div className="lg:col-span-2 space-y-4 sm:space-y-6">
           {/* Perfil Principal */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
-            <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+          <div className="card w-full flex flex-col">
+            <div className="border-b border-border flex-shrink-0 p-4 sm:p-6">
               <div className="flex items-center justify-between">
-                <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+                <h2 className="text-lg sm:text-xl font-semibold text-foreground">
                   Información Personal
                 </h2>
                 {!editMode ? (
@@ -634,7 +945,7 @@ export default function Profile() {
                     </button>
                     <button
                       onClick={handleCancel}
-                      className="inline-flex items-center px-3 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 text-sm font-medium rounded-lg transition-colors"
+                      className="inline-flex items-center px-3 py-2 bg-secondary hover:bg-secondary/80 text-foreground text-sm font-medium rounded-lg transition-colors"
                     >
                       <X className="w-4 h-4 mr-2" />
                       Cancelar
@@ -644,12 +955,12 @@ export default function Profile() {
               </div>
             </div>
             
-            <div className="p-6">
-              <div className="flex items-start gap-6">
+            <div className="p-4 sm:p-6 flex-1">
+              <div className="flex items-start gap-4 sm:gap-6">
                 {/* Avatar */}
                 <div className="flex-shrink-0">
                   <div className="relative">
-                    <div className="w-24 h-24 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center overflow-hidden">
+                    <div className="w-24 h-24 bg-secondary rounded-full flex items-center justify-center overflow-hidden">
                       {userProfile?.avatar_url ? (
                         <img 
                           src={userProfile.avatar_url} 
@@ -657,7 +968,7 @@ export default function Profile() {
                           className="w-24 h-24 rounded-full object-cover"
                         />
                       ) : (
-                        <User className="w-12 h-12 text-gray-400" />
+                        <User className="w-12 h-12 text-muted-foreground" />
                       )}
                     </div>
                     {editMode && (
@@ -687,7 +998,7 @@ export default function Profile() {
                 <div className="flex-1 space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      <label className="block text-sm font-medium text-muted-foreground mb-2">
                         Nombre Completo
                       </label>
                       {editMode ? (
@@ -695,29 +1006,29 @@ export default function Profile() {
                           type="text"
                           value={editForm.full_name}
                           onChange={(e) => setEditForm(prev => ({ ...prev, full_name: e.target.value }))}
-                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                          className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent bg-background text-foreground"
                         />
                       ) : (
-                        <p className="text-gray-900 dark:text-white font-medium">
+                        <p className="text-foreground font-medium">
                           {userProfile?.full_name || 'No especificado'}
                         </p>
                       )}
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      <label className="block text-sm font-medium text-muted-foreground mb-2">
                         Email
                       </label>
-                      <p className="text-gray-900 dark:text-white font-medium">
+                      <p className="text-foreground font-medium">
                         {userProfile?.email || 'No especificado'}
                       </p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      <p className="text-xs text-muted-foreground mt-1">
                         Email con el que aceptaste la invitación
                       </p>
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      <label className="block text-sm font-medium text-muted-foreground mb-2">
                         Teléfono
                       </label>
                       {editMode ? (
@@ -725,17 +1036,17 @@ export default function Profile() {
                           type="tel"
                           value={editForm.phone}
                           onChange={(e) => setEditForm(prev => ({ ...prev, phone: e.target.value }))}
-                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                          className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent bg-background text-foreground"
                         />
                       ) : (
-                        <p className="text-gray-900 dark:text-white font-medium">
+                        <p className="text-foreground font-medium">
                           {userProfile?.phone || 'No especificado'}
                         </p>
                       )}
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      <label className="block text-sm font-medium text-muted-foreground mb-2">
                         Dirección
                       </label>
                       {editMode ? (
@@ -743,10 +1054,10 @@ export default function Profile() {
                           value={editForm.address}
                           onChange={(e) => setEditForm(prev => ({ ...prev, address: e.target.value }))}
                           rows={2}
-                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white resize-none"
+                          className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent bg-background text-foreground resize-none"
                         />
                       ) : (
-                        <p className="text-gray-900 dark:text-white font-medium">
+                        <p className="text-foreground font-medium">
                           {userProfile?.address || 'No especificado'}
                         </p>
                       )}
@@ -758,14 +1069,14 @@ export default function Profile() {
           </div>
 
           {/* Información Laboral */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
-            <div className="p-6 border-b border-gray-200 dark:border-gray-700">
-              <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+          <div className="card w-full flex flex-col">
+            <div className="border-b border-border flex-shrink-0 p-4 sm:p-6">
+              <h2 className="text-lg sm:text-xl font-semibold text-foreground">
                 Información Laboral
               </h2>
             </div>
             
-            <div className="p-6">
+            <div className="p-4 sm:p-6 flex-1">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-4">
                   <div className="flex items-center gap-3">
@@ -773,8 +1084,8 @@ export default function Profile() {
                       <Building className="w-5 h-5 text-blue-600 dark:text-blue-400" />
                     </div>
                     <div>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">Empresa</p>
-                      <p className="font-medium text-gray-900 dark:text-white">
+                      <p className="text-sm text-muted-foreground">Empresa</p>
+                      <p className="font-medium text-foreground">
                         {companyInfo?.company?.name || 'No especificado'}
                       </p>
                     </div>
@@ -785,8 +1096,8 @@ export default function Profile() {
                       <Users className="w-5 h-5 text-green-600 dark:text-green-400" />
                     </div>
                     <div>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">Departamento</p>
-                      <p className="font-medium text-gray-900 dark:text-white">
+                      <p className="text-sm text-muted-foreground">Departamento</p>
+                      <p className="font-medium text-foreground">
                         {companyInfo?.department?.name || 'Sin departamento'}
                       </p>
                     </div>
@@ -797,8 +1108,8 @@ export default function Profile() {
                       <User className="w-5 h-5 text-purple-600 dark:text-purple-400" />
                     </div>
                     <div>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">Cargo</p>
-                      <p className="font-medium text-gray-900 dark:text-white capitalize">
+                      <p className="text-sm text-muted-foreground">Cargo</p>
+                      <p className="font-medium text-foreground capitalize">
                         {companyInfo?.role || 'No especificado'}
                       </p>
                     </div>
@@ -811,8 +1122,8 @@ export default function Profile() {
                       <Calendar className="w-5 h-5 text-orange-600 dark:text-orange-400" />
                     </div>
                     <div>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">Fecha de Registro</p>
-                      <p className="font-medium text-gray-900 dark:text-white">
+                      <p className="text-sm text-muted-foreground">Fecha de Registro</p>
+                      <p className="font-medium text-foreground">
                         {userProfile?.created_at ? new Date(userProfile.created_at).toLocaleDateString('es-ES') : 'No especificado'}
                       </p>
                     </div>
@@ -824,11 +1135,11 @@ export default function Profile() {
                         <User className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
                       </div>
                       <div>
-                        <p className="text-sm text-gray-600 dark:text-gray-400">Manager Asignado</p>
-                        <p className="font-medium text-gray-900 dark:text-white">
+                        <p className="text-sm text-muted-foreground">Manager Asignado</p>
+                        <p className="font-medium text-foreground">
                           {managerInfo.full_name}
                         </p>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">
+                        <p className="text-sm text-muted-foreground">
                           {userProfile?.email || 'No especificado'}
                         </p>
                       </div>
@@ -841,8 +1152,8 @@ export default function Profile() {
                         <MapPin className="w-5 h-5 text-gray-600 dark:text-gray-400" />
                       </div>
                       <div>
-                        <p className="text-sm text-gray-600 dark:text-gray-400">Dirección de la Empresa</p>
-                        <p className="font-medium text-gray-900 dark:text-white">
+                        <p className="text-sm text-muted-foreground">Dirección de la Empresa</p>
+                        <p className="font-medium text-foreground">
                           {companyInfo.company.address || 'No especificado'}
                         </p>
                       </div>
@@ -855,86 +1166,209 @@ export default function Profile() {
         </div>
 
         {/* Sidebar */}
-        <div className="space-y-6">
+        <div className="space-y-4 sm:space-y-6">
           {/* Acciones Rápidas */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
-            <div className="p-6 border-b border-gray-200 dark:border-gray-700">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+          <div className="card w-full flex flex-col">
+            <div className="border-b border-border flex-shrink-0 p-4 sm:p-6">
+              <h3 className="text-base sm:text-lg font-semibold text-foreground">
                 Acciones Rápidas
               </h3>
             </div>
             
-            <div className="p-6 space-y-3">
+            <div className="p-4 sm:p-6 flex-1 space-y-3">
               <button 
                 onClick={() => handleQuickAction('time-entries')}
-                className="w-full flex items-center gap-3 p-3 text-left hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                className="w-full flex items-center gap-3 p-3 text-left hover:bg-secondary rounded-lg transition-colors"
               >
                 <Clock className="w-5 h-5 text-blue-600" />
-                <span className="text-gray-700 dark:text-gray-300">Ver mis fichajes</span>
+                <span className="text-foreground">Ver mis fichajes</span>
               </button>
               
               <button 
                 onClick={() => handleQuickAction('requests')}
-                className="w-full flex items-center gap-3 p-3 text-left hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                className="w-full flex items-center gap-3 p-3 text-left hover:bg-secondary rounded-lg transition-colors"
               >
                 <FileText className="w-5 h-5 text-green-600" />
-                <span className="text-gray-700 dark:text-gray-300">Mis solicitudes</span>
+                <span className="text-foreground">Mis solicitudes</span>
               </button>
               
               <button 
                 onClick={() => handleQuickAction('documents')}
-                className="w-full flex items-center gap-3 p-3 text-left hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                className="w-full flex items-center gap-3 p-3 text-left hover:bg-secondary rounded-lg transition-colors"
               >
                 <FileText className="w-5 h-5 text-purple-600" />
-                <span className="text-gray-700 dark:text-gray-300">Mis documentos</span>
+                <span className="text-foreground">Mis documentos</span>
               </button>
               
               <button 
                 onClick={() => handleQuickAction('download')}
-                className="w-full flex items-center gap-3 p-3 text-left hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                className="w-full flex items-center gap-3 p-3 text-left hover:bg-secondary rounded-lg transition-colors"
               >
                 <Download className="w-5 h-5 text-orange-600" />
-                <span className="text-gray-700 dark:text-gray-300">Descargar datos</span>
+                <span className="text-foreground">Descargar datos</span>
               </button>
               
               <button 
                 onClick={() => setShowChangePasswordModal(true)}
-                className="w-full flex items-center gap-3 p-3 text-left hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                className="w-full flex items-center gap-3 p-3 text-left hover:bg-secondary rounded-lg transition-colors"
               >
                 <Lock className="w-5 h-5 text-red-600" />
-                <span className="text-gray-700 dark:text-gray-300">Cambiar contraseña</span>
+                <span className="text-foreground">Cambiar contraseña</span>
               </button>
             </div>
           </div>
 
-          {/* Estadísticas */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
-            <div className="p-6 border-b border-gray-200 dark:border-gray-700">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                Estadísticas
-              </h3>
+          {/* Solicitudes Recientes */}
+          <div className="card w-full flex flex-col">
+            <div className="border-b border-border flex-shrink-0 p-4 sm:p-6">
+              <div className="flex items-center justify-between">
+                <h3 className="text-base sm:text-lg font-semibold text-foreground">
+                  Solicitudes Recientes
+                </h3>
+                {recentRequests.length > 0 && (
+                  <button
+                    onClick={() => handleQuickAction('requests')}
+                    className="text-sm text-primary hover:underline"
+                  >
+                    Ver todas
+                  </button>
+                )}
+              </div>
             </div>
             
-            <div className="p-6 space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-gray-600 dark:text-gray-400">Días trabajados</span>
-                <span className="font-semibold text-gray-900 dark:text-white">{stats.daysWorked}</span>
-              </div>
-              
-              <div className="flex items-center justify-between">
-                <span className="text-gray-600 dark:text-gray-400">Horas totales</span>
-                <span className="font-semibold text-gray-900 dark:text-white">{stats.totalHours}h</span>
-              </div>
-              
-              <div className="flex items-center justify-between">
-                <span className="text-gray-600 dark:text-gray-400">Solicitudes</span>
-                <span className="font-semibold text-gray-900 dark:text-white">{stats.requestsCount}</span>
-              </div>
+            <div className="p-4 sm:p-6 flex-1 overflow-y-auto">
+              {recentRequests.length === 0 ? (
+                <div className="text-center py-4">
+                  <FileText className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground">No hay solicitudes</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {recentRequests.map((request) => (
+                    <div key={request.id} className="p-3 rounded-lg border border-border hover:shadow-md transition-shadow">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-foreground">
+                            {getRequestTypeLabel(request.request_type)}
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {formatTimeAgo(request.created_at)}
+                          </p>
+                        </div>
+                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${getRequestStatusColor(request.status)}`}>
+                          {request.status === 'pending' ? 'Pendiente' : request.status === 'approved' ? 'Aprobada' : 'Rechazada'}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
 
+          {/* Fichajes Recientes */}
+          <div className="card w-full flex flex-col">
+            <div className="border-b border-border flex-shrink-0 p-4 sm:p-6">
               <div className="flex items-center justify-between">
-                <span className="text-gray-600 dark:text-gray-400">Documentos</span>
-                <span className="font-semibold text-gray-900 dark:text-white">{stats.documentsCount}</span>
+                <h3 className="text-base sm:text-lg font-semibold text-foreground">
+                  Fichajes Recientes
+                </h3>
+                {recentTimeEntries.length > 0 && (
+                  <button
+                    onClick={() => handleQuickAction('time-entries')}
+                    className="text-sm text-primary hover:underline"
+                  >
+                    Ver todos
+                  </button>
+                )}
               </div>
+            </div>
+            
+            <div className="p-4 sm:p-6 flex-1 overflow-y-auto">
+              {recentTimeEntries.length === 0 ? (
+                <div className="text-center py-4">
+                  <Clock className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground">No hay fichajes</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {recentTimeEntries.map((entry) => {
+                    const entryDisplay = getEntryTypeDisplay(entry.entry_type);
+                    return (
+                      <div key={entry.id} className="p-3 rounded-lg border border-border hover:shadow-md transition-shadow">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-foreground">
+                              {entryDisplay.text}
+                            </p>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {format(new Date(entry.entry_time), 'dd/MM/yyyy HH:mm', { locale: es })}
+                            </p>
+                          </div>
+                          <span className="text-2xl">{entryDisplay.icon}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Notificaciones */}
+          <div className="card w-full flex flex-col">
+            <div className="border-b border-border flex-shrink-0 p-4 sm:p-6">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Bell className="w-4 h-4 sm:w-5 sm:h-5 text-green-600" />
+                  <h3 className="text-base sm:text-lg font-semibold text-foreground">
+                    Notificaciones
+                  </h3>
+                </div>
+                {unreadNotificationsCount > 0 && (
+                  <div className="w-5 h-5 bg-red-500 rounded-full flex items-center justify-center">
+                    <span className="text-xs font-semibold text-white">{unreadNotificationsCount}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            <div className="p-4 sm:p-6 flex-1 overflow-y-auto">
+              {notifications.length === 0 ? (
+                <div className="text-center py-4">
+                  <Bell className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground">No hay notificaciones</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {notifications.slice(0, 5).map((notification) => (
+                    <div
+                      key={notification.id}
+                      className={`p-3 rounded-lg border border-border hover:shadow-md transition-shadow cursor-pointer ${
+                        !notification.read_at ? 'bg-green-50 dark:bg-green-900/10 border-green-200 dark:border-green-800' : ''
+                      }`}
+                      onClick={() => !notification.read_at && markNotificationAsRead(notification.id)}
+                    >
+                      <div className="flex items-start gap-2">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-foreground">
+                            {notification.title}
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                            {notification.message}
+                          </p>
+                          <span className="text-xs text-muted-foreground mt-1 block">
+                            {formatTimeAgo(notification.created_at)}
+                          </span>
+                        </div>
+                        {!notification.read_at && (
+                          <div className="w-2 h-2 bg-green-500 rounded-full flex-shrink-0 mt-1"></div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -943,18 +1377,18 @@ export default function Profile() {
       {/* Download Data Modal */}
       {showDownloadModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full">
+          <div className="bg-background border border-border rounded-lg shadow-xl max-w-md w-full">
             {/* Header */}
-            <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
+            <div className="flex items-center justify-between p-6 border-b border-border">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/20 rounded-lg flex items-center justify-center">
                   <Download className="w-5 h-5 text-blue-600 dark:text-blue-400" />
                 </div>
                 <div>
-                  <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+                  <h2 className="text-xl font-semibold text-foreground">
                     Descargar Datos Personales
                   </h2>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                  <p className="text-sm text-muted-foreground">
                     Selecciona el formato de descarga
                   </p>
                 </div>
@@ -962,7 +1396,7 @@ export default function Profile() {
               <button
                 onClick={() => setShowDownloadModal(false)}
                 disabled={downloadLoading}
-                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 disabled:opacity-50"
+                className="text-muted-foreground hover:text-foreground disabled:opacity-50"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -970,7 +1404,7 @@ export default function Profile() {
 
             {/* Content */}
             <div className="p-6 space-y-4">
-              <div className="text-sm text-gray-600 dark:text-gray-400">
+              <div className="text-sm text-muted-foreground">
                 <p className="mb-3">Se incluirán los siguientes datos:</p>
                 <ul className="space-y-1 ml-4">
                   <li>• Información personal</li>
@@ -986,24 +1420,24 @@ export default function Profile() {
                 <button
                   onClick={() => downloadPersonalData('pdf')}
                   disabled={downloadLoading}
-                  className="w-full flex items-center justify-center gap-3 p-4 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+                  className="w-full flex items-center justify-center gap-3 p-4 border border-border rounded-lg hover:bg-secondary transition-colors disabled:opacity-50"
                 >
                   <FileDown className="w-5 h-5 text-red-600" />
                   <div className="text-left">
-                    <div className="font-medium text-gray-900 dark:text-white">Descargar PDF</div>
-                    <div className="text-sm text-gray-500 dark:text-gray-400">Reporte formateado</div>
+                    <div className="font-medium text-foreground">Descargar PDF</div>
+                    <div className="text-sm text-muted-foreground">Reporte formateado</div>
                   </div>
                 </button>
 
                 <button
                   onClick={() => downloadPersonalData('excel')}
                   disabled={downloadLoading}
-                  className="w-full flex items-center justify-center gap-3 p-4 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+                  className="w-full flex items-center justify-center gap-3 p-4 border border-border rounded-lg hover:bg-secondary transition-colors disabled:opacity-50"
                 >
                   <FileSpreadsheet className="w-5 h-5 text-green-600" />
                   <div className="text-left">
-                    <div className="font-medium text-gray-900 dark:text-white">Descargar Excel (CSV)</div>
-                    <div className="text-sm text-gray-500 dark:text-gray-400">Datos en formato tabla</div>
+                    <div className="font-medium text-foreground">Descargar Excel (CSV)</div>
+                    <div className="text-sm text-muted-foreground">Datos en formato tabla</div>
                   </div>
                 </button>
               </div>

@@ -314,7 +314,7 @@ export default function GlobalFloatingTimeClock() {
   }
 
   return (
-    <div className="fixed top-4 right-4 z-50">
+    <div className="fixed top-4 right-6 z-50">
       {/* Debug component */}
       <TimeClockDebug />
       {/* Mensaje de estado */}
@@ -343,19 +343,6 @@ export default function GlobalFloatingTimeClock() {
             {/* Estado de conexión */}
             <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500' : 'bg-red-500'}`} />
             
-            {/* Botón de notificaciones */}
-            <button
-              onClick={() => setShowNotifications(!showNotifications)}
-              className="relative p-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
-            >
-              <Bell className="w-5 h-5" />
-              {unreadCount > 0 && (
-                <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-xs text-white flex items-center justify-center font-bold">
-                  {unreadCount}
-                </span>
-              )}
-            </button>
-
             {/* Dropdown de usuario */}
             <div className="relative">
               <button
@@ -460,101 +447,6 @@ export default function GlobalFloatingTimeClock() {
         )}
       </div>
 
-      {/* Panel de notificaciones */}
-      {showNotifications && (
-        <div className="absolute top-full right-0 mt-4 w-80 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 max-h-96 overflow-hidden">
-          <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold text-gray-900 dark:text-white">Notificaciones</h3>
-              <button
-                onClick={() => setShowNotifications(false)}
-                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            
-            {/* Filtros */}
-            <div className="flex gap-2 mb-3">
-              <button
-                onClick={() => setNotificationFilter('all')}
-                className={`px-2 py-1 text-xs rounded ${
-                  notificationFilter === 'all' 
-                    ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400'
-                    : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
-                }`}
-              >
-                Todas ({notificationStats.total})
-              </button>
-              <button
-                onClick={() => setNotificationFilter('unread')}
-                className={`px-2 py-1 text-xs rounded ${
-                  notificationFilter === 'unread' 
-                    ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400'
-                    : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
-                }`}
-              >
-                No leídas ({notificationStats.unread})
-              </button>
-            </div>
-
-            {/* Búsqueda */}
-            <div className="relative">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Buscar notificaciones..."
-                value={notificationSearch}
-                onChange={(e) => setNotificationSearch(e.target.value)}
-                className="w-full pl-10 pr-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              />
-            </div>
-          </div>
-
-          <div className="max-h-64 overflow-y-auto">
-            {notifications.length === 0 ? (
-              <div className="p-4 text-center text-gray-500 dark:text-gray-400 text-sm">
-                No hay notificaciones
-              </div>
-            ) : (
-              notifications.map((notification) => (
-                <div
-                  key={notification.id}
-                  className={`p-3 border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer ${
-                    !notification.read_at ? 'bg-blue-50 dark:bg-blue-900/20' : ''
-                  }`}
-                  onClick={() => markNotificationAsRead(notification.id)}
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <p className="text-sm text-gray-900 dark:text-white">
-                        {notification.message}
-                      </p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                        {new Date(notification.created_at).toLocaleString()}
-                      </p>
-                    </div>
-                    {!notification.read_at && (
-                      <div className="w-2 h-2 bg-blue-500 rounded-full ml-2 mt-1"></div>
-                    )}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-
-          {notifications.length > 0 && (
-            <div className="p-3 border-t border-gray-200 dark:border-gray-700">
-              <button
-                onClick={markAllAsRead}
-                className="w-full text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"
-              >
-                Marcar todas como leídas
-              </button>
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }

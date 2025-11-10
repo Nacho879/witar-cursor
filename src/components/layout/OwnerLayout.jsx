@@ -23,7 +23,7 @@ import SubscriptionStatus from '@/components/SubscriptionStatus';
 import CompanyBlocked from '@/components/CompanyBlocked';
 import { InvitationProvider } from '@/contexts/InvitationContext';
 import { supabase } from '@/lib/supabaseClient';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import React from 'react';
 
 export default function OwnerLayout({ children }){
@@ -46,6 +46,8 @@ export default function OwnerLayout({ children }){
   const [subscriptionStatus, setSubscriptionStatus] = React.useState(null);
   const [isBlocked, setIsBlocked] = React.useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
+  const isBillingRoute = location.pathname.startsWith('/owner/billing');
 
   // Cargar companyId y verificar suscripción
   React.useEffect(() => {
@@ -110,7 +112,7 @@ export default function OwnerLayout({ children }){
           transform transition-transform duration-300 ease-in-out
           lg:relative lg:translate-x-0 lg:col-start-1
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-          ${isCollapsed ? 'w-16' : 'w-64'}
+          ${isCollapsed ? 'w-20' : 'w-64'}
         `}>
           {/* Header with close button for mobile */}
           <div className='flex items-center justify-between p-4 border-b border-border'>
@@ -255,8 +257,8 @@ export default function OwnerLayout({ children }){
             </div>
           )}
 
-          {/* Verificar si la empresa está bloqueada */}
-          {isBlocked ? (
+          {/* Verificar si la empresa está bloqueada (permitir acceso a Facturación para activar Stripe) */}
+          {isBlocked && !isBillingRoute ? (
             <CompanyBlocked 
               companyName={subscriptionStatus?.companyName || 'Tu empresa'}
               daysSinceCreation={subscriptionStatus?.daysSinceCreation || 14}

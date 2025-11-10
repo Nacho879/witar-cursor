@@ -13,7 +13,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Info,
-  Globe
+  Globe,
+  Bell
 } from 'lucide-react';
 import InvitationBadge from '@/components/InvitationBadge';
 import FloatingTimeClock from '@/components/FloatingTimeClock';
@@ -55,7 +56,7 @@ export default function AdminLayout({ children }){
           transform transition-transform duration-300 ease-in-out
           lg:relative lg:translate-x-0 lg:col-start-1
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-          ${isCollapsed ? 'w-16' : 'w-64'}
+          ${isCollapsed ? 'w-20' : 'w-64'}
         `}>
           {/* Header with close button for mobile */}
           <div className='flex items-center justify-between p-4 border-b border-border'>
@@ -218,6 +219,14 @@ export default function AdminLayout({ children }){
             >
               <Download className='w-4 h-4' />
               <span className={isCollapsed ? 'hidden' : 'lg:block'}>Documentos</span>
+            </a>
+            <a 
+              className='px-3 py-2 rounded hover:bg-secondary flex items-center gap-2 transition-colors' 
+              href='/admin/notifications'
+              onClick={() => setSidebarOpen(false)}
+            >
+              <Bell className='w-4 h-4' />
+              <span className={isCollapsed ? 'hidden' : 'lg:block'}>Notificaciones</span>
             </a>
           </nav>
         </aside>

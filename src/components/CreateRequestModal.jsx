@@ -224,7 +224,7 @@ export default function CreateRequestModal({ isOpen, onClose, onRequestCreated }
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {[
                 { value: 'vacation', label: 'Vacaciones', icon: Calendar, color: 'text-blue-600 bg-blue-100' },
-                { value: 'personal_leave', label: 'Permiso', icon: Clock, color: 'text-green-600 bg-green-100' },
+                { value: 'personal_leave', label: 'Permiso Personal', icon: Clock, color: 'text-green-600 bg-green-100' },
                 { value: 'sick_leave', label: 'Baja Médica', icon: AlertCircle, color: 'text-red-600 bg-red-100' },
                 { value: 'other', label: 'Otro', icon: FileText, color: 'text-purple-600 bg-purple-100' }
               ].map((type) => {

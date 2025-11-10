@@ -9,6 +9,7 @@ export default function DepartmentModal({ isOpen, onClose, department = null, on
   const [description, setDescription] = React.useState('');
   const [managerId, setManagerId] = React.useState('');
   const [companyId, setCompanyId] = React.useState(null);
+  const [userRoleInfo, setUserRoleInfo] = React.useState(null);
   const [managers, setManagers] = React.useState([]);
   const [message, setMessage] = React.useState('');
 
@@ -34,15 +35,17 @@ export default function DepartmentModal({ isOpen, onClose, department = null, on
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        const { data: userRole } = await supabase
+        const { data: roles, error } = await supabase
           .from('user_company_roles')
-          .select('company_id')
+          .select('company_id, role, is_active')
           .eq('user_id', user.id)
-          .eq('is_active', true)
-          .single();
+          .eq('is_active', true);
 
-        if (userRole) {
-          setCompanyId(userRole.company_id);
+        if (!error && Array.isArray(roles) && roles.length > 0) {
+          // Priorizar owner/admin si hay varias filas activas
+          const preferred = roles.find(r => ['owner', 'admin'].includes(r.role)) || roles[0];
+          setCompanyId(preferred.company_id);
+          setUserRoleInfo(preferred);
         }
       }
     } catch (error) {
@@ -119,8 +122,16 @@ export default function DepartmentModal({ isOpen, onClose, department = null, on
     setMessage('');
 
     try {
+      console.debug('[DepartmentModal] saveDepartment context', { companyId, userRoleInfo, name, managerId });
       if (!companyId) {
         setMessage('Error: No se pudo identificar la empresa');
+        return;
+      }
+
+      // Validar permisos antes de intentar el INSERT (alineado con RLS)
+      const canCreate = userRoleInfo?.is_active && ['owner', 'admin'].includes(userRoleInfo?.role);
+      if (!canCreate) {
+        setMessage('Error: No tienes permisos para crear departamentos (se requiere rol admin u owner).');
         return;
       }
 
@@ -155,39 +166,49 @@ export default function DepartmentModal({ isOpen, onClose, department = null, on
         if (error) throw error;
         result = data;
       } else {
-        // Crear nuevo departamento
+        // Crear nuevo departamento via RPC con verificación interna de permisos
         const { data, error } = await supabase
-          .from('departments')
-          .insert({
-            company_id: companyId,
-            name: nameValidation.sanitized,
-            description: description.trim() || null,
-            manager_id: managerId || null,
-            status: 'active'
-          })
-          .select()
-          .single();
+          .rpc('create_department', {
+            p_company_id: companyId,
+            p_name: nameValidation.sanitized,
+            p_description: description.trim() || null,
+            p_manager_id: managerId || null
+          });
 
-        if (error) throw error;
+        if (error) {
+          if (error.code === '42501') {
+            throw new Error('Permisos insuficientes para crear el departamento en esta empresa.');
+          }
+          throw error;
+        }
+        // La RPC devuelve un objeto, no un array
         result = data;
       }
 
-      // Actualizar supervisores de empleados del departamento
-      if (result.id) {
-        await updateDepartmentEmployeeSupervisors(result.id, oldManagerId, managerId);
+      // Actualizar supervisores de empleados del departamento (solo si hay manager asignado)
+      // Hacer esto de forma asíncrona sin bloquear el éxito
+      if (result && result.id) {
+        updateDepartmentEmployeeSupervisors(result.id, oldManagerId, managerId).catch(err => {
+          console.warn('Error al actualizar supervisores (no crítico):', err);
+        });
       }
 
       setMessage('¡Departamento guardado exitosamente!');
       
-      // Notificar al componente padre
+      // Notificar al componente padre para que recargue la lista
       if (onDepartmentSaved) {
         onDepartmentSaved(result);
       }
 
-      // Cerrar modal después de 2 segundos
+      // Esperar un momento para que se complete la recarga antes de cerrar
       setTimeout(() => {
         onClose();
-      }, 2000);
+        // Limpiar el formulario
+        setName('');
+        setDescription('');
+        setManagerId('');
+        setMessage('');
+      }, 1500);
 
     } catch (error) {
       console.error('Error saving department:', error);
@@ -215,7 +236,7 @@ export default function DepartmentModal({ isOpen, onClose, department = null, on
           .from('user_company_roles')
           .update({ supervisor_id: newManagerId })
           .eq('department_id', departmentId)
-          .eq('supervisor_id', null) // Solo empleados sin supervisor
+          .is('supervisor_id', null) // Solo empleados sin supervisor (usar .is() para NULL)
           .neq('role', 'manager'); // No asignar supervisores a managers
       }
     } catch (error) {
@@ -254,6 +275,11 @@ export default function DepartmentModal({ isOpen, onClose, department = null, on
 
         {/* Content */}
         <div className="p-6 space-y-6">
+          {/* Context Info */}
+          <div className="text-xs text-muted-foreground">
+            Empresa seleccionada: <span className="font-mono">{companyId || '—'}</span> · Rol: <span className="uppercase">{userRoleInfo?.role || '—'}</span> {userRoleInfo?.is_active === false ? '(inactivo)' : ''}
+          </div>
+
           {/* Name */}
           <div>
             <label className="block text-sm font-medium mb-2">
@@ -335,7 +361,7 @@ export default function DepartmentModal({ isOpen, onClose, department = null, on
             </button>
             <button
               onClick={saveDepartment}
-              disabled={loading}
+              disabled={loading || !companyId || !(userRoleInfo?.is_active)}
               className="btn btn-primary flex-1 flex items-center gap-2"
             >
               {loading ? (

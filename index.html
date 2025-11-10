@@ -13,22 +13,71 @@
     <meta name="mobile-web-app-capable" content="yes" />
     
     <!-- Apple Touch Icons -->
-    <link rel="apple-touch-icon" href="/icons/icon-192x192.png" />
-    <link rel="apple-touch-icon" sizes="152x152" href="/icons/icon-152x152.png" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-192x192.png" />
+    <link rel="apple-touch-icon" href="/icons/icon-192x192.png?v=20251103" />
+    <link rel="apple-touch-icon" sizes="152x152" href="/icons/icon-152x152.png?v=20251103" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-192x192.png?v=20251103" />
     
     <!-- Favicon -->
-    <link rel="icon" type="image/png" href="/logo.png" />
-    <link rel="icon" type="image/png" sizes="48x48" href="/icons/icon-48x48.png" />
-    <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-32x32.png" />
-    <link rel="icon" type="image/png" sizes="16x16" href="/icons/icon-16x16.png" />
-    <link rel="mask-icon" href="/icon.svg" color="#3B82F6" />
+    <link rel="icon" type="image/png" href="/logo.png?v=20251103" />
+    <link rel="icon" type="image/png" sizes="48x48" href="/icons/icon-48x48.png?v=20251103" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-32x32.png?v=20251103" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/icons/icon-16x16.png?v=20251103" />
+    <link rel="mask-icon" href="/icon.svg?v=20251103" color="#3B82F6" />
     
     <!-- Manifest -->
-    <link rel="manifest" href="/manifest.json" />
+    <link rel="manifest" href="/manifest.json?v=20251103" />
     
     <title>Witar - Gestión de Recursos Humanos</title>
     <script>
+      // Desactivar completamente service workers y logs de Workbox en desarrollo
+      if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+        // Desregistrar todos los service workers existentes
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.getRegistrations().then(function(registrations) {
+            for(let registration of registrations) {
+              registration.unregister().then(() => {
+                console.log('Service Worker desregistrado');
+              });
+            }
+          });
+        }
+        
+        // Prevenir que se registren nuevos service workers
+        window.__WB_DISABLE_DEV_LOGS = true;
+        window.__WB_MANIFEST = [];
+        
+        // También configurar en globalThis para el service worker
+        if (typeof globalThis !== 'undefined') {
+          globalThis.__WB_DISABLE_DEV_LOGS = true;
+        }
+        
+        // Silenciar todos los logs de workbox (log, warn, error)
+        const originalLog = console.log;
+        const originalWarn = console.warn;
+        const originalError = console.error;
+        
+        console.log = function(...args) {
+          if (args.some(arg => typeof arg === 'string' && arg.toLowerCase().includes('workbox'))) {
+            return;
+          }
+          originalLog.apply(console, args);
+        };
+        
+        console.warn = function(...args) {
+          if (args.some(arg => typeof arg === 'string' && arg.toLowerCase().includes('workbox'))) {
+            return;
+          }
+          originalWarn.apply(console, args);
+        };
+        
+        console.error = function(...args) {
+          if (args.some(arg => typeof arg === 'string' && arg.toLowerCase().includes('workbox'))) {
+            return;
+          }
+          originalError.apply(console, args);
+        };
+      }
+      
       const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
       const saved = localStorage.getItem('witar-theme');
       if ((saved === 'dark') || (!saved && prefersDark)) {

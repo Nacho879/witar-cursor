@@ -8,28 +8,21 @@ import {
   Building, 
   Calendar,
   Clock,
-  Eye,
   Edit,
-  Plus,
-  Search,
-  Filter,
-  Activity,
-  CheckCircle,
-  XCircle,
   Camera,
-  Download,
-  FileText,
-  Upload,
   Save,
   X,
+  CheckCircle,
   AlertCircle,
   Settings,
   Shield,
-  Lock
+  Lock,
+  FileText,
+  Download
 } from 'lucide-react';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
 
-export default function AdminProfile() {
+export default function OwnerProfile() {
   const [profile, setProfile] = React.useState(null);
   const [companyInfo, setCompanyInfo] = React.useState(null);
   const [departments, setDepartments] = React.useState([]);
@@ -52,112 +45,8 @@ export default function AdminProfile() {
   const [showChangePasswordModal, setShowChangePasswordModal] = React.useState(false);
 
   React.useEffect(() => {
-    console.log('🚀 [Profile] Componente montado, iniciando carga de datos...');
     loadProfileData();
     loadStats();
-  }, []);
-
-  // Recargar departamentos cuando cambie companyInfo
-  React.useEffect(() => {
-    if (companyInfo?.company?.id && !loading) {
-      console.log('🔄🔄🔄 [EFFECT] companyInfo cambió, recargando departamentos:', companyInfo.company.id);
-      loadDepartments(companyInfo.company.id);
-    } else {
-      console.log('⏸️ [EFFECT] No se recargan departamentos:', {
-        hasCompanyId: !!companyInfo?.company?.id,
-        loading: loading
-      });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [companyInfo?.company?.id, loading]);
-
-  // Función dedicada para cargar departamentos
-  const loadDepartments = React.useCallback(async (companyId) => {
-    console.log('🚀🚀🚀 [loadDepartments] FUNCIÓN LLAMADA con company_id:', companyId);
-    
-    if (!companyId) {
-      console.error('❌❌❌ [loadDepartments] ERROR: No se proporcionó company_id');
-      setDepartments([]);
-      return;
-    }
-
-    try {
-      console.log('🔍 [loadDepartments] Iniciando consulta para company_id:', companyId);
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        console.error('❌ [loadDepartments] Usuario no autenticado');
-        setDepartments([]);
-        return;
-      }
-
-      console.log('📡 [loadDepartments] Ejecutando query a Supabase...');
-      console.log('📡 [loadDepartments] Query details:', {
-        table: 'departments',
-        company_id: companyId,
-        user_id: user.id
-      });
-      
-      // Primero verificar que el usuario tenga un rol activo con este company_id
-      const { data: userRoleCheck, error: roleCheckError } = await supabase
-        .from('user_company_roles')
-        .select('id, role, company_id, is_active')
-        .eq('user_id', user.id)
-        .eq('company_id', companyId)
-        .eq('is_active', true)
-        .limit(1)
-        .single();
-      
-      console.log('🔍 [loadDepartments] Verificación de rol:', {
-        userRoleCheck,
-        roleCheckError,
-        hasRole: !!userRoleCheck
-      });
-      
-      const { data: departmentsData, error: departmentsError } = await supabase
-        .from('departments')
-        .select('id, name, description, status, company_id')
-        .eq('company_id', companyId)
-        .order('name');
-
-      console.log('📥 [loadDepartments] Respuesta recibida:', {
-        hasData: !!departmentsData,
-        dataLength: departmentsData?.length || 0,
-        hasError: !!departmentsError,
-        error: departmentsError
-      });
-
-      if (departmentsError) {
-        console.error('❌❌❌ [loadDepartments] ERROR EN LA CONSULTA:', departmentsError);
-        console.error('❌ [loadDepartments] Detalles completos:', {
-          message: departmentsError.message,
-          code: departmentsError.code,
-          details: departmentsError.details,
-          hint: departmentsError.hint,
-          company_id_usado: companyId
-        });
-        setDepartments([]);
-      } else {
-        const count = departmentsData?.length || 0;
-        console.log('✅✅✅ [loadDepartments] ÉXITO: Departamentos cargados:', count);
-        
-        if (departmentsData && departmentsData.length > 0) {
-          console.log('📋 [loadDepartments] LISTA COMPLETA DE DEPARTAMENTOS:');
-          departmentsData.forEach((dept, index) => {
-            console.log(`  ${index + 1}. ID: ${dept.id}, Nombre: ${dept.name}, Status: ${dept.status}`);
-          });
-          console.log('💾 [loadDepartments] Actualizando estado con', count, 'departamentos');
-          setDepartments(departmentsData);
-          console.log('✅ [loadDepartments] Estado actualizado correctamente');
-        } else {
-          console.warn('⚠️ [loadDepartments] No se encontraron departamentos para company_id:', companyId);
-          setDepartments([]);
-        }
-      }
-    } catch (error) {
-      console.error('❌❌❌ [loadDepartments] EXCEPCIÓN:', error);
-      console.error('❌ [loadDepartments] Stack:', error.stack);
-      setDepartments([]);
-    }
   }, []);
 
   async function loadStats() {
@@ -249,22 +138,25 @@ export default function AdminProfile() {
   function handleQuickAction(action) {
     switch (action) {
       case 'employees':
-        window.location.href = '/admin/employees';
+        window.location.href = '/owner/employees';
         break;
       case 'departments':
-        window.location.href = '/admin/departments';
+        window.location.href = '/owner/departments';
         break;
       case 'requests':
-        window.location.href = '/admin/requests';
-        break;
-      case 'documents':
-        window.location.href = '/admin/documents';
+        window.location.href = '/owner/requests';
         break;
       case 'time_entries':
-        window.location.href = '/admin/time-entries';
+        window.location.href = '/owner/time-entries';
+        break;
+      case 'reports':
+        window.location.href = '/owner/reports';
         break;
       case 'settings':
-        window.location.href = '/admin/settings';
+        window.location.href = '/owner/settings';
+        break;
+      case 'billing':
+        window.location.href = '/owner/billing';
         break;
       default:
         break;
@@ -273,21 +165,10 @@ export default function AdminProfile() {
 
   async function loadProfileData() {
     try {
-      console.log('🚀 [loadProfileData] Iniciando función...');
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
-      
-      if (authError) {
-        console.error('❌ [loadProfileData] Error obteniendo usuario:', authError);
-        return;
-      }
-      
-      if (!user) {
-        console.error('❌ [loadProfileData] No hay usuario autenticado');
-        return;
-      }
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
 
-      console.log('✅ [loadProfileData] Usuario autenticado:', user.id, user.email);
-      console.log('🔄 [loadProfileData] Iniciando carga de datos del usuario...');
+      console.log('🔄 Iniciando carga de datos del owner...');
 
       // Cargar perfil del usuario
       const { data: profileData, error: profileError } = await supabase
@@ -312,9 +193,9 @@ export default function AdminProfile() {
           .from('user_profiles')
           .insert({
             user_id: user.id,
-            full_name: user.email?.split('@')[0] || 'Administrador',
+            full_name: user.email?.split('@')[0] || 'Owner',
             phone: '',
-            position: 'Administrador'
+            position: 'Owner'
           })
           .select()
           .single();
@@ -330,8 +211,8 @@ export default function AdminProfile() {
         }
       }
 
-      // Obtener información laboral completa del admin
-      const { data: adminRole, error: roleError } = await supabase
+      // Obtener información laboral completa del owner
+      const { data: ownerRole, error: roleError } = await supabase
         .from('user_company_roles')
         .select(`
           id, 
@@ -356,85 +237,84 @@ export default function AdminProfile() {
           )
         `)
         .eq('user_id', user.id)
-        .eq('role', 'admin')
+        .eq('role', 'owner')
         .eq('is_active', true)
         .maybeSingle();
 
-      console.log('👤 Resultado rol:', { adminRole, error: roleError });
+      console.log('👤 Resultado rol:', { ownerRole, error: roleError });
 
-      if (adminRole) {
-        console.log('✅ [loadProfileData] adminRole encontrado:', {
-          id: adminRole.id,
-          company_id: adminRole.company_id,
-          role: adminRole.role,
-          hasCompany: !!adminRole.companies
-        });
-        
-        // Obtener el email del admin usando la Edge Function
+      // Obtener company_id para cargar departamentos
+      let companyId = null;
+      if (ownerRole) {
+        companyId = ownerRole.company_id;
+      } else {
+        // Si no hay ownerRole, intentar obtener company_id de cualquier rol activo
+        const { data: anyRole } = await supabase
+          .from('user_company_roles')
+          .select('company_id')
+          .eq('user_id', user.id)
+          .eq('is_active', true)
+          .limit(1)
+          .single();
+        if (anyRole) {
+          companyId = anyRole.company_id;
+        }
+      }
+
+      // Cargar todos los departamentos de la empresa si tenemos company_id
+      if (companyId) {
+        console.log('🔍 Cargando departamentos de la empresa (company_id:', companyId, ')...');
+        const { data: departmentsData, error: departmentsError } = await supabase
+          .from('departments')
+          .select('id, name, description, status')
+          .eq('company_id', companyId)
+          .order('name');
+
+        if (departmentsError) {
+          console.error('❌ Error cargando departamentos:', departmentsError);
+          console.error('Detalles del error:', {
+            message: departmentsError.message,
+            code: departmentsError.code,
+            details: departmentsError.details,
+            hint: departmentsError.hint
+          });
+        } else {
+          console.log('✅ Departamentos cargados:', departmentsData?.length || 0);
+          if (departmentsData && departmentsData.length > 0) {
+            console.log('📋 Lista de departamentos:', departmentsData.map(d => ({ id: d.id, name: d.name, status: d.status })));
+          }
+          setDepartments(departmentsData || []);
+        }
+      } else {
+        console.warn('⚠️ No se pudo obtener company_id, no se cargarán departamentos');
+      }
+
+      if (ownerRole) {
+        // Obtener el email del owner usando la Edge Function
         const { data: emailData, error: emailError } = await supabase.functions.invoke('get-user-emails', {
           body: { userIds: [user.id] }
         });
 
         // Establecer la información laboral
         setCompanyInfo({
-          company: adminRole.companies,
-          department: adminRole.departments,
-          role: adminRole.role,
-          joined_at: adminRole.joined_at,
+          company: ownerRole.companies,
+          department: ownerRole.departments,
+          role: ownerRole.role,
+          joined_at: ownerRole.joined_at,
           email: emailData?.emails?.[0]?.email || 'No disponible'
         });
 
-        console.log('🏢 [loadProfileData] Información de empresa establecida:', {
-          company: adminRole.companies,
-          department: adminRole.departments,
-          role: adminRole.role,
-          joined_at: adminRole.joined_at,
-          email: emailData?.emails?.[0]?.email,
-          company_id_final: adminRole.company_id
+        console.log('🏢 Información de empresa establecida:', {
+          company: ownerRole.companies,
+          department: ownerRole.departments,
+          role: ownerRole.role,
+          joined_at: ownerRole.joined_at,
+          email: emailData?.emails?.[0]?.email
         });
-        
-        // Cargar departamentos usando el company_id del adminRole
-        if (adminRole.company_id) {
-          console.log('🔄 [loadProfileData] Cargando departamentos con company_id:', adminRole.company_id);
-          await loadDepartments(adminRole.company_id);
-        } else {
-          console.error('❌ [loadProfileData] adminRole.company_id es null/undefined');
-        }
-      } else if (!adminRole) {
-        // Crear rol si no existe
-        console.log('🔄 Creando rol automáticamente...');
-        // Buscar primera empresa disponible
-        const { data: companies } = await supabase
-          .from('companies')
-          .select('id')
-          .limit(1);
-
-        if (companies && companies.length > 0) {
-          const { data: newRole, error: createRoleError } = await supabase
-            .from('user_company_roles')
-            .insert({
-              user_id: user.id,
-              company_id: companies[0].id,
-              role: 'admin',
-              is_active: true,
-              joined_at: new Date().toISOString()
-            })
-            .select()
-            .single();
-
-          if (!createRoleError && newRole) {
-            console.log('✅ Rol creado:', newRole);
-            // Recargar datos después de crear el rol
-            await loadProfileData();
-            return;
-          }
-        }
       }
     } catch (error) {
-      console.error('❌ [loadProfileData] Error general:', error);
-      console.error('❌ [loadProfileData] Stack trace:', error.stack);
+      console.error('Error loading profile data:', error);
     } finally {
-      console.log('✅ [loadProfileData] Finalizando carga, desactivando loading...');
       setLoading(false);
     }
   }
@@ -482,15 +362,6 @@ export default function AdminProfile() {
     setMessage('');
   }
 
-  // Debug: Log del estado de departments cuando cambia
-  React.useEffect(() => {
-    console.log('📊 [RENDER] Estado actual de departments:', {
-      count: departments.length,
-      departments: departments.map(d => ({ id: d.id, name: d.name, status: d.status })),
-      loading: loading
-    });
-  }, [departments, loading]);
-
   if (loading) {
     return (
       <div className="space-y-6">
@@ -514,7 +385,7 @@ export default function AdminProfile() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Mi Perfil</h1>
           <p className="text-gray-600 dark:text-gray-400 mt-1">
-            Gestiona tu información personal y profesional como Administrador
+            Gestiona tu información personal y profesional como Owner
           </p>
         </div>
       </div>
@@ -546,7 +417,7 @@ export default function AdminProfile() {
       {/* Quick Actions */}
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
         <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">Acciones Rápidas</h2>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-8 gap-4">
           <button
             onClick={() => handleQuickAction('employees')}
             className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors text-center"
@@ -580,11 +451,11 @@ export default function AdminProfile() {
           </button>
           
           <button
-            onClick={() => handleQuickAction('documents')}
-            className="p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg hover:bg-yellow-100 dark:hover:bg-yellow-900/30 transition-colors text-center"
+            onClick={() => handleQuickAction('reports')}
+            className="p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-900/30 transition-colors text-center"
           >
-            <Download className="w-8 h-8 text-yellow-600 mx-auto mb-2" />
-            <span className="text-sm font-medium text-yellow-700 dark:text-yellow-300">Documentos</span>
+            <Download className="w-8 h-8 text-indigo-600 mx-auto mb-2" />
+            <span className="text-sm font-medium text-indigo-700 dark:text-indigo-300">Reportes</span>
           </button>
           
           <button
@@ -593,6 +464,14 @@ export default function AdminProfile() {
           >
             <Settings className="w-8 h-8 text-gray-600 mx-auto mb-2" />
             <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Configuración</span>
+          </button>
+          
+          <button
+            onClick={() => handleQuickAction('billing')}
+            className="p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg hover:bg-yellow-100 dark:hover:bg-yellow-900/30 transition-colors text-center"
+          >
+            <FileText className="w-8 h-8 text-yellow-600 mx-auto mb-2" />
+            <span className="text-sm font-medium text-yellow-700 dark:text-yellow-300">Facturación</span>
           </button>
           
           <button
@@ -773,7 +652,7 @@ export default function AdminProfile() {
                         {companyInfo?.email || 'No especificado'}
                       </p>
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                        Email con el que aceptaste la invitación
+                        Email con el que registraste la empresa
                       </p>
                     </div>
 
@@ -808,7 +687,7 @@ export default function AdminProfile() {
                         />
                       ) : (
                         <p className="text-gray-900 dark:text-white font-medium">
-                          {profile?.position || 'No especificado'}
+                          {profile?.position || 'Owner'}
                         </p>
                       )}
                     </div>
@@ -820,22 +699,10 @@ export default function AdminProfile() {
 
           {/* Información Laboral */}
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
-            <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+            <div className="p-6 border-b border-gray-200 dark:border-gray-700">
               <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
                 Información Laboral
               </h2>
-              {companyInfo?.company?.id && (
-                <button
-                  onClick={() => {
-                    console.log('🔄 [MANUAL] Recarga manual de departamentos solicitada');
-                    loadDepartments(companyInfo.company.id);
-                  }}
-                  className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
-                  title="Recargar departamentos"
-                >
-                  🔄 Recargar Departamentos
-                </button>
-              )}
             </div>
             
             <div className="p-6">
@@ -859,7 +726,7 @@ export default function AdminProfile() {
                     </div>
                     <div className="flex-1">
                       <p className="text-sm text-gray-600 dark:text-gray-400">Departamentos</p>
-                      {departments && departments.length > 0 ? (
+                      {departments.length > 0 ? (
                         <div className="mt-1">
                           <p className="font-medium text-gray-900 dark:text-white mb-2">
                             {departments.length} departamento{departments.length !== 1 ? 's' : ''}
@@ -873,7 +740,6 @@ export default function AdminProfile() {
                                     ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300'
                                     : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300'
                                 }`}
-                                title={dept.description || dept.name}
                               >
                                 {dept.name}
                               </span>
@@ -881,14 +747,9 @@ export default function AdminProfile() {
                           </div>
                         </div>
                       ) : (
-                        <div className="mt-1">
-                          <p className="font-medium text-gray-500 dark:text-gray-400">
-                            Sin departamentos
-                          </p>
-                          <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                            {loading ? 'Cargando...' : 'No hay departamentos registrados'}
-                          </p>
-                        </div>
+                        <p className="font-medium text-gray-900 dark:text-white">
+                          Sin departamentos
+                        </p>
                       )}
                     </div>
                   </div>
@@ -900,7 +761,7 @@ export default function AdminProfile() {
                     <div>
                       <p className="text-sm text-gray-600 dark:text-gray-400">Cargo</p>
                       <p className="font-medium text-gray-900 dark:text-white capitalize">
-                        {companyInfo?.role || 'No especificado'}
+                        {companyInfo?.role || 'Owner'}
                       </p>
                     </div>
                   </div>
@@ -912,7 +773,7 @@ export default function AdminProfile() {
                       <Calendar className="w-5 h-5 text-orange-600 dark:text-orange-400" />
                     </div>
                     <div>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">Fecha de Ingreso</p>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">Fecha de Registro</p>
                       <p className="font-medium text-gray-900 dark:text-white">
                         {companyInfo?.joined_at ? new Date(companyInfo.joined_at).toLocaleDateString('es-ES') : 'No especificado'}
                       </p>
@@ -936,7 +797,7 @@ export default function AdminProfile() {
                       <Building className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
                     </div>
                     <div>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">Departamentos</p>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">Total Departamentos</p>
                       <p className="font-medium text-gray-900 dark:text-white">
                         {stats.totalDepartments} departamentos
                       </p>
@@ -956,4 +817,5 @@ export default function AdminProfile() {
       />
     </div>
   );
-} 
+}
+

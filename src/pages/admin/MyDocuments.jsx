@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { supabase } from '@/lib/supabaseClient';
+import { NotificationService } from '@/lib/notificationService';
 import { 
   FileText, 
   Upload, 
@@ -215,16 +216,31 @@ export default function AdminMyDocuments() {
     try {
       setUploading(true);
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!user) {
+        console.error('❌ No hay usuario autenticado');
+        return;
+      }
 
-      const { data: userRole } = await supabase
+      console.log('👤 Usuario autenticado:', user.id, user.email);
+
+      const { data: userRole, error: roleError } = await supabase
         .from('user_company_roles')
-        .select('company_id')
+        .select('company_id, role')
         .eq('user_id', user.id)
         .eq('is_active', true)
         .single();
 
-      if (!userRole) return;
+      if (roleError) {
+        console.error('❌ Error obteniendo rol:', roleError);
+        return;
+      }
+
+      if (!userRole) {
+        console.error('❌ No se encontró rol de usuario');
+        return;
+      }
+
+      console.log('✅ Rol de usuario:', userRole);
 
       if (!uploadForm.file) {
         alert('Por favor selecciona un archivo');
@@ -256,10 +272,20 @@ export default function AdminMyDocuments() {
       reader.onload = async function(e) {
         const base64Data = e.target.result;
 
+        // Obtener nombre del usuario que sube el documento
+        const { data: uploaderProfile } = await supabase
+          .from('user_profiles')
+          .select('full_name')
+          .eq('user_id', user.id)
+          .single();
+
+        const uploaderName = uploaderProfile?.full_name || 'Administrador';
+
         // Crear documentos para cada destinatario
         const documentPromises = recipients.map(recipient => {
           console.log('📄 Creating document for recipient:', recipient);
-          return supabase.from('documents').insert({
+          
+          const documentData = {
             title: uploadForm.title,
             description: uploadForm.description,
             category: uploadForm.category,
@@ -269,7 +295,36 @@ export default function AdminMyDocuments() {
             user_id: recipient.id, // recipient.id es el user_id
             company_id: userRole.company_id,
             uploaded_by: user.id
+          };
+          
+          console.log('📤 Document data being sent:', {
+            title: documentData.title,
+            user_id: documentData.user_id,
+            company_id: documentData.company_id,
+            uploaded_by: documentData.uploaded_by,
+            current_user: user.id,
+            user_role: userRole.role
           });
+          
+          return supabase
+            .from('documents')
+            .insert(documentData)
+            .select()
+            .single()
+            .then(result => {
+              if (result.error) {
+                console.error('❌ Error en inserción:', result.error);
+                console.error('❌ Detalles del error:', {
+                  code: result.error.code,
+                  message: result.error.message,
+                  details: result.error.details,
+                  hint: result.error.hint
+                });
+              } else {
+                console.log('✅ Documento insertado exitosamente:', result.data);
+              }
+              return result;
+            });
         });
 
         try {
@@ -283,6 +338,29 @@ export default function AdminMyDocuments() {
             alert('Error al subir algunos documentos');
             return;
           }
+          
+          // Enviar notificaciones a todos los destinatarios
+          const notificationPromises = results
+            .filter(result => !result.error && result.data)
+            .map(result => {
+              const document = result.data;
+              const recipient = recipients.find(r => r.id === document.user_id);
+              if (recipient) {
+                return NotificationService.notifyDocumentUploadedToUser({
+                  companyId: userRole.company_id,
+                  documentTitle: uploadForm.title,
+                  recipientUserId: recipient.id,
+                  uploaderName: uploaderName,
+                  documentId: document.id
+                }).catch(err => {
+                  console.error('Error sending notification:', err);
+                  return null; // No fallar si una notificación falla
+                });
+              }
+              return Promise.resolve(null);
+            });
+
+          await Promise.all(notificationPromises);
           
           alert(`Documento subido exitosamente a ${recipients.length} destinatario${recipients.length > 1 ? 's' : ''}`);
           setShowUploadModal(false);

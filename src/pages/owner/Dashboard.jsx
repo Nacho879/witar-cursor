@@ -14,7 +14,6 @@ import {
   XCircle,
   Activity
 } from 'lucide-react';
-import NotificationCenter from '@/components/NotificationCenter';
 import ThemeToggle from '@/components/common/ThemeToggle';
 
 export default function OwnerDashboard() {
@@ -270,7 +269,6 @@ export default function OwnerDashboard() {
           </p>
         </div>
         <div className="flex items-center gap-2 sm:gap-3 pr-16 sm:pr-0">
-          <NotificationCenter />
           <ThemeToggle/>
           <button
             onClick={() => window.location.href = '/owner/employees'}

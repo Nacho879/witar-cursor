@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { Bell, Check, Trash2, Filter, Search, Clock, FileText, Users, Building2, Mail, AlertTriangle } from 'lucide-react';
+import { Bell, Check, Trash2, Filter, Search, Clock, FileText, Users, Building2, Mail, AlertTriangle, Archive, History } from 'lucide-react';
 import { NotificationService } from '@/lib/notificationService';
 
 export default function Notifications() {
   const [notifications, setNotifications] = useState([]);
+  const [deletedNotifications, setDeletedNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [companyId, setCompanyId] = useState(null);
+  const [activeTab, setActiveTab] = useState('active'); // 'active' o 'deleted'
   const [filter, setFilter] = useState('all'); // all, unread, read
   const [searchTerm, setSearchTerm] = useState('');
   const [stats, setStats] = useState({
@@ -21,9 +23,13 @@ export default function Notifications() {
 
   useEffect(() => {
     if (companyId) {
-      loadNotifications();
+      if (activeTab === 'active') {
+        loadNotifications();
+      } else {
+        loadDeletedNotifications();
+      }
     }
-  }, [companyId, filter]);
+  }, [companyId, filter, activeTab]);
 
   async function loadUserData() {
     try {
@@ -136,8 +142,30 @@ export default function Notifications() {
 
       setNotifications(prev => prev.filter(n => n.id !== notificationId));
       setStats(prev => ({ ...prev, total: prev.total - 1 }));
+      
+      // Recargar el historial si estamos en esa pestaña
+      if (activeTab === 'deleted' && companyId) {
+        loadDeletedNotifications();
+      }
     } catch (error) {
       console.error('Error deleting notification:', error);
+    }
+  }
+
+  async function loadDeletedNotifications() {
+    try {
+      setLoading(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (user && companyId) {
+        const deleted = await NotificationService.getDeletedNotifications(user.id, companyId, 100);
+        setDeletedNotifications(deleted || []);
+      }
+    } catch (error) {
+      console.error('Error loading deleted notifications:', error);
+      setDeletedNotifications([]);
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -208,14 +236,14 @@ export default function Notifications() {
                 <Bell className="w-6 h-6 text-white" />
               </div>
               <div>
-                <h1 className="text-3xl font-bold text-foreground">Historial de Notificaciones</h1>
+                <h1 className="text-3xl font-bold text-foreground">Centro de Notificaciones</h1>
                 <p className="text-muted-foreground">
                   Gestiona todas tus notificaciones
                 </p>
               </div>
             </div>
             
-            {stats.unread > 0 && (
+            {activeTab === 'active' && stats.unread > 0 && (
               <button
                 onClick={markAllAsRead}
                 className="btn btn-secondary flex items-center gap-2"
@@ -226,155 +254,288 @@ export default function Notifications() {
             )}
           </div>
 
-          {/* Estadísticas */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-            <div className="bg-card p-4 rounded-lg border border-border">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Total</p>
-                  <p className="text-2xl font-bold text-foreground">{stats.total}</p>
-                </div>
-                <Bell className="w-8 h-8 text-primary" />
+          {/* Tabs */}
+          <div className="flex gap-2 mb-6 border-b border-border">
+            <button
+              onClick={() => setActiveTab('active')}
+              className={`px-4 py-2 font-medium transition-colors border-b-2 ${
+                activeTab === 'active'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <Bell className="w-4 h-4" />
+                Activas
+                {stats.total > 0 && (
+                  <span className="px-2 py-0.5 text-xs bg-primary/10 text-primary rounded-full">
+                    {stats.total}
+                  </span>
+                )}
               </div>
-            </div>
-            
-            <div className="bg-card p-4 rounded-lg border border-border">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">No leídas</p>
-                  <p className="text-2xl font-bold text-red-600">{stats.unread}</p>
-                </div>
-                <div className="w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center">
-                  <AlertTriangle className="w-5 h-5 text-red-600" />
-                </div>
+            </button>
+            <button
+              onClick={() => setActiveTab('deleted')}
+              className={`px-4 py-2 font-medium transition-colors border-b-2 ${
+                activeTab === 'deleted'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <Archive className="w-4 h-4" />
+                Historial Borradas
+                {deletedNotifications.length > 0 && (
+                  <span className="px-2 py-0.5 text-xs bg-muted text-muted-foreground rounded-full">
+                    {deletedNotifications.length}
+                  </span>
+                )}
               </div>
-            </div>
-            
-            <div className="bg-card p-4 rounded-lg border border-border">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Leídas</p>
-                  <p className="text-2xl font-bold text-green-600">{stats.read}</p>
-                </div>
-                <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
-                  <Check className="w-5 h-5 text-green-600" />
-                </div>
-              </div>
-            </div>
+            </button>
           </div>
-        </div>
 
-        {/* Filtros y búsqueda */}
-        <div className="bg-card p-4 rounded-lg border border-border mb-6">
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="flex-1">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <input
-                  type="text"
-                  placeholder="Buscar notificaciones..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border border-border rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-                />
-              </div>
-            </div>
-            
-            <div className="flex gap-2">
-              <select
-                value={filter}
-                onChange={(e) => setFilter(e.target.value)}
-                className="px-4 py-2 border border-border rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-              >
-                <option value="all">Todas</option>
-                <option value="unread">No leídas</option>
-                <option value="read">Leídas</option>
-              </select>
-            </div>
-          </div>
-        </div>
-
-        {/* Lista de notificaciones */}
-        <div className="space-y-4">
-          {notifications.length === 0 ? (
-            <div className="text-center py-12">
-              <Bell className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-foreground mb-2">
-                No hay notificaciones
-              </h3>
-              <p className="text-muted-foreground">
-                {filter === 'all' 
-                  ? 'No tienes notificaciones aún'
-                  : filter === 'unread'
-                  ? 'No tienes notificaciones sin leer'
-                  : 'No tienes notificaciones leídas'
-                }
-              </p>
-            </div>
-          ) : (
-            notifications.map((notification) => (
-              <div
-                key={notification.id}
-                className={`bg-card p-6 rounded-lg border border-border transition-all hover:shadow-md ${
-                  notification.read ? '' : 'ring-2 ring-primary/20'
-                } ${getNotificationColor(notification.type)}`}
-              >
-                <div className="flex items-start gap-4">
-                  <div className="flex-shrink-0">
-                    {getNotificationIcon(notification.type)}
+          {/* Estadísticas - Solo mostrar en pestaña activa */}
+          {activeTab === 'active' && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+              <div className="bg-card p-4 rounded-lg border border-border">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">Total</p>
+                    <p className="text-2xl font-bold text-foreground">{stats.total}</p>
                   </div>
-                  
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <h3 className="text-lg font-semibold text-foreground mb-1">
-                          {notification.title}
-                        </h3>
-                        <p className="text-muted-foreground mb-3">
-                          {notification.message}
-                        </p>
-                        
-                        <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                          <span className="flex items-center gap-1">
-                            <Clock className="w-4 h-4" />
-                            {formatTimeAgo(notification.created_at)}
-                          </span>
+                  <Bell className="w-8 h-8 text-primary" />
+                </div>
+              </div>
+              
+              <div className="bg-card p-4 rounded-lg border border-border">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">No leídas</p>
+                    <p className="text-2xl font-bold text-red-600">{stats.unread}</p>
+                  </div>
+                  <div className="w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center">
+                    <AlertTriangle className="w-5 h-5 text-red-600" />
+                  </div>
+                </div>
+              </div>
+              
+              <div className="bg-card p-4 rounded-lg border border-border">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">Leídas</p>
+                    <p className="text-2xl font-bold text-green-600">{stats.read}</p>
+                  </div>
+                  <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
+                    <Check className="w-5 h-5 text-green-600" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Info para historial borradas */}
+          {activeTab === 'deleted' && (
+            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mb-6">
+              <div className="flex items-start gap-3">
+                <History className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                    Historial de notificaciones borradas
+                  </p>
+                  <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
+                    Las notificaciones borradas se mantienen en el historial por 15 días antes de ser eliminadas permanentemente.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Filtros y búsqueda - Solo en pestaña activa */}
+        {activeTab === 'active' && (
+          <div className="bg-card p-4 rounded-lg border border-border mb-6">
+            <div className="flex flex-col md:flex-row gap-4">
+              <div className="flex-1">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <input
+                    type="text"
+                    placeholder="Buscar notificaciones..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 border border-border rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                  />
+                </div>
+              </div>
+              
+              <div className="flex gap-2">
+                <select
+                  value={filter}
+                  onChange={(e) => setFilter(e.target.value)}
+                  className="px-4 py-2 border border-border rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                >
+                  <option value="all">Todas</option>
+                  <option value="unread">No leídas</option>
+                  <option value="read">Leídas</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Lista de notificaciones activas */}
+        {activeTab === 'active' && (
+          <div className="space-y-4">
+            {notifications.length === 0 ? (
+              <div className="text-center py-12">
+                <Bell className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+                <h3 className="text-lg font-semibold text-foreground mb-2">
+                  No hay notificaciones
+                </h3>
+                <p className="text-muted-foreground">
+                  {filter === 'all' 
+                    ? 'No tienes notificaciones aún'
+                    : filter === 'unread'
+                    ? 'No tienes notificaciones sin leer'
+                    : 'No tienes notificaciones leídas'
+                  }
+                </p>
+              </div>
+            ) : (
+              notifications.map((notification) => (
+                <div
+                  key={notification.id}
+                  className={`bg-card p-6 rounded-lg border border-border transition-all hover:shadow-md ${
+                    notification.read ? '' : 'ring-2 ring-primary/20'
+                  } ${getNotificationColor(notification.type)}`}
+                >
+                  <div className="flex items-start gap-4">
+                    <div className="flex-shrink-0">
+                      {getNotificationIcon(notification.type)}
+                    </div>
+                    
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <h3 className="text-lg font-semibold text-foreground mb-1">
+                            {notification.title}
+                          </h3>
+                          <p className="text-muted-foreground mb-3">
+                            {notification.message}
+                          </p>
                           
-                          {notification.user_company_roles?.user_profiles && (
+                          <div className="flex items-center gap-4 text-sm text-muted-foreground">
                             <span className="flex items-center gap-1">
-                              <Users className="w-4 h-4" />
-                              {notification.user_company_roles.user_profiles.full_name}
+                              <Clock className="w-4 h-4" />
+                              {formatTimeAgo(notification.created_at)}
                             </span>
-                          )}
+                            
+                            {notification.user_company_roles?.user_profiles && (
+                              <span className="flex items-center gap-1">
+                                <Users className="w-4 h-4" />
+                                {notification.user_company_roles.user_profiles.full_name}
+                              </span>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                      
-                      <div className="flex items-center gap-2 ml-4">
-                        {!notification.read && (
-                          <button
-                            onClick={() => markAsRead(notification.id)}
-                            className="p-2 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"
-                            title="Marcar como leída"
-                          >
-                            <Check className="w-4 h-4" />
-                          </button>
-                        )}
                         
-                        <button
-                          onClick={() => deleteNotification(notification.id)}
-                          className="p-2 text-muted-foreground hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
-                          title="Eliminar notificación"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        <div className="flex items-center gap-2 ml-4">
+                          {!notification.read && (
+                            <button
+                              onClick={() => markAsRead(notification.id)}
+                              className="p-2 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"
+                              title="Marcar como leída"
+                            >
+                              <Check className="w-4 h-4" />
+                            </button>
+                          )}
+                          
+                          <button
+                            onClick={() => deleteNotification(notification.id)}
+                            className="p-2 text-muted-foreground hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                            title="Eliminar notificación"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
                 </div>
+              ))
+            )}
+          </div>
+        )}
+
+        {/* Lista de notificaciones borradas */}
+        {activeTab === 'deleted' && (
+          <div className="space-y-4">
+            {deletedNotifications.length === 0 ? (
+              <div className="text-center py-12">
+                <Archive className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+                <h3 className="text-lg font-semibold text-foreground mb-2">
+                  No hay notificaciones borradas
+                </h3>
+                <p className="text-muted-foreground">
+                  Las notificaciones que elimines aparecerán aquí durante 15 días
+                </p>
               </div>
-            ))
-          )}
-        </div>
+            ) : (
+              deletedNotifications.map((notification) => {
+                const daysUntilDeletion = Math.ceil(
+                  (new Date(notification.deleted_at).getTime() + 15 * 24 * 60 * 60 * 1000 - new Date().getTime()) / (1000 * 60 * 60 * 24)
+                );
+                
+                return (
+                  <div
+                    key={notification.id}
+                    className={`bg-card p-6 rounded-lg border border-border transition-all hover:shadow-md opacity-75 ${getNotificationColor(notification.type)}`}
+                  >
+                    <div className="flex items-start gap-4">
+                      <div className="flex-shrink-0">
+                        {getNotificationIcon(notification.type)}
+                      </div>
+                      
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <h3 className="text-lg font-semibold text-foreground">
+                                {notification.title}
+                              </h3>
+                              <span className="px-2 py-0.5 text-xs bg-muted text-muted-foreground rounded-full">
+                                Borrada
+                              </span>
+                            </div>
+                            <p className="text-muted-foreground mb-3">
+                              {notification.message}
+                            </p>
+                            
+                            <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                              <span className="flex items-center gap-1">
+                                <Clock className="w-4 h-4" />
+                                Creada: {formatTimeAgo(notification.original_created_at || notification.deleted_at)}
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <Archive className="w-4 h-4" />
+                                Borrada: {formatTimeAgo(notification.deleted_at)}
+                              </span>
+                              {daysUntilDeletion > 0 && (
+                                <span className="px-2 py-0.5 text-xs bg-orange-100 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400 rounded-full">
+                                  Se eliminará en {daysUntilDeletion} día{daysUntilDeletion > 1 ? 's' : ''}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

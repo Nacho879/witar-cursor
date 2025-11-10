@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { supabase } from '@/lib/supabaseClient';
+import { NotificationService } from '@/lib/notificationService';
 import { X, Upload, FileText, Folder, Users, AlertCircle, CheckCircle } from 'lucide-react';
 import { validateDocumentTitle, validateUploadedFile, generateSafeFileName } from '@/lib/securityUtils';
 
@@ -144,6 +145,15 @@ export default function UploadDocumentModal({ isOpen, onClose, onDocumentUploade
         .from('witar-documents')
         .getPublicUrl(filePath);
 
+      // Obtener nombre del usuario que sube el documento
+      const { data: uploaderProfile } = await supabase
+        .from('user_profiles')
+        .select('full_name')
+        .eq('user_id', user.id)
+        .single();
+
+      const uploaderName = uploaderProfile?.full_name || 'Usuario';
+
       // Crear registro en la base de datos
       const { data: document, error: dbError } = await supabase
         .from('documents')
@@ -163,6 +173,22 @@ export default function UploadDocumentModal({ isOpen, onClose, onDocumentUploade
 
       if (dbError) {
         throw dbError;
+      }
+
+      // Enviar notificación si el documento está asignado a un usuario específico
+      if (departmentId) {
+        try {
+          await NotificationService.notifyDocumentUploadedToUser({
+            companyId: companyId,
+            documentTitle: title.trim(),
+            recipientUserId: departmentId,
+            uploaderName: uploaderName,
+            documentId: document?.id
+          });
+        } catch (notifError) {
+          console.error('Error sending notification:', notifError);
+          // No fallar la subida si la notificación falla
+        }
       }
 
       setMessage('¡Documento subido exitosamente!');

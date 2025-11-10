@@ -33,6 +33,10 @@ export default function AdminTimeEntries() {
   const [rangeTo, setRangeTo] = React.useState(() => new Date().toISOString().split('T')[0]);
   const [isLocationModalOpen, setIsLocationModalOpen] = React.useState(false);
   const [selectedLocation, setSelectedLocation] = React.useState(null);
+  const [selectedLocations, setSelectedLocations] = React.useState([]);
+  const [showEmployeeDetailModal, setShowEmployeeDetailModal] = React.useState(false);
+  const [selectedEmployeeForDetail, setSelectedEmployeeForDetail] = React.useState(null);
+  const [employeeDetailEntries, setEmployeeDetailEntries] = React.useState([]);
   const [stats, setStats] = React.useState({
     totalEntries: 0,
     activeEmployees: 0,
@@ -42,10 +46,30 @@ export default function AdminTimeEntries() {
     withoutLocation: 0
   });
 
+  // Cargar empleados y departamentos solo una vez al montar
   React.useEffect(() => {
-    loadTimeEntriesData();
     loadEmployeesAndDepartments();
-  }, [selectedDate, rangeFrom, rangeTo, isRoundTrip, selectedEmployee, selectedRoles]);
+  }, []);
+
+  // Cargar fichajes cuando se carguen los empleados o cambien los filtros relevantes
+  React.useEffect(() => {
+    // Solo cargar si ya tenemos empleados cargados
+    if (employees.length > 0) {
+      loadTimeEntriesData();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDate, rangeFrom, rangeTo, isRoundTrip, selectedRoles, employees.length]);
+
+  // Memoizar el handler de roles para evitar re-renders innecesarios
+  const handleRoleChange = React.useCallback((role, checked) => {
+    setSelectedRoles(prev => {
+      if (checked) {
+        return Array.from(new Set([...prev, role]));
+      } else {
+        return prev.filter(r => r !== role);
+      }
+    });
+  }, []);
 
   // Sincroniza el estado del toggle con el valor del empleado seleccionado
   React.useEffect(() => {
@@ -171,9 +195,19 @@ export default function AdminTimeEntries() {
 
   async function loadTimeEntriesData() {
     try {
+      // Solo mostrar loading en la primera carga, no en cada cambio de filtro
+      if (timeEntries.length === 0) {
       setLoading(true);
+      } else {
+        setUpdating(true);
+      }
+      
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!user) {
+        setLoading(false);
+        setUpdating(false);
+        return;
+      }
 
       const { data: userRole } = await supabase
         .from('user_company_roles')
@@ -182,29 +216,30 @@ export default function AdminTimeEntries() {
         .eq('is_active', true)
         .single();
 
-      if (!userRole) return;
-
-      // Obtener todos los empleados de la empresa
-      const { data: allUsers, error: usersError } = await supabase
-        .from('user_company_roles')
-        .select('user_id, role, department_id')
-        .eq('company_id', userRole.company_id)
-        .eq('is_active', true)
-        .in('role', ['employee', 'manager', 'admin']);
-
-      if (usersError) {
-        console.error('Error loading users:', usersError);
+      if (!userRole) {
+        setLoading(false);
+        setUpdating(false);
         return;
       }
 
-      let filteredUserIds = allUsers.map(u => u.user_id);
-
-      // Aplicar filtros (sin filtro por empleado específico)
-
-      if (Array.isArray(selectedRoles) && selectedRoles.length > 0 && selectedRoles.length < 3) {
-        const roleUsers = allUsers.filter(u => selectedRoles.includes(u.role));
-        filteredUserIds = filteredUserIds.filter(id => roleUsers.some(u => u.user_id === id));
+      // Usar los empleados ya cargados en lugar de recargarlos cada vez
+      if (employees.length === 0) {
+        // Si no hay empleados cargados aún, esperar
+        setLoading(false);
+        setUpdating(false);
+        return;
       }
+
+      // Obtener IDs de empleados basados en los roles seleccionados
+      let filteredUserIds = employees
+        .filter(emp => {
+          // Filtrar por roles seleccionados
+      if (Array.isArray(selectedRoles) && selectedRoles.length > 0 && selectedRoles.length < 3) {
+            return selectedRoles.includes(emp.role);
+      }
+          return true;
+        })
+        .map(emp => emp.id);
 
       if (filteredUserIds.length > 0) {
         // Cargar fichajes según modo
@@ -233,28 +268,24 @@ export default function AdminTimeEntries() {
           .order('entry_time', { ascending: true });
 
         if (!error && entries) {
-          // Obtener perfiles de usuario por separado
-          const userIds = [...new Set(entries.map(entry => entry.user_id))];
-          const { data: profiles, error: profilesError } = await supabase
-            .from('user_profiles')
-            .select('user_id, full_name, avatar_url')
-            .in('user_id', userIds);
-
-          if (!profilesError && profiles) {
-            // Combinar datos
+          // Usar los perfiles ya cargados en employees en lugar de recargarlos
             const entriesWithProfiles = entries.map(entry => {
-              const profile = profiles.find(p => p.user_id === entry.user_id);
               const employee = employees.find(e => e.id === entry.user_id);
               return {
                 ...entry,
-                user_profiles: profile || null,
+              user_profiles: employee ? {
+                user_id: employee.id,
+                full_name: employee.name,
+                avatar_url: employee.avatar_url
+              } : null,
                 employee_info: employee || null
               };
             });
 
             setTimeEntries(entriesWithProfiles);
             calculateStats(entriesWithProfiles);
-          }
+        } else if (error) {
+          console.error('Error loading time entries:', error);
         }
       } else {
         setTimeEntries([]);
@@ -262,13 +293,17 @@ export default function AdminTimeEntries() {
           totalEntries: 0,
           activeEmployees: 0,
           totalHours: 0,
-          averageHours: 0
+          averageHours: 0,
+          withLocation: 0,
+          withoutLocation: 0
         });
       }
     } catch (error) {
       console.error('Error loading time entries:', error);
+      setTimeEntries([]);
     } finally {
       setLoading(false);
+      setUpdating(false);
     }
   }
 
@@ -276,35 +311,61 @@ export default function AdminTimeEntries() {
     const uniqueUsers = new Set(entries.map(entry => entry.user_id));
     const activeEmployees = uniqueUsers.size;
     
-    // Calcular horas totales (simplificado)
+    // Calcular horas totales considerando pausas
     let totalHours = 0;
     const dailyEntries = {};
     
+    // Agrupar fichajes por usuario y día
     entries.forEach(entry => {
       const dateKey = new Date(entry.entry_time).toDateString();
-      if (!dailyEntries[dateKey]) {
-        dailyEntries[dateKey] = [];
+      const userDateKey = `${entry.user_id}_${dateKey}`;
+      if (!dailyEntries[userDateKey]) {
+        dailyEntries[userDateKey] = [];
       }
-      dailyEntries[dateKey].push(entry);
+      dailyEntries[userDateKey].push(entry);
     });
 
+    // Calcular horas trabajadas por usuario y día
     Object.values(dailyEntries).forEach(dayEntries => {
       const sortedEntries = dayEntries.sort((a, b) => 
         new Date(a.entry_time) - new Date(b.entry_time)
       );
       
-      for (let i = 0; i < sortedEntries.length - 1; i += 2) {
-        if (sortedEntries[i].entry_type === 'clock_in' && 
-            sortedEntries[i + 1]?.entry_type === 'clock_out') {
-          const duration = new Date(sortedEntries[i + 1].entry_time) - 
-                          new Date(sortedEntries[i].entry_time);
-          totalHours += duration / (1000 * 60 * 60);
+      let totalMinutes = 0;
+      let clockInTime = null;
+      let breakStartTime = null;
+      let totalBreakMinutes = 0;
+      
+      // Procesar fichajes en orden cronológico
+      for (let i = 0; i < sortedEntries.length; i++) {
+        const entry = sortedEntries[i];
+        
+        if (entry.entry_type === 'clock_in') {
+          clockInTime = new Date(entry.entry_time);
+        } else if (entry.entry_type === 'clock_out' && clockInTime) {
+          const clockOutTime = new Date(entry.entry_time);
+          const diffMinutes = (clockOutTime - clockInTime) / (1000 * 60);
+          totalMinutes += diffMinutes;
+          clockInTime = null;
+        } else if (entry.entry_type === 'break_start') {
+          breakStartTime = new Date(entry.entry_time);
+        } else if (entry.entry_type === 'break_end' && breakStartTime) {
+          const breakEndTime = new Date(entry.entry_time);
+          const breakMinutes = (breakEndTime - breakStartTime) / (1000 * 60);
+          totalBreakMinutes += breakMinutes;
+          breakStartTime = null;
         }
       }
+      
+      // Restar tiempo de pausas del total
+      totalMinutes = Math.max(0, totalMinutes - totalBreakMinutes);
+      totalHours += totalMinutes / 60;
     });
 
-    // Calcular estadísticas de ubicación
-    const withLocation = entries.filter(entry => entry.location_data && Object.keys(entry.location_data).length > 0).length;
+    // Calcular estadísticas de ubicación (usar location_lat y location_lng)
+    const withLocation = entries.filter(entry => 
+      entry.location_lat && entry.location_lng
+    ).length;
     const withoutLocation = entries.length - withLocation;
 
     setStats({
@@ -318,14 +379,36 @@ export default function AdminTimeEntries() {
   }
 
   function getEmployeeStatus(employeeId) {
-    const todayEntries = timeEntries.filter(entry => 
+    // Obtener fichajes según el modo (día único o rango)
+    let employeeEntries;
+    if (!isRoundTrip) {
+      // Modo día único: filtrar por selectedDate
+      employeeEntries = timeEntries.filter(entry => 
       entry.user_id === employeeId && 
       new Date(entry.entry_time).toDateString() === new Date(selectedDate).toDateString()
     );
+    } else {
+      // Modo rango: filtrar por rango de fechas
+      const startDate = new Date(rangeFrom);
+      startDate.setHours(0, 0, 0, 0);
+      const endDate = new Date(rangeTo);
+      endDate.setHours(23, 59, 59, 999);
+      
+      employeeEntries = timeEntries.filter(entry => {
+        const entryDate = new Date(entry.entry_time);
+        return entry.user_id === employeeId && 
+               entryDate >= startDate && 
+               entryDate <= endDate;
+      });
+    }
 
-    if (todayEntries.length === 0) return 'No registrado';
+    if (employeeEntries.length === 0) return 'No registrado';
     
-    const lastEntry = todayEntries[todayEntries.length - 1];
+    // Obtener el último fichaje del rango
+    const lastEntry = employeeEntries.sort((a, b) => 
+      new Date(b.entry_time) - new Date(a.entry_time)
+    )[0];
+    
     if (lastEntry.entry_type === 'clock_in') return 'Trabajando';
     if (lastEntry.entry_type === 'clock_out') return 'Finalizado';
     if (lastEntry.entry_type === 'break_start') return 'En pausa';
@@ -345,20 +428,41 @@ export default function AdminTimeEntries() {
   }
 
   function getLocationInfo(employeeId) {
-    const todayEntries = timeEntries.filter(entry => 
+    // Obtener fichajes según el modo (día único o rango)
+    let employeeEntries;
+    if (!isRoundTrip) {
+      // Modo día único: filtrar por selectedDate
+      employeeEntries = timeEntries.filter(entry => 
       entry.user_id === employeeId && 
       new Date(entry.entry_time).toDateString() === new Date(selectedDate).toDateString()
     );
+    } else {
+      // Modo rango: filtrar por rango de fechas
+      const startDate = new Date(rangeFrom);
+      startDate.setHours(0, 0, 0, 0);
+      const endDate = new Date(rangeTo);
+      endDate.setHours(23, 59, 59, 999);
+      
+      employeeEntries = timeEntries.filter(entry => {
+        const entryDate = new Date(entry.entry_time);
+        return entry.user_id === employeeId && 
+               entryDate >= startDate && 
+               entryDate <= endDate;
+      });
+    }
 
-    if (todayEntries.length === 0) return null;
+    if (employeeEntries.length === 0) return null;
     
     // Buscar el último fichaje con ubicación
-    const entriesWithLocation = todayEntries.filter(entry => 
+    const entriesWithLocation = employeeEntries.filter(entry => 
       entry.location_lat && entry.location_lng
     );
     if (entriesWithLocation.length === 0) return null;
     
-    const lastEntryWithLocation = entriesWithLocation[entriesWithLocation.length - 1];
+    const lastEntryWithLocation = entriesWithLocation.sort((a, b) => 
+      new Date(b.entry_time) - new Date(a.entry_time)
+    )[0];
+    
     return {
       lat: lastEntryWithLocation.location_lat,
       lng: lastEntryWithLocation.location_lng,
@@ -593,12 +697,19 @@ export default function AdminTimeEntries() {
           
           <div className="flex flex-col gap-2 lg:col-span-2">
             <label className="text-xs font-medium text-muted-foreground">Empleados</label>
-            <label className="flex items-center gap-2 text-sm">
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
               <input
                 type="checkbox"
-                className="accent-blue-600"
+                className="accent-blue-600 cursor-pointer"
                 checked={allEmployees}
-                onChange={(e) => setAllEmployees(e.target.checked)}
+                onChange={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setAllEmployees(e.target.checked);
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                }}
               />
               Todos los empleados
             </label>
@@ -607,35 +718,50 @@ export default function AdminTimeEntries() {
           <div className="flex flex-col gap-2 lg:col-span-2">
             <label className="text-xs font-medium text-muted-foreground">Roles</label>
             <div className="flex flex-wrap gap-3">
-              <label className="flex items-center gap-2 text-sm">
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
                 <input
                   type="checkbox"
-                  className="accent-blue-600"
+                  className="accent-blue-600 cursor-pointer"
                   checked={selectedRoles.includes('employee')}
                   onChange={(e) => {
-                    setSelectedRoles(prev => e.target.checked ? Array.from(new Set([...prev, 'employee'])) : prev.filter(r => r !== 'employee'));
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleRoleChange('employee', e.target.checked);
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
                   }}
                 />
                 Empleado
               </label>
-              <label className="flex items-center gap-2 text-sm">
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
                 <input
                   type="checkbox"
-                  className="accent-blue-600"
+                  className="accent-blue-600 cursor-pointer"
                   checked={selectedRoles.includes('manager')}
                   onChange={(e) => {
-                    setSelectedRoles(prev => e.target.checked ? Array.from(new Set([...prev, 'manager'])) : prev.filter(r => r !== 'manager'));
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleRoleChange('manager', e.target.checked);
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
                   }}
                 />
                 Manager
               </label>
-              <label className="flex items-center gap-2 text-sm">
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
                 <input
                   type="checkbox"
-                  className="accent-blue-600"
+                  className="accent-blue-600 cursor-pointer"
                   checked={selectedRoles.includes('admin')}
                   onChange={(e) => {
-                    setSelectedRoles(prev => e.target.checked ? Array.from(new Set([...prev, 'admin'])) : prev.filter(r => r !== 'admin'));
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleRoleChange('admin', e.target.checked);
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
                   }}
                 />
                 Administrador
@@ -652,9 +778,13 @@ export default function AdminTimeEntries() {
                   name="flight-mode"
                   className="accent-blue-600"
                   checked={!isRoundTrip}
-                  onChange={() => setIsRoundTrip(false)}
+                  onChange={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setIsRoundTrip(false);
+                  }}
                 />
-                <label htmlFor="mode-ida" className="text-sm">Día</label>
+                <label htmlFor="mode-ida" className="text-sm cursor-pointer">Día</label>
               </div>
               <div className="flex items-center gap-2">
                 <input
@@ -663,9 +793,13 @@ export default function AdminTimeEntries() {
                   name="flight-mode"
                   className="accent-blue-600"
                   checked={isRoundTrip}
-                  onChange={() => setIsRoundTrip(true)}
+                  onChange={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setIsRoundTrip(true);
+                  }}
                 />
-                <label htmlFor="mode-ida-vuelta" className="text-sm">Rango</label>
+                <label htmlFor="mode-ida-vuelta" className="text-sm cursor-pointer">Rango</label>
               </div>
             </div>
             {!isRoundTrip ? (
@@ -721,8 +855,11 @@ export default function AdminTimeEntries() {
                 <th className="th">Empleado</th>
                 <th className="th">Departamento</th>
                 <th className="th">Rol</th>
+                {isRoundTrip && <th className="th">Fecha</th>}
+                <th className="th">Entrada</th>
+                <th className="th">Pausa</th>
+                <th className="th">Salida</th>
                 <th className="th">Estado</th>
-                <th className="th">Último Fichaje</th>
                 <th className="th">Ubicación</th>
                 <th className="th">Acciones</th>
               </tr>
@@ -730,18 +867,297 @@ export default function AdminTimeEntries() {
             <tbody>
               {filteredEmployees.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="td text-center text-muted-foreground">
+                  <td colSpan={isRoundTrip ? 10 : 9} className="td text-center text-muted-foreground">
                     No hay empleados para mostrar
                   </td>
                 </tr>
               ) : (
-                filteredEmployees.map(employee => {
+                (() => {
+                  // Si es modo rango, mostrar una fila por cada día con fichajes
+                  if (isRoundTrip) {
+                    const rows = [];
+                    
+                    filteredEmployees.forEach(employee => {
+                      // Obtener todos los fichajes del empleado en el rango
+                      const startDate = new Date(rangeFrom);
+                      startDate.setHours(0, 0, 0, 0);
+                      const endDate = new Date(rangeTo);
+                      endDate.setHours(23, 59, 59, 999);
+                      
+                      const employeeEntries = timeEntries.filter(entry => {
+                        const entryDate = new Date(entry.entry_time);
+                        return entry.user_id === employee.id && 
+                               entryDate >= startDate && 
+                               entryDate <= endDate;
+                      });
+                      
+                      // Agrupar fichajes por día
+                      const entriesByDay = {};
+                      employeeEntries.forEach(entry => {
+                        const dateKey = new Date(entry.entry_time).toISOString().split('T')[0];
+                        if (!entriesByDay[dateKey]) {
+                          entriesByDay[dateKey] = [];
+                        }
+                        entriesByDay[dateKey].push(entry);
+                      });
+                      
+                      // Ordenar días cronológicamente
+                      const sortedDays = Object.entries(entriesByDay).sort(([dateA], [dateB]) => {
+                        return new Date(dateA) - new Date(dateB);
+                      });
+                      
+                      // Si no hay fichajes, mostrar una fila indicando que no hay fichajes
+                      if (sortedDays.length === 0) {
+                        rows.push(
+                          <tr key={employee.id}>
+                            <td className="td">
+                              <div className="flex items-center gap-3">
+                                {employee.avatar_url ? (
+                                  <img 
+                                    src={employee.avatar_url} 
+                                    alt={employee.name}
+                                    className="w-8 h-8 rounded-full object-cover"
+                                  />
+                                ) : (
+                                  <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center">
+                                    <User className="w-4 h-4 text-primary" />
+                                  </div>
+                                )}
+                                <span className="font-medium">{employee.name}</span>
+                              </div>
+                            </td>
+                            <td className="td">{employee.department}</td>
+                            <td className="td capitalize">{employee.role}</td>
+                            <td className="td text-muted-foreground">-</td>
+                            <td className="td text-muted-foreground">-</td>
+                            <td className="td text-muted-foreground">-</td>
+                            <td className="td text-muted-foreground">-</td>
+                            <td className="td">
+                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor('No registrado')}`}>
+                                No registrado
+                              </span>
+                            </td>
+                            <td className="td">
+                              <span className="text-muted-foreground text-sm">Sin ubicación</span>
+                            </td>
+                            <td className="td">
+                              <button
+                                onClick={() => {
+                                  setEmployeeDetailEntries([]);
+                                  setSelectedEmployeeForDetail(employee);
+                                  setShowEmployeeDetailModal(true);
+                                }}
+                                className="btn btn-ghost btn-sm"
+                                title="Ver detalle"
+                              >
+                                <Eye className="w-4 h-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      } else {
+                        // Crear una fila por cada día con fichajes
+                        sortedDays.forEach(([dateKey, dayEntries]) => {
+                          const sortedDayEntries = dayEntries.sort((a, b) => 
+                            new Date(a.entry_time) - new Date(b.entry_time)
+                          );
+                          const lastEntry = sortedDayEntries[sortedDayEntries.length - 1];
+                          
+                          // Separar fichajes por tipo
+                          const entrada = sortedDayEntries.find(e => e.entry_type === 'clock_in');
+                          const salida = sortedDayEntries.find(e => e.entry_type === 'clock_out');
+                          const pausas = sortedDayEntries.filter(e => 
+                            e.entry_type === 'break_start' || e.entry_type === 'break_end'
+                          );
+                          
+                          // Determinar estado del día
+                          let dayStatus = 'No registrado';
+                          if (lastEntry) {
+                            if (lastEntry.entry_type === 'clock_in') dayStatus = 'Trabajando';
+                            else if (lastEntry.entry_type === 'clock_out') dayStatus = 'Finalizado';
+                            else if (lastEntry.entry_type === 'break_start') dayStatus = 'En pausa';
+                            else if (lastEntry.entry_type === 'break_end') dayStatus = 'Trabajando';
+                          }
+                          
+                          // Buscar todas las ubicaciones del día
+                          const entriesWithLocation = dayEntries.filter(entry => 
+                            entry.location_lat && entry.location_lng
+                          );
+                          const locationsArray = entriesWithLocation
+                            .sort((a, b) => new Date(a.entry_time) - new Date(b.entry_time))
+                            .map(entry => ({
+                              lat: entry.location_lat,
+                              lng: entry.location_lng,
+                              accuracy: entry.location_accuracy,
+                              timestamp: entry.entry_time,
+                              entryType: entry.entry_type
+                            }));
+                          
+                          rows.push(
+                            <tr key={`${employee.id}-${dateKey}`}>
+                              <td className="td">
+                                <div className="flex items-center gap-3">
+                                  {employee.avatar_url ? (
+                                    <img 
+                                      src={employee.avatar_url} 
+                                      alt={employee.name}
+                                      className="w-8 h-8 rounded-full object-cover"
+                                    />
+                                  ) : (
+                                    <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center">
+                                      <User className="w-4 h-4 text-primary" />
+                                    </div>
+                                  )}
+                                  <span className="font-medium">{employee.name}</span>
+                                </div>
+                              </td>
+                              <td className="td">{employee.department}</td>
+                              <td className="td capitalize">{employee.role}</td>
+                              <td className="td">
+                                <div className="text-sm">
+                                  <div className="font-medium">
+                                    {new Date(dateKey).toLocaleDateString('es-ES', {
+                                      weekday: 'short',
+                                      day: '2-digit',
+                                      month: '2-digit'
+                                    })}
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="td">
+                                {entrada ? (
+                                  <div className="text-sm">
+                                    <div className="font-medium text-green-600 dark:text-green-400">
+                                      {new Date(entrada.entry_time).toLocaleTimeString('es-ES', {
+                                        hour: '2-digit',
+                                        minute: '2-digit'
+                                      })}
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <span className="text-muted-foreground text-sm">-</span>
+                                )}
+                              </td>
+                              <td className="td">
+                                {pausas.length > 0 ? (
+                                  <div className="space-y-1">
+                                    {pausas.map((pausa, idx) => (
+                                      <div key={pausa.id || idx} className="text-sm">
+                                        <div className={`font-medium ${
+                                          pausa.entry_type === 'break_start' 
+                                            ? 'text-yellow-600 dark:text-yellow-400' 
+                                            : 'text-blue-600 dark:text-blue-400'
+                                        }`}>
+                                          {new Date(pausa.entry_time).toLocaleTimeString('es-ES', {
+                                            hour: '2-digit',
+                                            minute: '2-digit'
+                                          })}
+                                        </div>
+                                        <div className="text-muted-foreground text-xs">
+                                          {pausa.entry_type === 'break_start' ? 'Inicio' : 'Fin'}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <span className="text-muted-foreground text-sm">-</span>
+                                )}
+                              </td>
+                              <td className="td">
+                                {salida ? (
+                                  <div className="text-sm">
+                                    <div className="font-medium text-red-600 dark:text-red-400">
+                                      {new Date(salida.entry_time).toLocaleTimeString('es-ES', {
+                                        hour: '2-digit',
+                                        minute: '2-digit'
+                                      })}
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <span className="text-muted-foreground text-sm">-</span>
+                                )}
+                              </td>
+                              <td className="td">
+                                <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(dayStatus)}`}>
+                                  {dayStatus}
+                                </span>
+                              </td>
+                              <td className="td">
+                                {locationsArray.length > 0 ? (
+                                  <button
+                                    onClick={() => {
+                                      setSelectedLocations(locationsArray);
+                                      setSelectedLocation(locationsArray[0]);
+                                      setIsLocationModalOpen(true);
+                                    }}
+                                    className="btn btn-ghost btn-sm text-blue-600 hover:text-blue-700"
+                                    title={`Ver ${locationsArray.length} ubicación${locationsArray.length !== 1 ? 'es' : ''}`}
+                                  >
+                                    <MapPin className="w-4 h-4" />
+                                    {locationsArray.length > 1 && (
+                                      <span className="ml-1 text-xs">{locationsArray.length}</span>
+                                    )}
+                                  </button>
+                                ) : (
+                                  <span className="text-muted-foreground text-sm">Sin ubicación</span>
+                                )}
+                              </td>
+                              <td className="td">
+                                <button
+                                  onClick={() => {
+                                    // Obtener todos los fichajes del empleado en el rango completo
+                                    const startDate = new Date(rangeFrom);
+                                    startDate.setHours(0, 0, 0, 0);
+                                    const endDate = new Date(rangeTo);
+                                    endDate.setHours(23, 59, 59, 999);
+                                    
+                                    const allEmployeeEntries = timeEntries.filter(entry => {
+                                      const entryDate = new Date(entry.entry_time);
+                                      return entry.user_id === employee.id && 
+                                             entryDate >= startDate && 
+                                             entryDate <= endDate;
+                                    });
+                                    
+                                    setEmployeeDetailEntries(allEmployeeEntries.sort((a, b) => 
+                                      new Date(a.entry_time) - new Date(b.entry_time)
+                                    ));
+                                    setSelectedEmployeeForDetail(employee);
+                                    setShowEmployeeDetailModal(true);
+                                  }}
+                                  className="btn btn-ghost btn-sm"
+                                  title="Ver detalle"
+                                >
+                                  <Eye className="w-4 h-4" />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        });
+                      }
+                    });
+                    
+                    return rows;
+                  } else {
+                    // Modo día único: mostrar una fila por empleado
+                    return filteredEmployees.map(employee => {
                   const status = getEmployeeStatus(employee.id);
-                  const todayEntries = timeEntries.filter(entry => 
+                      
+                      // Obtener fichajes del día
+                      const employeeEntries = timeEntries.filter(entry => 
                     entry.user_id === employee.id && 
                     new Date(entry.entry_time).toDateString() === new Date(selectedDate).toDateString()
                   );
-                  const lastEntry = todayEntries[todayEntries.length - 1];
+                      
+                      const sortedEntries = employeeEntries.sort((a, b) => 
+                        new Date(a.entry_time) - new Date(b.entry_time)
+                      );
+                      
+                      // Separar fichajes por tipo
+                      const entrada = sortedEntries.find(e => e.entry_type === 'clock_in');
+                      const salida = sortedEntries.find(e => e.entry_type === 'clock_out');
+                      const pausas = sortedEntries.filter(e => 
+                        e.entry_type === 'break_start' || e.entry_type === 'break_end'
+                      );
 
                   return (
                     <tr key={employee.id}>
@@ -764,44 +1180,101 @@ export default function AdminTimeEntries() {
                       <td className="td">{employee.department}</td>
                       <td className="td capitalize">{employee.role}</td>
                       <td className="td">
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(status)}`}>
-                          {status}
-                        </span>
+                            {entrada ? (
+                              <div className="text-sm">
+                                <div className="font-medium text-green-600 dark:text-green-400">
+                                  {new Date(entrada.entry_time).toLocaleTimeString('es-ES', {
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  })}
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground text-sm">-</span>
+                            )}
                       </td>
                       <td className="td">
-                        {lastEntry ? (
-                          <div className="text-sm">
-                            <div className="font-medium">
-                              {new Date(lastEntry.entry_time).toLocaleTimeString('es-ES', {
+                            {pausas.length > 0 ? (
+                              <div className="space-y-1">
+                                {pausas.map((pausa, idx) => (
+                                  <div key={pausa.id || idx} className="text-sm">
+                                    <div className={`font-medium ${
+                                      pausa.entry_type === 'break_start' 
+                                        ? 'text-yellow-600 dark:text-yellow-400' 
+                                        : 'text-blue-600 dark:text-blue-400'
+                                    }`}>
+                                      {new Date(pausa.entry_time).toLocaleTimeString('es-ES', {
                                 hour: '2-digit',
                                 minute: '2-digit'
                               })}
                             </div>
-                            <div className="text-muted-foreground capitalize">
-                              {lastEntry.entry_type.replace('_', ' ')}
+                                    <div className="text-muted-foreground text-xs">
+                                      {pausa.entry_type === 'break_start' ? 'Inicio' : 'Fin'}
                             </div>
+                                  </div>
+                                ))}
                           </div>
                         ) : (
-                          <span className="text-muted-foreground">Sin fichajes</span>
+                              <span className="text-muted-foreground text-sm">-</span>
                         )}
+                      </td>
+                          <td className="td">
+                            {salida ? (
+                              <div className="text-sm">
+                                <div className="font-medium text-red-600 dark:text-red-400">
+                                  {new Date(salida.entry_time).toLocaleTimeString('es-ES', {
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  })}
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground text-sm">-</span>
+                            )}
+                          </td>
+                          <td className="td">
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(status)}`}>
+                              {status}
+                            </span>
                       </td>
                       <td className="td">
                         {(() => {
-                          const locationData = getLocationInfo(employee.id);
-                          if (!locationData) {
+                              // Obtener todas las ubicaciones del día
+                              const entriesWithLocation = employeeEntries.filter(entry => 
+                                entry.location_lat && entry.location_lng
+                              );
+                              const locationsArray = entriesWithLocation
+                                .sort((a, b) => new Date(a.entry_time) - new Date(b.entry_time))
+                                .map(entry => ({
+                                  lat: entry.location_lat,
+                                  lng: entry.location_lng,
+                                  accuracy: entry.location_accuracy,
+                                  timestamp: entry.entry_time,
+                                  entryType: entry.entry_type
+                                }));
+                              
+                              if (locationsArray.length === 0) {
                             return (
                               <span className="text-muted-foreground text-sm">
                                 Sin ubicación
                               </span>
                             );
                           }
+                              
                           return (
                             <button
-                              onClick={() => showLocationModal(locationData)}
+                                  onClick={() => {
+                                    setSelectedLocations(locationsArray);
+                                    setSelectedLocation(locationsArray[0]);
+                                    setIsLocationModalOpen(true);
+                                  }}
                               className="btn btn-ghost btn-sm text-blue-600 hover:text-blue-700"
-                              title="Ver ubicación"
+                                  title={`Ver ${locationsArray.length} ubicación${locationsArray.length !== 1 ? 'es' : ''}`}
                             >
                               <MapPin className="w-4 h-4" />
+                                  {locationsArray.length > 1 && (
+                                    <span className="ml-1 text-xs">{locationsArray.length}</span>
+                                  )}
                             </button>
                           );
                         })()}
@@ -809,8 +1282,9 @@ export default function AdminTimeEntries() {
                       <td className="td">
                         <button
                           onClick={() => {
-                            // Aquí se podría abrir un modal con el detalle del empleado
-
+                                setEmployeeDetailEntries(sortedEntries);
+                                setSelectedEmployeeForDetail(employee);
+                                setShowEmployeeDetailModal(true);
                           }}
                           className="btn btn-ghost btn-sm"
                           title="Ver detalle"
@@ -820,7 +1294,9 @@ export default function AdminTimeEntries() {
                       </td>
                     </tr>
                   );
-                })
+                    });
+                  }
+                })()
               )}
             </tbody>
           </table>
@@ -830,10 +1306,157 @@ export default function AdminTimeEntries() {
 
       {/* Location Modal unificado */}
       <LocationMapModal
-        isOpen={isLocationModalOpen && !!selectedLocation}
-        onClose={() => { setIsLocationModalOpen(false); setSelectedLocation(null); }}
+        isOpen={isLocationModalOpen && (!!selectedLocation || selectedLocations.length > 0)}
+        onClose={() => { 
+          setIsLocationModalOpen(false); 
+          setSelectedLocation(null);
+          setSelectedLocations([]);
+        }}
         location={selectedLocation}
+        locations={selectedLocations.length > 0 ? selectedLocations : null}
       />
+
+      {/* Modal de Detalle de Fichajes del Empleado */}
+      {showEmployeeDetailModal && selectedEmployeeForDetail && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-background rounded-lg shadow-xl w-full max-w-4xl max-h-[80vh] overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between p-6 border-b border-border">
+              <div>
+                <h3 className="text-lg font-semibold text-foreground">
+                  Fichajes de {selectedEmployeeForDetail.name}
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  {!isRoundTrip
+                    ? new Date(selectedDate).toLocaleDateString('es-ES', { 
+                        weekday: 'long', 
+                        year: 'numeric', 
+                        month: 'long', 
+                        day: 'numeric' 
+                      })
+                    : `${new Date(rangeFrom).toLocaleDateString('es-ES')} a ${new Date(rangeTo).toLocaleDateString('es-ES')}`}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Total: {employeeDetailEntries.length} fichaje{employeeDetailEntries.length !== 1 ? 's' : ''}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowEmployeeDetailModal(false);
+                  setSelectedEmployeeForDetail(null);
+                  setEmployeeDetailEntries([]);
+                }}
+                className="p-2 rounded-lg hover:bg-secondary transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 overflow-y-auto max-h-[60vh]">
+              {employeeDetailEntries.length === 0 ? (
+                <div className="text-center py-8">
+                  <Clock className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                  <p className="text-muted-foreground">No hay fichajes en este período</p>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {/* Agrupar fichajes por día y ordenar cronológicamente */}
+                  {(() => {
+                    const entriesByDay = {};
+                    employeeDetailEntries.forEach(entry => {
+                      // Usar fecha ISO como clave para ordenar correctamente
+                      const entryDate = new Date(entry.entry_time);
+                      const dateKey = entryDate.toISOString().split('T')[0]; // YYYY-MM-DD
+                      const dateLabel = entryDate.toLocaleDateString('es-ES', {
+                        weekday: 'long',
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric'
+                      });
+                      
+                      if (!entriesByDay[dateKey]) {
+                        entriesByDay[dateKey] = {
+                          label: dateLabel,
+                          entries: []
+                        };
+                      }
+                      entriesByDay[dateKey].entries.push(entry);
+                    });
+
+                    // Ordenar los días cronológicamente (de más antiguo a más reciente)
+                    const sortedDays = Object.entries(entriesByDay).sort(([dateA], [dateB]) => {
+                      return new Date(dateA) - new Date(dateB);
+                    });
+
+                    return sortedDays.map(([dateKey, { label, entries }]) => {
+                      // Ordenar fichajes del día por hora (de más antiguo a más reciente)
+                      const sortedEntries = entries.sort((a, b) => 
+                        new Date(a.entry_time) - new Date(b.entry_time)
+                      );
+
+                      return (
+                        <div key={dateKey} className="border border-border rounded-lg p-4 bg-card">
+                          <h4 className="font-semibold text-foreground mb-4 flex items-center gap-2 pb-2 border-b border-border">
+                            <Calendar className="w-4 h-4" />
+                            {label}
+                            <span className="ml-auto text-sm font-normal text-muted-foreground">
+                              {sortedEntries.length} fichaje{sortedEntries.length !== 1 ? 's' : ''}
+                            </span>
+                          </h4>
+                          <div className="space-y-2">
+                            {sortedEntries.map((entry, index) => (
+                              <div
+                                key={entry.id || index}
+                                className="flex items-center justify-between p-3 bg-secondary rounded-lg hover:bg-secondary/80 transition-colors"
+                              >
+                                <div className="flex items-center gap-3 flex-1">
+                                  <div className={`w-3 h-3 rounded-full flex-shrink-0 ${
+                                    entry.entry_type === 'clock_in' ? 'bg-green-500' :
+                                    entry.entry_type === 'clock_out' ? 'bg-red-500' :
+                                    entry.entry_type === 'break_start' ? 'bg-yellow-500' :
+                                    'bg-blue-500'
+                                  }`} />
+                                  <div className="flex-1">
+                                    <div className="font-medium text-foreground capitalize">
+                                      {entry.entry_type.replace('_', ' ')}
+                                    </div>
+                                    <div className="text-sm text-muted-foreground">
+                                      {new Date(entry.entry_time).toLocaleTimeString('es-ES', {
+                                        hour: '2-digit',
+                                        minute: '2-digit',
+                                        second: '2-digit'
+                                      })}
+                                    </div>
+                                  </div>
+                                </div>
+                                {entry.location_lat && entry.location_lng && (
+                                  <button
+                                    onClick={() => showLocationModal({
+                                      lat: entry.location_lat,
+                                      lng: entry.location_lng,
+                                      accuracy: entry.location_accuracy,
+                                      timestamp: entry.entry_time
+                                    })}
+                                    className="btn btn-ghost btn-sm text-blue-600 hover:text-blue-700 flex-shrink-0"
+                                    title="Ver ubicación"
+                                  >
+                                    <MapPin className="w-4 h-4" />
+                                  </button>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 } 

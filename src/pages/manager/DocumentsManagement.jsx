@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { supabase } from '@/lib/supabaseClient';
+import { NotificationService } from '@/lib/notificationService';
 import { 
   FileText, 
   Search, 
@@ -283,13 +284,22 @@ export default function DocumentsManagement() {
 
       if (!userRole) return;
 
+      // Obtener nombre del usuario que sube el documento
+      const { data: uploaderProfile } = await supabase
+        .from('user_profiles')
+        .select('full_name')
+        .eq('user_id', user.id)
+        .single();
+
+      const uploaderName = uploaderProfile?.full_name || 'Manager';
+
       // Convertir archivo a Base64
       const reader = new FileReader();
       reader.onload = async function(e) {
         const base64Data = e.target.result;
         
         // Insertar documento en la base de datos
-        const { error } = await supabase
+        const { data: document, error } = await supabase
           .from('documents')
           .insert({
             title: documentForm.title,
@@ -301,12 +311,28 @@ export default function DocumentsManagement() {
             user_id: selectedEmployee.user_id,
             company_id: userRole.company_id,
             uploaded_by: user.id
-          });
+          })
+          .select()
+          .single();
 
         if (error) {
           console.error('Error uploading document:', error);
           setMessage('Error al subir el documento');
         } else {
+          // Enviar notificación al empleado
+          try {
+            await NotificationService.notifyDocumentUploadedToUser({
+              companyId: userRole.company_id,
+              documentTitle: documentForm.title,
+              recipientUserId: selectedEmployee.user_id,
+              uploaderName: uploaderName,
+              documentId: document?.id
+            });
+          } catch (notifError) {
+            console.error('Error sending notification:', notifError);
+            // No fallar la subida si la notificación falla
+          }
+
           setMessage('Documento subido exitosamente');
           closeUploadModal();
           loadData(); // Recargar datos

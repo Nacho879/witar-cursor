@@ -110,22 +110,7 @@ export default function Protected({ roles, children }) {
   }
 
   if (!ok) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold text-foreground mb-2">Acceso Restringido</h2>
-          <p className="text-muted-foreground mb-4">
-            No tienes permisos para acceder a esta página.
-          </p>
-          <button 
-            onClick={() => navigate('/login')}
-            className="btn btn-primary"
-          >
-            Volver al Login
-          </button>
-        </div>
-      </div>
-    );
+    return <Forbidden />;
   }
 
   return children;
