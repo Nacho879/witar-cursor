@@ -13,6 +13,11 @@ import Demo from '@/pages/Demo';
 import TerminosCondiciones from '@/pages/legal/TerminosCondiciones';
 import PoliticaPrivacidad from '@/pages/legal/PoliticaPrivacidad';
 import PoliticaCookies from '@/pages/legal/PoliticaCookies';
+import NotFound from '@/pages/NotFound';
+import Forbidden from '@/pages/errors/Forbidden';
+import Unauthorized from '@/pages/errors/Unauthorized';
+import InternalServerError from '@/pages/errors/InternalServerError';
+import ServiceUnavailable from '@/pages/errors/ServiceUnavailable';
 
 // Lazy load layouts
 const OwnerLayout = React.lazy(() => import('@/components/layout/OwnerLayout'));
@@ -31,6 +36,7 @@ const OwnerRequests = React.lazy(() => import('@/pages/owner/Requests'));
 const OwnerSettings = React.lazy(() => import('@/pages/owner/Settings'));
 const OwnerBilling = React.lazy(() => import('@/pages/owner/Billing'));
 const OwnerReports = React.lazy(() => import('@/pages/owner/Reports'));
+const OwnerProfile = React.lazy(() => import('@/pages/owner/Profile'));
 
 // Debug pages
 const GPSDebugPage = React.lazy(() => import('@/pages/GPSDebugPage'));
@@ -49,6 +55,7 @@ const ManagerRequests = React.lazy(() => import('@/pages/manager/Requests'));
 const ManagerProfile = React.lazy(() => import('@/pages/manager/Profile'));
 const ManagerTimeEntryEditRequests = React.lazy(() => import('@/pages/manager/TimeEntryEditRequests'));
 const DocumentsManagement = React.lazy(() => import('@/pages/manager/DocumentsManagement'));
+const ManagerMyDocuments = React.lazy(() => import('@/pages/manager/MyDocuments'));
 
 // Lazy load employee pages
 const EmployeeDashboard = React.lazy(() => import('@/pages/employee/Dashboard'));
@@ -220,6 +227,18 @@ const router = createBrowserRouter([
       </React.Suspense>
     )
   },
+  { 
+    path: "/owner/profile", 
+    element: (
+      <React.Suspense fallback={<LoadingFallback />}>
+        <Protected roles={['owner']}>
+          <OwnerLayout>
+            <OwnerProfile/>
+          </OwnerLayout>
+        </Protected>
+      </React.Suspense>
+    )
+  },
   {
     path: "/debug/gps", 
     element: (
@@ -377,6 +396,18 @@ const router = createBrowserRouter([
       </React.Suspense>
     )
   },
+  { 
+    path: "/admin/notifications", 
+    element: (
+      <React.Suspense fallback={<LoadingFallback />}>
+        <Protected roles={['admin']}>
+          <AdminLayout>
+            <Notifications />
+          </AdminLayout>
+        </Protected>
+      </React.Suspense>
+    )
+  },
 
   // Manager routes
   { 
@@ -488,6 +519,30 @@ const router = createBrowserRouter([
       </React.Suspense>
     )
   },
+  { 
+    path: "/manager/notifications", 
+    element: (
+      <React.Suspense fallback={<LoadingFallback />}>
+        <Protected roles={['manager']}>
+          <ManagerLayout>
+            <Notifications />
+          </ManagerLayout>
+        </Protected>
+      </React.Suspense>
+    )
+  },
+  { 
+    path: "/manager/my-documents", 
+    element: (
+      <React.Suspense fallback={<LoadingFallback />}>
+        <Protected roles={['manager']}>
+          <ManagerLayout>
+            <ManagerMyDocuments/>
+          </ManagerLayout>
+        </Protected>
+      </React.Suspense>
+    )
+  },
 
   // Employee routes
   { 
@@ -551,6 +606,18 @@ const router = createBrowserRouter([
     )
   },
   { 
+    path: "/employee/notifications", 
+    element: (
+      <React.Suspense fallback={<LoadingFallback />}>
+        <Protected roles={['employee']}>
+          <EmployeeLayout>
+            <Notifications />
+          </EmployeeLayout>
+        </Protected>
+      </React.Suspense>
+    )
+  },
+  { 
     path: "/employee/timeclock-test", 
     element: (
       <React.Suspense fallback={<LoadingFallback />}>
@@ -559,6 +626,28 @@ const router = createBrowserRouter([
         </Protected>
       </React.Suspense>
     )
+  },
+  // Rutas de error
+  {
+    path: "/403",
+    element: <Forbidden />
+  },
+  {
+    path: "/401",
+    element: <Unauthorized />
+  },
+  {
+    path: "/500",
+    element: <InternalServerError />
+  },
+  {
+    path: "/503",
+    element: <ServiceUnavailable />
+  },
+  // Ruta catch-all para 404
+  {
+    path: "*",
+    element: <NotFound />
   },
 ]);
 

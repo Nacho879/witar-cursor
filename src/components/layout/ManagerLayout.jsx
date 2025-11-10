@@ -9,7 +9,8 @@ import {
   Download,
   ChevronLeft,
   ChevronRight,
-  Globe
+  Globe,
+  Bell
 } from 'lucide-react';
 import FloatingTimeClock from '@/components/FloatingTimeClock';
 import WitarLogo from '@/components/WitarLogo';
@@ -48,7 +49,7 @@ export default function ManagerLayout({ children }) {
         transform transition-transform duration-300 ease-in-out
         lg:relative lg:translate-x-0 lg:col-start-1
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-        ${isCollapsed ? 'w-16' : 'w-64'}
+        ${isCollapsed ? 'w-20' : 'w-64'}
       `}>
         {/* Header with close button for mobile */}
         <div className='flex items-center justify-between p-4 border-b border-border'>
@@ -153,11 +154,11 @@ export default function ManagerLayout({ children }) {
           </a>
           <a 
             className='px-3 py-2 rounded hover:bg-secondary flex items-center gap-2 transition-colors' 
-            href='/manager/documents'
+            href='/manager/my-documents'
             onClick={() => setSidebarOpen(false)}
           >
             <Download className='w-4 h-4' />
-            <span className={isCollapsed ? 'hidden' : 'lg:block'}>Documentos</span>
+            <span className={isCollapsed ? 'hidden' : 'lg:block'}>Mis Documentos</span>
           </a>
           <a 
             className='px-3 py-2 rounded hover:bg-secondary flex items-center gap-2 transition-colors' 
@@ -166,6 +167,14 @@ export default function ManagerLayout({ children }) {
           >
             <User className='w-4 h-4' />
             <span className={isCollapsed ? 'hidden' : 'lg:block'}>Mi Perfil</span>
+          </a>
+          <a 
+            className='px-3 py-2 rounded hover:bg-secondary flex items-center gap-2 transition-colors' 
+            href='/manager/notifications'
+            onClick={() => setSidebarOpen(false)}
+          >
+            <Bell className='w-4 h-4' />
+            <span className={isCollapsed ? 'hidden' : 'lg:block'}>Notificaciones</span>
           </a>
         </nav>
       </aside>
