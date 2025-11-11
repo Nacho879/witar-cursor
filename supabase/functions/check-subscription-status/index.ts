@@ -25,15 +25,60 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    // Obtener información de la empresa
+    // Obtener información de la empresa (incluyendo el estado actual)
     const { data: company, error: companyError } = await supabaseServiceClient
       .from('companies')
-      .select('id, name, created_at')
+      .select('id, name, created_at, status, blocked_at, blocked_reason')
       .eq('id', companyId)
       .single()
 
     if (companyError || !company) {
       throw new Error('Empresa no encontrada')
+    }
+
+    // IMPORTANTE: Si la empresa ya está activa manualmente, respetar ese estado
+    // No bloquear empresas que fueron activadas manualmente
+    if (company.status === 'active' && !company.blocked_at) {
+      // Verificar si hay suscripción activa para mostrar el estado correcto
+      let hasActiveSubscription = false
+      try {
+        const { data: tableExists } = await supabaseServiceClient
+          .from('information_schema.tables')
+          .select('table_name')
+          .eq('table_schema', 'public')
+          .eq('table_name', 'subscriptions')
+          .maybeSingle()
+
+        if (tableExists) {
+          const { data: subscription } = await supabaseServiceClient
+            .from('subscriptions')
+            .select('id, status')
+            .eq('company_id', companyId)
+            .eq('status', 'active')
+            .maybeSingle()
+
+          hasActiveSubscription = !!subscription
+        }
+      } catch (error) {
+        console.log('Error verificando suscripción:', error.message)
+      }
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          companyStatus: 'active',
+          isBlocked: false,
+          daysRemaining: 0,
+          daysSinceCreation: 0,
+          hasActiveSubscription,
+          createdAt: company.created_at,
+          companyName: company.name
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200,
+        }
+      )
     }
 
     // Calcular días desde la creación
@@ -87,8 +132,9 @@ serve(async (req) => {
       }
     }
 
-    // Si la empresa está bloqueada, actualizar el estado en la base de datos
-    if (isBlocked) {
+    // Solo actualizar el estado si la empresa NO está activa manualmente
+    // Si está activa manualmente, no la bloqueamos automáticamente
+    if (isBlocked && company.status !== 'active') {
       await supabaseServiceClient
         .from('companies')
         .update({ 
