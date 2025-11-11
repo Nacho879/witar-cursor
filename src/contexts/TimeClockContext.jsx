@@ -616,10 +616,29 @@ export function TimeClockProvider({ children }) {
   const getCurrentLocation = useCallback(async () => {
     console.log('🌍 [TimeClockContext] Intentando obtener ubicación GPS...');
     
+    // Verificar contexto seguro (HTTPS requerido en producción)
+    const isSecureContext = window.isSecureContext || 
+      window.location.protocol === 'https:' || 
+      window.location.hostname === 'localhost' || 
+      window.location.hostname === '127.0.0.1' ||
+      window.location.hostname === '[::1]';
+    
+    if (!isSecureContext) {
+      console.error('❌ [TimeClockContext] Contexto no seguro. HTTPS requerido para geolocalización.');
+      console.error('Protocolo actual:', window.location.protocol, 'Hostname:', window.location.hostname);
+      return null;
+    }
+    
     if (!navigator.geolocation) {
       console.log('❌ [TimeClockContext] Geolocalización no disponible en este navegador');
       return null;
     }
+
+    console.log('✅ [TimeClockContext] Contexto seguro verificado:', {
+      isSecureContext,
+      protocol: window.location.protocol,
+      hostname: window.location.hostname
+    });
 
     // Estrategia de reintentos con diferentes configuraciones
     let position = null;

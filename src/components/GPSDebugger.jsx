@@ -15,14 +15,29 @@ const GPSDebugger = ({ companyId }) => {
     
     const results = [];
     
-    // Test 1: Verificar si geolocalización está disponible
+    // Test 1: Verificar contexto seguro (HTTPS)
+    const isSecureContext = window.isSecureContext || 
+      window.location.protocol === 'https:' || 
+      window.location.hostname === 'localhost' || 
+      window.location.hostname === '127.0.0.1' ||
+      window.location.hostname === '[::1]';
+    
+    results.push({
+      test: 'Contexto seguro (HTTPS)',
+      status: isSecureContext ? '✅ Sí' : '❌ No',
+      details: isSecureContext 
+        ? `Protocolo: ${window.location.protocol}, Hostname: ${window.location.hostname}`
+        : `⚠️ La geolocalización requiere HTTPS. Protocolo actual: ${window.location.protocol}`
+    });
+    
+    // Test 2: Verificar si geolocalización está disponible
     results.push({
       test: 'Geolocalización disponible',
       status: navigator.geolocation ? '✅ Sí' : '❌ No',
       details: navigator.geolocation ? 'API de geolocalización disponible' : 'API no disponible'
     });
 
-    if (navigator.geolocation) {
+    if (navigator.geolocation && isSecureContext) {
       // Test 2: Intentar obtener ubicación con configuración básica
       try {
         results.push({
@@ -68,13 +83,31 @@ const GPSDebugger = ({ companyId }) => {
         });
 
       } catch (error) {
+        const code = error && typeof error === 'object' ? error.code : undefined;
+        const errorName = error && typeof error === 'object' ? error.name : undefined;
+        
+        let errorDetails = error.message || String(error);
+        if (code !== undefined) {
+          errorDetails += ` (Código: ${code})`;
+        }
+        if (errorName) {
+          errorDetails += ` (Tipo: ${errorName})`;
+        }
+        
         results.push({
           test: 'Error obteniendo ubicación',
           status: '❌ Error',
-          details: error.message
+          details: errorDetails
         });
-        setError(error.message);
+        setError(errorDetails);
       }
+    } else if (!isSecureContext) {
+      results.push({
+        test: 'No se puede probar GPS',
+        status: '❌ Bloqueado',
+        details: 'La geolocalización requiere HTTPS. Por favor, accede usando https://witar.es'
+      });
+      setError('Contexto no seguro. HTTPS requerido para geolocalización.');
     }
 
     setTestResults(results);

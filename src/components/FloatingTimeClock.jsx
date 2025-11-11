@@ -479,23 +479,45 @@ export default function FloatingTimeClock() {
         // Requerir geolocalización activa para fichar
         let locationData = null;
         try {
+          // Verificar contexto seguro (HTTPS requerido en producción)
+          const isSecureContext = window.isSecureContext || 
+            window.location.protocol === 'https:' || 
+            window.location.hostname === 'localhost' || 
+            window.location.hostname === '127.0.0.1' ||
+            window.location.hostname === '[::1]';
+          
+          if (!isSecureContext) {
+            console.error('❌ [GPS] Contexto no seguro. HTTPS requerido para geolocalización.');
+            showToast('❌ La geolocalización requiere HTTPS. Por favor, accede al sitio usando https://witar.es', 'error');
+            return;
+          }
+
           // Verificar disponibilidad de API
           if (!navigator.geolocation) {
+            console.error('❌ [GPS] API de geolocalización no disponible');
             showToast('❌ Este navegador no soporta GPS. Actívalo para fichar.', 'error');
             return;
           }
+
+          console.log('✅ [GPS] Contexto seguro verificado:', {
+            isSecureContext,
+            protocol: window.location.protocol,
+            hostname: window.location.hostname
+          });
 
           // Intentar conocer el estado de permiso (no está disponible en todos los navegadores)
           try {
             if (navigator.permissions && navigator.permissions.query) {
               const result = await navigator.permissions.query({ name: 'geolocation' });
+              console.log('📍 [GPS] Estado de permisos:', result.state);
               if (result.state === 'denied') {
                 showToast('❌ Permiso de ubicación denegado. Activa el GPS para fichar.', 'error');
                 return;
               }
             }
-          } catch (_) {
+          } catch (permError) {
             // Ignorar si la API de permisos no está disponible
+            console.log('⚠️ [GPS] API de permisos no disponible:', permError);
           }
 
           // Intentar obtener ubicación con estrategia de reintentos
@@ -563,21 +585,40 @@ export default function FloatingTimeClock() {
           }
         } catch (geoErr) {
           const code = geoErr && typeof geoErr === 'object' ? geoErr.code : undefined;
-          console.error('❌ [GPS] Error final:', geoErr, 'Code:', code);
+          const errorName = geoErr && typeof geoErr === 'object' ? geoErr.name : undefined;
+          const errorMessage = geoErr && typeof geoErr === 'object' ? geoErr.message : String(geoErr);
           
-          let errorMessage = '❌ No se pudo obtener tu ubicación. ';
+          console.error('❌ [GPS] Error final:', {
+            code,
+            name: errorName,
+            message: errorMessage,
+            error: geoErr,
+            protocol: window.location.protocol,
+            hostname: window.location.hostname,
+            isSecureContext: window.isSecureContext
+          });
           
-          if (code === 1) {
-            errorMessage += 'Permiso de ubicación denegado. Ve a la configuración del navegador y permite el acceso a la ubicación.';
-          } else if (code === 2) {
-            errorMessage += 'Ubicación no disponible. Verifica que el GPS esté activado en tu dispositivo y que tengas señal.';
-          } else if (code === 3) {
-            errorMessage += 'Tiempo de espera agotado. El GPS está tardando demasiado. Intenta salir al exterior o espera unos segundos y vuelve a intentar.';
+          let userMessage = '❌ No se pudo obtener tu ubicación. ';
+          
+          // Verificar si el problema es de contexto seguro
+          const isSecureContext = window.isSecureContext || 
+            window.location.protocol === 'https:' || 
+            window.location.hostname === 'localhost' || 
+            window.location.hostname === '127.0.0.1';
+          
+          if (!isSecureContext) {
+            userMessage += 'La geolocalización requiere HTTPS. Por favor, accede usando https://witar.es';
+          } else if (code === 1 || errorName === 'NotAllowedError') {
+            userMessage += 'Permiso de ubicación denegado. Ve a la configuración del navegador y permite el acceso a la ubicación.';
+          } else if (code === 2 || errorName === 'PositionUnavailableError') {
+            userMessage += 'Ubicación no disponible. Verifica que el GPS esté activado en tu dispositivo y que tengas señal.';
+          } else if (code === 3 || errorName === 'TimeoutError') {
+            userMessage += 'Tiempo de espera agotado. El GPS está tardando demasiado. Intenta salir al exterior o espera unos segundos y vuelve a intentar.';
           } else {
-            errorMessage += 'Asegúrate de tener el GPS activado y permisos de ubicación concedidos. Si el problema persiste, intenta recargar la página.';
+            userMessage += 'Asegúrate de tener el GPS activado y permisos de ubicación concedidos. Si el problema persiste, intenta recargar la página o verifica que estés usando HTTPS.';
           }
           
-          showToast(errorMessage, 'error');
+          showToast(userMessage, 'error');
           return;
         }
 

@@ -26,6 +26,20 @@ export const useGeolocation = () => {
 
   // Solicitar ubicación con manejo de permisos
   const requestLocation = useCallback(async (options = {}) => {
+    // Verificar contexto seguro (HTTPS requerido en producción)
+    const isSecureContext = window.isSecureContext || 
+      window.location.protocol === 'https:' || 
+      window.location.hostname === 'localhost' || 
+      window.location.hostname === '127.0.0.1' ||
+      window.location.hostname === '[::1]';
+    
+    if (!isSecureContext) {
+      const error = new Error('La geolocalización requiere HTTPS. Por favor, accede al sitio usando https://witar.es');
+      setError(error);
+      setIsLoading(false);
+      return { location: null, error };
+    }
+
     if (!navigator.geolocation) {
       const error = new Error('Geolocalización no soportada por este navegador');
       setError(error);
@@ -36,6 +50,12 @@ export const useGeolocation = () => {
     setError(null);
 
     try {
+      console.log('✅ [useGeolocation] Contexto seguro verificado:', {
+        isSecureContext,
+        protocol: window.location.protocol,
+        hostname: window.location.hostname
+      });
+
       // Verificar permisos primero
       const permission = await checkPermissionStatus();
       
@@ -73,23 +93,38 @@ export const useGeolocation = () => {
       return { location: locationData, error: null };
 
     } catch (error) {
-      console.error('❌ Error obteniendo ubicación:', error);
+      const code = error && typeof error === 'object' ? error.code : undefined;
+      const errorName = error && typeof error === 'object' ? error.name : undefined;
+      
+      console.error('❌ Error obteniendo ubicación:', {
+        code,
+        name: errorName,
+        message: error.message,
+        error,
+        protocol: window.location.protocol,
+        hostname: window.location.hostname,
+        isSecureContext: window.isSecureContext
+      });
       
       let errorMessage = 'Error desconocido obteniendo ubicación';
       
-      switch (error.code) {
-        case error.PERMISSION_DENIED:
-          errorMessage = 'Permisos de geolocalización denegados. Debes habilitar la ubicación para poder fichar.';
-          setPermissionStatus('denied');
-          break;
-        case error.POSITION_UNAVAILABLE:
-          errorMessage = 'Ubicación no disponible. Verifica que el GPS esté activado.';
-          break;
-        case error.TIMEOUT:
-          errorMessage = 'Tiempo de espera agotado. Intenta de nuevo.';
-          break;
-        default:
-          errorMessage = error.message || 'Error obteniendo ubicación';
+      // Verificar contexto seguro primero
+      const isSecureContext = window.isSecureContext || 
+        window.location.protocol === 'https:' || 
+        window.location.hostname === 'localhost' || 
+        window.location.hostname === '127.0.0.1';
+      
+      if (!isSecureContext) {
+        errorMessage = 'La geolocalización requiere HTTPS. Por favor, accede usando https://witar.es';
+      } else if (code === error.PERMISSION_DENIED || code === 1 || errorName === 'NotAllowedError') {
+        errorMessage = 'Permisos de geolocalización denegados. Debes habilitar la ubicación para poder fichar.';
+        setPermissionStatus('denied');
+      } else if (code === error.POSITION_UNAVAILABLE || code === 2 || errorName === 'PositionUnavailableError') {
+        errorMessage = 'Ubicación no disponible. Verifica que el GPS esté activado.';
+      } else if (code === error.TIMEOUT || code === 3 || errorName === 'TimeoutError') {
+        errorMessage = 'Tiempo de espera agotado. Intenta de nuevo.';
+      } else {
+        errorMessage = error.message || 'Error obteniendo ubicación. Verifica que estés usando HTTPS.';
       }
 
       const finalError = new Error(errorMessage);
