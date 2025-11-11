@@ -76,14 +76,18 @@ async function handleCheckoutSessionCompleted(session: any, supabase: any) {
         stripe_customer_id: customerId,
         subscription_status: 'active',
         stripe_session_id: null,
-        employee_limit: Math.max(employeeCount, 25) // Mínimo 25 empleados para el plan
+        employee_limit: Math.max(employeeCount, 25), // Mínimo 25 empleados para el plan
+        // Reactivar la empresa automáticamente cuando se completa el pago
+        status: 'active',
+        blocked_at: null,
+        blocked_reason: null
       })
       .eq('id', companyId)
 
     if (error) {
       console.error('Error updating company:', error)
     } else {
-      console.log('Company updated successfully:', companyId)
+      console.log('Company updated and reactivated successfully:', companyId)
     }
   } else {
     console.error('Missing companyId or customerId in session metadata')
@@ -99,15 +103,25 @@ async function handleSubscriptionCreated(subscription: any, supabase: any) {
   console.log('Subscription metadata:', { companyId, employeeCount, billingEmployeeCount })
 
   if (companyId) {
+    // Preparar actualización base
+    const updateData: any = {
+      stripe_subscription_id: subscription.id,
+      subscription_status: subscription.status,
+      employee_limit: Math.max(employeeCount, 25), // Mínimo 25 empleados para el plan
+      subscription_current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
+      subscription_current_period_end: new Date(subscription.current_period_end * 1000).toISOString()
+    }
+
+    // Si la suscripción está activa, reactivar la empresa
+    if (subscription.status === 'active') {
+      updateData.status = 'active'
+      updateData.blocked_at = null
+      updateData.blocked_reason = null
+    }
+
     const { error } = await supabase
       .from('companies')
-      .update({
-        stripe_subscription_id: subscription.id,
-        subscription_status: subscription.status,
-        employee_limit: Math.max(employeeCount, 25), // Mínimo 25 empleados para el plan
-        subscription_current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
-        subscription_current_period_end: new Date(subscription.current_period_end * 1000).toISOString()
-      })
+      .update(updateData)
       .eq('id', companyId)
 
     if (error) {
@@ -137,14 +151,24 @@ async function handleSubscriptionUpdated(subscription: any, supabase: any) {
   const employeeCount = parseInt(subscription.metadata?.employeeCount || '0')
 
   if (companyId) {
+    // Preparar actualización base
+    const updateData: any = {
+      subscription_status: subscription.status,
+      employee_limit: employeeCount,
+      subscription_current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
+      subscription_current_period_end: new Date(subscription.current_period_end * 1000).toISOString()
+    }
+
+    // Si la suscripción está activa, reactivar la empresa
+    if (subscription.status === 'active') {
+      updateData.status = 'active'
+      updateData.blocked_at = null
+      updateData.blocked_reason = null
+    }
+
     await supabase
       .from('companies')
-      .update({
-        subscription_status: subscription.status,
-        employee_limit: employeeCount,
-        subscription_current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
-        subscription_current_period_end: new Date(subscription.current_period_end * 1000).toISOString()
-      })
+      .update(updateData)
       .eq('id', companyId)
   }
 }
@@ -168,6 +192,17 @@ async function handleInvoicePaymentSucceeded(invoice: any, supabase: any) {
   const companyId = subscription.metadata?.companyId
 
   if (companyId) {
+    // Reactivar la empresa cuando se paga una factura (por si acaso no se activó antes)
+    await supabase
+      .from('companies')
+      .update({
+        status: 'active',
+        blocked_at: null,
+        blocked_reason: null,
+        subscription_status: 'active'
+      })
+      .eq('id', companyId)
+
     // Crear factura
     await supabase
       .from('invoices')
