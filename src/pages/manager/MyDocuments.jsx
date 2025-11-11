@@ -95,10 +95,10 @@ export default function ManagerMyDocuments() {
         .single();
 
       if (userRole) {
-        // Obtener documentos que le han subido al manager
+        // Obtener documentos que le han subido al manager (sin file_url para optimizar ancho de banda)
         const { data: documents, error } = await supabase
           .from('documents')
-          .select('*')
+          .select('id, title, description, category, file_type, file_size, user_id, company_id, uploaded_by, created_at, updated_at')
           .eq('company_id', userRole.company_id)
           .eq('user_id', user.id) // Solo documentos destinados al manager
           .order('created_at', { ascending: false });
@@ -239,36 +239,62 @@ export default function ManagerMyDocuments() {
     return true;
   });
 
+  // Función para cargar file_url solo cuando se necesite
+  async function loadDocumentFileUrl(documentId) {
+    try {
+      const { data, error } = await supabase
+        .from('documents')
+        .select('file_url')
+        .eq('id', documentId)
+        .single();
+      
+      if (error) throw error;
+      return data?.file_url;
+    } catch (error) {
+      console.error('Error loading document file URL:', error);
+      return null;
+    }
+  }
+
   async function handleDownload(doc) {
     try {
-      if (doc.file_url) {
-        // Verificar si es un archivo Base64
-        if (doc.file_url.startsWith('data:')) {
-          // Es un archivo Base64, descargar directamente
-          const link = document.createElement('a');
-          link.href = doc.file_url;
-          
-          // Extraer el nombre del archivo del título o usar un nombre por defecto
-          const fileName = doc.title || 'documento';
-          
-          // Agregar extensión basada en el tipo de archivo
-          let extension = '';
-          if (doc.file_type) {
-            if (doc.file_type.includes('pdf')) extension = '.pdf';
-            else if (doc.file_type.includes('word') || doc.file_type.includes('document')) extension = '.docx';
-            else if (doc.file_type.includes('excel') || doc.file_type.includes('spreadsheet')) extension = '.xlsx';
-            else if (doc.file_type.includes('image')) extension = '.jpg';
-            else if (doc.file_type.includes('text')) extension = '.txt';
-          }
-          
-          link.download = fileName + extension;
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-        } else {
-          // Es una URL, abrir en nueva pestaña
-          window.open(doc.file_url, '_blank');
+      // Si no tenemos file_url, cargarlo primero
+      let fileUrl = doc.file_url;
+      if (!fileUrl) {
+        fileUrl = await loadDocumentFileUrl(doc.id);
+      }
+      
+      if (!fileUrl) {
+        alert('No se pudo cargar el archivo');
+        return;
+      }
+      
+      // Verificar si es un archivo Base64
+      if (fileUrl.startsWith('data:')) {
+        // Es un archivo Base64, descargar directamente
+        const link = document.createElement('a');
+        link.href = fileUrl;
+        
+        // Extraer el nombre del archivo del título o usar un nombre por defecto
+        const fileName = doc.title || 'documento';
+        
+        // Agregar extensión basada en el tipo de archivo
+        let extension = '';
+        if (doc.file_type) {
+          if (doc.file_type.includes('pdf')) extension = '.pdf';
+          else if (doc.file_type.includes('word') || doc.file_type.includes('document')) extension = '.docx';
+          else if (doc.file_type.includes('excel') || doc.file_type.includes('spreadsheet')) extension = '.xlsx';
+          else if (doc.file_type.includes('image')) extension = '.jpg';
+          else if (doc.file_type.includes('text')) extension = '.txt';
         }
+        
+        link.download = fileName + extension;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } else {
+        // Es una URL, abrir en nueva pestaña
+        window.open(fileUrl, '_blank');
       }
     } catch (error) {
       console.error('Error downloading document:', error);

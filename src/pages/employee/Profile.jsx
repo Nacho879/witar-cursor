@@ -389,10 +389,10 @@ export default function Profile() {
 
       if (timeEntries) setRecentTimeEntries(timeEntries);
 
-      // Cargar documentos recientes
+      // Cargar documentos recientes (sin file_url para optimizar ancho de banda)
       const { data: documents } = await supabase
         .from('documents')
-        .select('*')
+        .select('id, title, description, category, file_type, file_size, user_id, company_id, uploaded_by, created_at, updated_at')
         .eq('user_id', user.id)
         .eq('company_id', activeCompanyId)
         .order('created_at', { ascending: false })
@@ -639,7 +639,7 @@ export default function Profile() {
           .limit(50),
         supabase
           .from('documents')
-          .select('*')
+          .select('id, title, description, category, file_type, file_size, user_id, company_id, uploaded_by, created_at, updated_at')
           .eq('user_id', user.id)
           .order('created_at', { ascending: false })
           .limit(50)

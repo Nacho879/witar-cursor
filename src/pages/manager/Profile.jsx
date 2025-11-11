@@ -91,7 +91,7 @@ export default function ManagerProfile() {
           .eq('company_id', userRole.company_id),
         supabase
           .from('documents')
-          .select('*')
+          .select('id, title, description, category, file_type, file_size, user_id, company_id, uploaded_by, created_at, updated_at')
           .eq('user_id', user.id)
           .eq('company_id', userRole.company_id)
       ]);

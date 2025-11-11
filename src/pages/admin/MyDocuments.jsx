@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { NotificationService } from '@/lib/notificationService';
+import { generateSafeFileName } from '@/lib/securityUtils';
 import { 
   FileText, 
   Upload, 
@@ -146,10 +147,10 @@ export default function AdminMyDocuments() {
 
       console.log('🔍 Debug - Loading documents for company:', userRole.company_id);
 
-      // Cargar documentos subidos por el admin
+      // Cargar documentos subidos por el admin (sin file_url para optimizar ancho de banda)
       const { data: documents, error } = await supabase
         .from('documents')
-        .select('*')
+        .select('id, title, description, category, file_type, file_size, user_id, company_id, uploaded_by, created_at, updated_at')
         .eq('company_id', userRole.company_id)
         .eq('uploaded_by', user.id)
         .order('created_at', { ascending: false });
@@ -267,114 +268,126 @@ export default function AdminMyDocuments() {
         return;
       }
 
-      // Leer archivo como Base64
-      const reader = new FileReader();
-      reader.onload = async function(e) {
-        const base64Data = e.target.result;
+      // Generar nombre seguro para el archivo
+      const fileName = generateSafeFileName(uploadForm.file.name);
+      const filePath = `documents/${userRole.company_id}/${Date.now()}_${fileName}`;
 
-        // Obtener nombre del usuario que sube el documento
-        const { data: uploaderProfile } = await supabase
-          .from('user_profiles')
-          .select('full_name')
-          .eq('user_id', user.id)
-          .single();
+      // Subir archivo a Supabase Storage UNA VEZ
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('witar-documents')
+        .upload(filePath, uploadForm.file);
 
-        const uploaderName = uploaderProfile?.full_name || 'Administrador';
+      if (uploadError) {
+        console.error('Error uploading file to storage:', uploadError);
+        alert('Error al subir el archivo a Storage');
+        return;
+      }
 
-        // Crear documentos para cada destinatario
-        const documentPromises = recipients.map(recipient => {
-          console.log('📄 Creating document for recipient:', recipient);
-          
-          const documentData = {
-            title: uploadForm.title,
-            description: uploadForm.description,
-            category: uploadForm.category,
-            file_url: base64Data,
-            file_type: uploadForm.file.type,
-            file_size: uploadForm.file.size,
-            user_id: recipient.id, // recipient.id es el user_id
-            company_id: userRole.company_id,
-            uploaded_by: user.id
-          };
-          
-          console.log('📤 Document data being sent:', {
-            title: documentData.title,
-            user_id: documentData.user_id,
-            company_id: documentData.company_id,
-            uploaded_by: documentData.uploaded_by,
-            current_user: user.id,
-            user_role: userRole.role
-          });
-          
-          return supabase
-            .from('documents')
-            .insert(documentData)
-            .select()
-            .single()
-            .then(result => {
-              if (result.error) {
-                console.error('❌ Error en inserción:', result.error);
-                console.error('❌ Detalles del error:', {
-                  code: result.error.code,
-                  message: result.error.message,
-                  details: result.error.details,
-                  hint: result.error.hint
-                });
-              } else {
-                console.log('✅ Documento insertado exitosamente:', result.data);
-              }
-              return result;
-            });
+      // Obtener URL pública del archivo
+      const { data: { publicUrl } } = supabase.storage
+        .from('witar-documents')
+        .getPublicUrl(filePath);
+
+      // Obtener nombre del usuario que sube el documento
+      const { data: uploaderProfile } = await supabase
+        .from('user_profiles')
+        .select('full_name')
+        .eq('user_id', user.id)
+        .single();
+
+      const uploaderName = uploaderProfile?.full_name || 'Administrador';
+
+      // Crear documentos para cada destinatario (compartiendo la misma URL)
+      const documentPromises = recipients.map(recipient => {
+        console.log('📄 Creating document for recipient:', recipient);
+        
+        const documentData = {
+          title: uploadForm.title,
+          description: uploadForm.description,
+          category: uploadForm.category,
+          file_url: publicUrl, // Usar URL de Storage en lugar de Base64
+          file_type: uploadForm.file.type,
+          file_size: uploadForm.file.size,
+          user_id: recipient.id, // recipient.id es el user_id
+          company_id: userRole.company_id,
+          uploaded_by: user.id
+        };
+        
+        console.log('📤 Document data being sent:', {
+          title: documentData.title,
+          user_id: documentData.user_id,
+          company_id: documentData.company_id,
+          uploaded_by: documentData.uploaded_by,
+          current_user: user.id,
+          user_role: userRole.role
         });
+        
+        return supabase
+          .from('documents')
+          .insert(documentData)
+          .select()
+          .single()
+          .then(result => {
+            if (result.error) {
+              console.error('❌ Error en inserción:', result.error);
+              console.error('❌ Detalles del error:', {
+                code: result.error.code,
+                message: result.error.message,
+                details: result.error.details,
+                hint: result.error.hint
+              });
+            } else {
+              console.log('✅ Documento insertado exitosamente:', result.data);
+            }
+            return result;
+          });
+      });
 
-        try {
-          const results = await Promise.all(documentPromises);
-          console.log('✅ Upload results:', results);
-          
-          // Verificar si hubo errores
-          const errors = results.filter(result => result.error);
-          if (errors.length > 0) {
-            console.error('❌ Upload errors:', errors);
-            alert('Error al subir algunos documentos');
-            return;
-          }
-          
-          // Enviar notificaciones a todos los destinatarios
-          const notificationPromises = results
-            .filter(result => !result.error && result.data)
-            .map(result => {
-              const document = result.data;
-              const recipient = recipients.find(r => r.id === document.user_id);
-              if (recipient) {
-                return NotificationService.notifyDocumentUploadedToUser({
-                  companyId: userRole.company_id,
-                  documentTitle: uploadForm.title,
-                  recipientUserId: recipient.id,
-                  uploaderName: uploaderName,
-                  documentId: document.id
-                }).catch(err => {
-                  console.error('Error sending notification:', err);
-                  return null; // No fallar si una notificación falla
-                });
-              }
-              return Promise.resolve(null);
-            });
-
-          await Promise.all(notificationPromises);
-          
-          alert(`Documento subido exitosamente a ${recipients.length} destinatario${recipients.length > 1 ? 's' : ''}`);
-          setShowUploadModal(false);
-          resetUploadForm();
-          
-          // Recargar documentos después de subir
-          await loadDocuments();
-        } catch (error) {
-          console.error('Error uploading documents:', error);
-          alert('Error al subir el documento');
+      try {
+        const results = await Promise.all(documentPromises);
+        console.log('✅ Upload results:', results);
+        
+        // Verificar si hubo errores
+        const errors = results.filter(result => result.error);
+        if (errors.length > 0) {
+          console.error('❌ Upload errors:', errors);
+          alert('Error al subir algunos documentos');
+          return;
         }
-      };
+        
+        // Enviar notificaciones a todos los destinatarios
+        const notificationPromises = results
+          .filter(result => !result.error && result.data)
+          .map(result => {
+            const document = result.data;
+            const recipient = recipients.find(r => r.id === document.user_id);
+            if (recipient) {
+              return NotificationService.notifyDocumentUploadedToUser({
+                companyId: userRole.company_id,
+                documentTitle: uploadForm.title,
+                recipientUserId: recipient.id,
+                uploaderName: uploaderName,
+                documentId: document.id
+              }).catch(err => {
+                console.error('Error sending notification:', err);
+                return null; // No fallar si una notificación falla
+              });
+            }
+            return Promise.resolve(null);
+          });
 
-      reader.readAsDataURL(uploadForm.file);
+        await Promise.all(notificationPromises);
+        
+        alert(`Documento subido exitosamente a ${recipients.length} destinatario${recipients.length > 1 ? 's' : ''}`);
+        setShowUploadModal(false);
+        resetUploadForm();
+        
+        // Recargar documentos después de subir
+        await loadDocuments();
+      } catch (error) {
+        console.error('Error uploading documents:', error);
+        alert('Error al subir el documento');
+      }
     } catch (error) {
       console.error('Error uploading document:', error);
       alert('Error al subir el documento');
@@ -414,10 +427,38 @@ export default function AdminMyDocuments() {
     }
   }
 
-  function handleDownload(document) {
+  // Función para cargar file_url solo cuando se necesite
+  async function loadDocumentFileUrl(documentId) {
     try {
+      const { data, error } = await supabase
+        .from('documents')
+        .select('file_url')
+        .eq('id', documentId)
+        .single();
+      
+      if (error) throw error;
+      return data?.file_url;
+    } catch (error) {
+      console.error('Error loading document file URL:', error);
+      return null;
+    }
+  }
+
+  async function handleDownload(document) {
+    try {
+      // Si no tenemos file_url, cargarlo primero
+      let fileUrl = document.file_url;
+      if (!fileUrl) {
+        fileUrl = await loadDocumentFileUrl(document.id);
+      }
+      
+      if (!fileUrl) {
+        alert('No se pudo cargar el archivo');
+        return;
+      }
+      
       const link = document.createElement('a');
-      link.href = document.file_url;
+      link.href = fileUrl;
       link.download = document.title + getFileExtension(document.file_type);
       document.body.appendChild(link);
       link.click();

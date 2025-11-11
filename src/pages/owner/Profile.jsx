@@ -81,7 +81,7 @@ export default function OwnerProfile() {
           .eq('company_id', userRole.company_id),
         supabase
           .from('documents')
-          .select('*', { count: 'exact' })
+          .select('id', { count: 'exact' })
           .eq('company_id', userRole.company_id)
       ]);
 

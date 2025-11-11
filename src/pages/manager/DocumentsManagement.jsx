@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { NotificationService } from '@/lib/notificationService';
+import { generateSafeFileName } from '@/lib/securityUtils';
 import { 
   FileText, 
   Search, 
@@ -144,10 +145,10 @@ export default function DocumentsManagement() {
 
   async function loadDocuments(companyId, managerId) {
     try {
-      // Cargar documentos subidos por el manager
+      // Cargar documentos subidos por el manager (sin file_url para optimizar ancho de banda)
       const { data: documents, error } = await supabase
         .from('documents')
-        .select('*')
+        .select('id, title, description, category, file_type, file_size, user_id, company_id, uploaded_by, created_at, updated_at')
         .eq('company_id', companyId)
         .eq('uploaded_by', managerId)
         .order('created_at', { ascending: false });
@@ -293,52 +294,65 @@ export default function DocumentsManagement() {
 
       const uploaderName = uploaderProfile?.full_name || 'Manager';
 
-      // Convertir archivo a Base64
-      const reader = new FileReader();
-      reader.onload = async function(e) {
-        const base64Data = e.target.result;
-        
-        // Insertar documento en la base de datos
-        const { data: document, error } = await supabase
-          .from('documents')
-          .insert({
-            title: documentForm.title,
-            description: documentForm.description,
-            category: documentForm.category,
-            file_url: base64Data,
-            file_type: documentForm.file.type,
-            file_size: documentForm.file.size,
-            user_id: selectedEmployee.user_id,
-            company_id: userRole.company_id,
-            uploaded_by: user.id
-          })
-          .select()
-          .single();
+      // Generar nombre seguro para el archivo
+      const fileName = generateSafeFileName(documentForm.file.name);
+      const filePath = `documents/${userRole.company_id}/${selectedEmployee.user_id}/${Date.now()}_${fileName}`;
 
-        if (error) {
-          console.error('Error uploading document:', error);
-          setMessage('Error al subir el documento');
-        } else {
-          // Enviar notificación al empleado
-          try {
-            await NotificationService.notifyDocumentUploadedToUser({
-              companyId: userRole.company_id,
-              documentTitle: documentForm.title,
-              recipientUserId: selectedEmployee.user_id,
-              uploaderName: uploaderName,
-              documentId: document?.id
-            });
-          } catch (notifError) {
-            console.error('Error sending notification:', notifError);
-            // No fallar la subida si la notificación falla
-          }
+      // Subir archivo a Supabase Storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('witar-documents')
+        .upload(filePath, documentForm.file);
 
-          setMessage('Documento subido exitosamente');
-          closeUploadModal();
-          loadData(); // Recargar datos
+      if (uploadError) {
+        console.error('Error uploading file to storage:', uploadError);
+        setMessage('Error al subir el archivo a Storage');
+        return;
+      }
+
+      // Obtener URL pública del archivo
+      const { data: { publicUrl } } = supabase.storage
+        .from('witar-documents')
+        .getPublicUrl(filePath);
+      
+      // Insertar documento en la base de datos
+      const { data: document, error } = await supabase
+        .from('documents')
+        .insert({
+          title: documentForm.title,
+          description: documentForm.description,
+          category: documentForm.category,
+          file_url: publicUrl, // Usar URL de Storage en lugar de Base64
+          file_type: documentForm.file.type,
+          file_size: documentForm.file.size,
+          user_id: selectedEmployee.user_id,
+          company_id: userRole.company_id,
+          uploaded_by: user.id
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error uploading document:', error);
+        setMessage('Error al subir el documento');
+      } else {
+        // Enviar notificación al empleado
+        try {
+          await NotificationService.notifyDocumentUploadedToUser({
+            companyId: userRole.company_id,
+            documentTitle: documentForm.title,
+            recipientUserId: selectedEmployee.user_id,
+            uploaderName: uploaderName,
+            documentId: document?.id
+          });
+        } catch (notifError) {
+          console.error('Error sending notification:', notifError);
+          // No fallar la subida si la notificación falla
         }
-      };
-      reader.readAsDataURL(documentForm.file);
+
+        setMessage('Documento subido exitosamente');
+        closeUploadModal();
+        loadData(); // Recargar datos
+      }
     } catch (error) {
       console.error('Error uploading document:', error);
       setMessage('Error al subir el documento');
@@ -347,37 +361,63 @@ export default function DocumentsManagement() {
     }
   }
 
+  // Función para cargar file_url solo cuando se necesite
+  async function loadDocumentFileUrl(documentId) {
+    try {
+      const { data, error } = await supabase
+        .from('documents')
+        .select('file_url')
+        .eq('id', documentId)
+        .single();
+      
+      if (error) throw error;
+      return data?.file_url;
+    } catch (error) {
+      console.error('Error loading document file URL:', error);
+      return null;
+    }
+  }
+
   // Función para descargar documento
   async function downloadDocument(document) {
     try {
-      if (document.file_url) {
-        // Verificar si es un archivo Base64
-        if (document.file_url.startsWith('data:')) {
-          // Es un archivo Base64, descargar directamente
-          const link = document.createElement('a');
-          link.href = document.file_url;
-          
-          // Extraer el nombre del archivo del título o usar un nombre por defecto
-          const fileName = document.title || 'documento';
-          
-          // Agregar extensión basada en el tipo de archivo
-          let extension = '';
-          if (document.file_type) {
-            if (document.file_type.includes('pdf')) extension = '.pdf';
-            else if (document.file_type.includes('word') || document.file_type.includes('document')) extension = '.docx';
-            else if (document.file_type.includes('excel') || document.file_type.includes('spreadsheet')) extension = '.xlsx';
-            else if (document.file_type.includes('image')) extension = '.jpg';
-            else if (document.file_type.includes('text')) extension = '.txt';
-          }
-          
-          link.download = fileName + extension;
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-        } else {
-          // Es una URL, abrir en nueva pestaña
-          window.open(document.file_url, '_blank');
+      // Si no tenemos file_url, cargarlo primero
+      let fileUrl = document.file_url;
+      if (!fileUrl) {
+        fileUrl = await loadDocumentFileUrl(document.id);
+      }
+      
+      if (!fileUrl) {
+        setMessage('Error: No se pudo cargar el archivo');
+        return;
+      }
+      
+      // Verificar si es un archivo Base64
+      if (fileUrl.startsWith('data:')) {
+        // Es un archivo Base64, descargar directamente
+        const link = document.createElement('a');
+        link.href = fileUrl;
+        
+        // Extraer el nombre del archivo del título o usar un nombre por defecto
+        const fileName = document.title || 'documento';
+        
+        // Agregar extensión basada en el tipo de archivo
+        let extension = '';
+        if (document.file_type) {
+          if (document.file_type.includes('pdf')) extension = '.pdf';
+          else if (document.file_type.includes('word') || document.file_type.includes('document')) extension = '.docx';
+          else if (document.file_type.includes('excel') || document.file_type.includes('spreadsheet')) extension = '.xlsx';
+          else if (document.file_type.includes('image')) extension = '.jpg';
+          else if (document.file_type.includes('text')) extension = '.txt';
         }
+        
+        link.download = fileName + extension;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } else {
+        // Es una URL, abrir en nueva pestaña
+        window.open(fileUrl, '_blank');
       }
     } catch (error) {
       console.error('Error downloading document:', error);
