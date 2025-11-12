@@ -47,9 +47,13 @@ export class BillingService {
         .from('companies')
         .select('created_at, status')
         .eq('id', companyId)
-        .single();
+        .maybeSingle();
 
       if (companyError) throw companyError;
+      
+      if (!company) {
+        throw new Error('Empresa no encontrada');
+      }
 
       // Obtener empleados activos (excluyendo al owner)
       const { data: employees, error: employeesError } = await supabase
@@ -350,32 +354,57 @@ export class BillingService {
   // Verificar si la empresa puede agregar más empleados
   static async canAddEmployee(companyId) {
     try {
-      // Primero verificar si la empresa está en período de prueba
-      const { data: company, error: companyError } = await supabase
-        .from('companies')
-        .select('created_at, status')
-        .eq('id', companyId)
-        .single();
-
-      if (companyError) {
-        console.error('Error getting company info:', companyError);
+      // Verificar primero que el usuario tiene acceso a esta empresa
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        console.error('Usuario no autenticado');
         return false;
       }
 
-      // Calcular días desde la creación
-      const createdAt = new Date(company.created_at);
-      const now = new Date();
-      const daysSinceCreation = Math.floor((now.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24));
+      // Verificar que el usuario tiene un rol activo en esta empresa
+      const { data: userRole, error: roleError } = await supabase
+        .from('user_company_roles')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('company_id', companyId)
+        .eq('is_active', true)
+        .maybeSingle();
 
-      // Si está en período de prueba (menos de 14 días), permitir empleados ilimitados
-      if (daysSinceCreation < 14) {
-        console.log('Empresa en período de prueba, permitiendo empleados ilimitados');
-        return true;
+      if (roleError) {
+        console.error('Error verificando acceso a la empresa:', roleError);
+        return false;
       }
 
-      // Si no está en período de prueba, aplicar límites normales
-      const billingData = await this.getBillingData(companyId);
-      return !billingData.planInfo.isLimitExceeded;
+      if (!userRole) {
+        console.error('Usuario no tiene acceso a esta empresa');
+        return false;
+      }
+
+      // Obtener empleados activos (excluyendo al owner)
+      const { data: employees, error: employeesError } = await supabase
+        .from('user_company_roles')
+        .select('id')
+        .eq('company_id', companyId)
+        .eq('is_active', true)
+        .neq('role', 'owner');
+
+      if (employeesError) {
+        console.error('Error getting employees:', employeesError);
+        return false;
+      }
+
+      const employeeCount = employees?.length || 0;
+
+      // Todas las empresas pueden tener hasta 25 empleados
+      const canAdd = employeeCount < 25;
+      
+      if (!canAdd) {
+        console.log(`Límite alcanzado: ${employeeCount}/25 empleados`);
+      } else {
+        console.log(`Puede agregar empleado: ${employeeCount}/25 empleados`);
+      }
+
+      return canAdd;
     } catch (error) {
       console.error('Error checking if can add employee:', error);
       return false;
