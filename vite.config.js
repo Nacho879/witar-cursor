@@ -92,7 +92,16 @@ export default defineConfig({
         mode: 'production',
         runtimeCaching: [
           {
-            urlPattern: /^https:\/\/.*\.supabase\.co\/.*/i,
+            // Solo cachear peticiones GET a Supabase (lecturas)
+            // Excluir funciones Edge y peticiones POST/PUT/DELETE
+            urlPattern: ({ url, request }) => {
+              // NO cachear funciones Edge
+              if (url.pathname.includes('/functions/v1/')) {
+                return false;
+              }
+              // Solo cachear peticiones GET
+              return request.method === 'GET' && url.hostname.includes('.supabase.co');
+            },
             handler: 'NetworkFirst',
             options: {
               cacheName: 'supabase-cache',
@@ -104,6 +113,21 @@ export default defineConfig({
                 statuses: [0, 200]
               }
             }
+          },
+          {
+            // NO cachear peticiones POST, PUT, DELETE, PATCH (siempre ir a la red)
+            urlPattern: ({ url, request }) => {
+              const isWriteMethod = ['POST', 'PUT', 'DELETE', 'PATCH'].includes(request.method);
+              return isWriteMethod && url.hostname.includes('.supabase.co');
+            },
+            handler: 'NetworkOnly'
+          },
+          {
+            // NO cachear funciones Edge (siempre ir a la red)
+            urlPattern: ({ url }) => {
+              return url.pathname.includes('/functions/v1/') && url.hostname.includes('.supabase.co');
+            },
+            handler: 'NetworkOnly'
           }
         ]
       },
