@@ -659,8 +659,10 @@ const LandingPage = () => {
                   <p className="text-muted-foreground mb-6">Para empresas pequeñas</p>
                   
                   <div className="mb-8">
-                    <span className="text-4xl font-bold text-foreground">€1.50</span>
-                    <span className="text-muted-foreground">/empleado/mes</span>
+                    <div className="flex flex-col items-center">
+                      <span className="text-4xl font-bold text-foreground">€1.50</span>
+                      <span className="text-muted-foreground mt-2">por empleado al mes más IVA</span>
+                    </div>
                   </div>
 
                   <ul className="space-y-4 mb-8 text-left">
