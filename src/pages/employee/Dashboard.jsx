@@ -253,7 +253,7 @@ export default function EmployeeDashboard() {
         }
 
         // Cargar información del rol del usuario en la empresa
-        const { data: userRole } = await supabase
+        const { data: userRole, error: roleError } = await supabase
           .from('user_company_roles')
           .select(`
             *,
@@ -275,15 +275,67 @@ export default function EmployeeDashboard() {
           `)
           .eq('user_id', user.id)
           .eq('is_active', true)
-          .single();
+          .maybeSingle();
 
-        if (userRole) {
-          setCompanyInfo(userRole.companies);
+        if (roleError) {
+          console.error('Error loading user role:', roleError);
+        } else if (userRole) {
+          console.log('✅ User role loaded:', {
+            company_id: userRole.company_id,
+            role: userRole.role,
+            hasCompanies: !!userRole.companies,
+            companies: userRole.companies
+          });
+          
+          // Si el JOIN con companies falló, intentar obtener la empresa directamente
+          let companyInfo = userRole.companies;
+          if (!companyInfo && userRole.company_id) {
+            console.warn('⚠️ Company info no disponible en JOIN');
+            console.warn('⚠️ Company ID:', userRole.company_id);
+            console.log('🔄 Intentando consulta directa a companies...');
+            
+            const { data: companyData, error: companyError } = await supabase
+              .from('companies')
+              .select('id, name, description, address, phone, email, website, logo_url')
+              .eq('id', userRole.company_id)
+              .maybeSingle();
+            
+            console.log('📊 Consulta directa resultado:', {
+              hasData: !!companyData,
+              data: companyData,
+              error: companyError,
+              errorCode: companyError?.code,
+              errorMessage: companyError?.message
+            });
+            
+            if (!companyError && companyData) {
+              companyInfo = companyData;
+              console.log('✅ Company info recuperada mediante consulta directa:', companyInfo);
+            } else {
+              console.error('❌ No se pudo obtener información de la empresa');
+              console.error('❌ Error:', companyError);
+              console.error('❌ Error code:', companyError?.code);
+              console.error('❌ Error message:', companyError?.message);
+              console.error('❌ Company ID intentado:', userRole.company_id);
+              
+              // Si no hay error pero tampoco hay datos, puede ser RLS bloqueando
+              if (!companyError && !companyData) {
+                console.error('⚠️ La consulta no devolvió datos ni errores - probablemente bloqueado por RLS');
+                console.error('⚠️ Verifica que la empresa esté activa y el usuario tenga acceso');
+              }
+            }
+          } else if (companyInfo) {
+            console.log('✅ Company info obtenida del JOIN:', companyInfo);
+          }
+          
+          setCompanyInfo(companyInfo);
 
           // Cargar información del manager solo si no se ha cargado antes
           if (!managerInfo) {
             await loadManagerInfo(userRole);
           }
+        } else {
+          console.warn('⚠️ No se encontró rol activo para el usuario');
         }
 
         // Cargar estadísticas y otros datos...

@@ -112,7 +112,7 @@ export default function MyTimeEntries() {
       }
 
       // Cargar información del rol del usuario en la empresa
-      const { data: userRole } = await supabase
+      const { data: userRole, error: roleError } = await supabase
         .from('user_company_roles')
         .select(`
           *,
@@ -134,13 +134,35 @@ export default function MyTimeEntries() {
         `)
         .eq('user_id', user.id)
         .eq('is_active', true)
-        .single();
+        .maybeSingle();
 
-      if (userRole) {
-        setCompanyInfo(userRole.companies);
+      if (roleError) {
+        console.error('Error loading user role:', roleError);
+      } else if (userRole) {
+        // Si el JOIN con companies falló, intentar obtener la empresa directamente
+        let companyInfo = userRole.companies;
+        if (!companyInfo && userRole.company_id) {
+          console.warn('⚠️ Company info no disponible en JOIN, intentando consulta directa...');
+          const { data: companyData, error: companyError } = await supabase
+            .from('companies')
+            .select('id, name, description, address, phone, email, website, logo_url')
+            .eq('id', userRole.company_id)
+            .maybeSingle();
+          
+          if (!companyError && companyData) {
+            companyInfo = companyData;
+            console.log('✅ Company info recuperada mediante consulta directa');
+          } else {
+            console.error('❌ No se pudo obtener información de la empresa:', companyError);
+          }
+        }
+        
+        setCompanyInfo(companyInfo);
 
         // Cargar información del manager
         await loadManagerInfo(userRole);
+      } else {
+        console.warn('⚠️ No se encontró rol activo para el usuario');
       }
     } catch (error) {
       console.error('Error loading user and company info:', error);

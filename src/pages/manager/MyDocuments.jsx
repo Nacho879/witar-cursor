@@ -11,7 +11,8 @@ import {
   Folder,
   Clock,
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  Trash2
 } from 'lucide-react';
 
 export default function ManagerMyDocuments() {
@@ -302,6 +303,59 @@ export default function ManagerMyDocuments() {
     }
   }
 
+  // Función para eliminar documento
+  async function handleDelete(doc) {
+    if (!confirm('¿Estás seguro de que quieres eliminar este documento?')) return;
+
+    try {
+      // Primero obtener el file_url para eliminar el archivo de Storage si existe
+      let fileUrl = doc.file_url;
+      if (!fileUrl) {
+        fileUrl = await loadDocumentFileUrl(doc.id);
+      }
+
+      // Si el archivo está en Storage (URL de Supabase), extraer la ruta y eliminarlo
+      if (fileUrl && fileUrl.includes('supabase.co/storage/v1/object/public/witar-documents/')) {
+        try {
+          // Extraer la ruta del archivo de la URL
+          const urlParts = fileUrl.split('/witar-documents/');
+          if (urlParts.length > 1) {
+            const filePath = urlParts[1].split('?')[0]; // Remover query params si existen
+            const { error: storageError } = await supabase.storage
+              .from('witar-documents')
+              .remove([filePath]);
+            
+            if (storageError) {
+              console.warn('Error eliminando archivo de Storage:', storageError);
+              // Continuar con la eliminación del registro aunque falle Storage
+            }
+          }
+        } catch (storageErr) {
+          console.warn('Error al procesar eliminación de Storage:', storageErr);
+          // Continuar con la eliminación del registro
+        }
+      }
+
+      // Eliminar el registro de la base de datos
+      const { error } = await supabase
+        .from('documents')
+        .delete()
+        .eq('id', doc.id);
+
+      if (error) {
+        console.error('Error eliminando documento de la BD:', error);
+        throw error;
+      }
+
+      alert('Documento eliminado exitosamente');
+      loadDocuments(); // Recargar la lista
+    } catch (error) {
+      console.error('Error deleting document:', error);
+      const errorMessage = error?.message || error?.error_description || 'Error desconocido';
+      alert(`Error al eliminar el documento: ${errorMessage}`);
+    }
+  }
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -510,6 +564,14 @@ export default function ManagerMyDocuments() {
                         >
                           <Download className="w-4 h-4" />
                           Descargar
+                        </button>
+                        <button
+                          onClick={() => handleDelete(document)}
+                          className="btn btn-ghost btn-sm flex items-center gap-2 text-red-600 hover:text-red-700"
+                          title="Eliminar documento"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                          Eliminar
                         </button>
                       </div>
                     </div>

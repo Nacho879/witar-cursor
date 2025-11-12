@@ -42,18 +42,36 @@ export class BillingService {
   // Obtener datos de facturación de la empresa
   static async getBillingData(companyId) {
     try {
-      // Obtener información de la empresa para verificar período de prueba
-      const { data: company, error: companyError } = await supabase
-        .from('companies')
-        .select('created_at, status')
-        .eq('id', companyId)
+      // Obtener usuario autenticado
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        throw new Error('Usuario no autenticado');
+      }
+
+      // Obtener información de la empresa mediante JOIN desde user_company_roles
+      // Esto evita problemas de RLS porque accedemos a companies a través de user_company_roles
+      const { data: userRole, error: roleError } = await supabase
+        .from('user_company_roles')
+        .select(`
+          id,
+          companies (
+            id,
+            created_at,
+            status
+          )
+        `)
+        .eq('user_id', user.id)
+        .eq('company_id', companyId)
+        .eq('is_active', true)
         .maybeSingle();
 
-      if (companyError) throw companyError;
+      if (roleError) throw roleError;
       
-      if (!company) {
-        throw new Error('Empresa no encontrada');
+      if (!userRole || !userRole.companies) {
+        throw new Error('Empresa no encontrada o sin acceso');
       }
+
+      const company = userRole.companies;
 
       // Obtener empleados activos (excluyendo al owner)
       const { data: employees, error: employeesError } = await supabase
@@ -361,10 +379,18 @@ export class BillingService {
         return false;
       }
 
-      // Verificar que el usuario tiene un rol activo en esta empresa
+      // Obtener información del rol del usuario y de la empresa mediante JOIN
+      // Esto evita problemas de RLS porque accedemos a companies a través de user_company_roles
       const { data: userRole, error: roleError } = await supabase
         .from('user_company_roles')
-        .select('id')
+        .select(`
+          id,
+          companies (
+            id,
+            created_at,
+            status
+          )
+        `)
         .eq('user_id', user.id)
         .eq('company_id', companyId)
         .eq('is_active', true)
@@ -402,6 +428,10 @@ export class BillingService {
         console.log(`Límite alcanzado: ${employeeCount}/25 empleados`);
       } else {
         console.log(`Puede agregar empleado: ${employeeCount}/25 empleados`);
+        // Log información de la empresa si está disponible
+        if (userRole.companies) {
+          console.log('Información de empresa obtenida correctamente');
+        }
       }
 
       return canAdd;

@@ -430,21 +430,55 @@ export default function DocumentsManagement() {
     if (!confirm('¿Estás seguro de que quieres eliminar este documento?')) return;
 
     try {
+      // Primero obtener el file_url para eliminar el archivo de Storage si existe
+      const { data: documentData, error: fetchError } = await supabase
+        .from('documents')
+        .select('file_url')
+        .eq('id', documentId)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      // Si el archivo está en Storage (URL de Supabase), extraer la ruta y eliminarlo
+      if (documentData?.file_url && documentData.file_url.includes('supabase.co/storage/v1/object/public/witar-documents/')) {
+        try {
+          // Extraer la ruta del archivo de la URL
+          const urlParts = documentData.file_url.split('/witar-documents/');
+          if (urlParts.length > 1) {
+            const filePath = urlParts[1].split('?')[0]; // Remover query params si existen
+            const { error: storageError } = await supabase.storage
+              .from('witar-documents')
+              .remove([filePath]);
+            
+            if (storageError) {
+              console.warn('Error eliminando archivo de Storage:', storageError);
+              // Continuar con la eliminación del registro aunque falle Storage
+            }
+          }
+        } catch (storageErr) {
+          console.warn('Error al procesar eliminación de Storage:', storageErr);
+          // Continuar con la eliminación del registro
+        }
+      }
+
+      // Eliminar el registro de la base de datos
       const { error } = await supabase
         .from('documents')
         .delete()
         .eq('id', documentId);
 
       if (error) {
-        console.error('Error deleting document:', error);
-        setMessage('Error al eliminar el documento');
+        console.error('Error eliminando documento de la BD:', error);
+        const errorMessage = error?.message || error?.error_description || 'Error desconocido';
+        setMessage(`Error al eliminar el documento: ${errorMessage}`);
       } else {
         setMessage('Documento eliminado exitosamente');
         loadData(); // Recargar datos
       }
     } catch (error) {
       console.error('Error deleting document:', error);
-      setMessage('Error al eliminar el documento');
+      const errorMessage = error?.message || error?.error_description || 'Error desconocido';
+      setMessage(`Error al eliminar el documento: ${errorMessage}`);
     }
   }
 
