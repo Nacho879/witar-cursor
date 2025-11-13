@@ -45,12 +45,9 @@ export default function FloatingTimeClock() {
     // Configurar listeners para eventos (sin localStorage)
     const cleanup = setupPersistenceListeners();
 
-    // SIEMPRE verificar BD al montar el componente (es la única fuente de verdad)
-    if (!hasCheckedSessionRef.current) {
-      console.log('🔄 [useEffect] Verificando BD como fuente de verdad al montar componente...');
-      checkActiveSession();
-      hasCheckedSessionRef.current = true;
-    }
+    // NO ejecutar checkActiveSession aquí - esperar a que companyId esté disponible
+    // checkActiveSession se ejecutará en el useEffect de companyId para asegurar
+    // que tenemos el company_id necesario para las consultas RLS
 
     return () => {
       cleanup && cleanup();
@@ -63,18 +60,20 @@ export default function FloatingTimeClock() {
     }
   }, [companyId, notificationFilter, notificationSearch]);
 
-  // Cuando tengamos companyId, verificar BD si aún no lo hemos hecho
-  // La BD es la fuente de verdad, localStorage es solo caché
+  // Cuando tengamos companyId, verificar BD (es la única fuente de verdad)
+  // CRÍTICO: Solo verificar cuando companyId esté disponible para cumplir RLS
   useEffect(() => {
     if (!companyId) return;
     
-    // Si ya verificamos en el useEffect inicial, no hacer nada más
+    // Verificar BD ahora que tenemos companyId
+    // Si ya verificamos antes pero companyId cambió, re-verificar
+    // (por si el usuario cambió de empresa o se actualizó el rol)
     if (hasCheckedSessionRef.current) {
-      return;
+      console.log('🔄 [useEffect companyId] companyId cambió, re-verificando sesión activa...');
+    } else {
+      console.log('🔄 [useEffect companyId] Verificando BD ahora que tenemos companyId...');
     }
     
-    // Verificar BD ahora que tenemos companyId
-    console.log('🔄 [useEffect companyId] Verificando BD ahora que tenemos companyId...');
     checkActiveSession();
     hasCheckedSessionRef.current = true;
   }, [companyId]);
@@ -476,6 +475,15 @@ export default function FloatingTimeClock() {
           .eq('user_id', user.id)
           .eq('is_active', true)
           .single();
+
+        // CRÍTICO: Validar que tenemos company_id antes de continuar
+        if (!userRole?.company_id) {
+          console.error('❌ No se pudo obtener company_id del usuario');
+          showToast('❌ Error: No se pudo identificar tu empresa. Por favor, recarga la página.', 'error');
+          setLoading(false);
+          return;
+        }
+
         // Requerir geolocalización activa para fichar
         let locationData = null;
         try {
@@ -624,7 +632,7 @@ export default function FloatingTimeClock() {
 
         const timeEntry = {
           user_id: user.id,
-          company_id: userRole?.company_id,
+          company_id: userRole.company_id, // ✅ Garantizado que no es null (validado arriba)
           entry_type: 'clock_in',
           entry_time: new Date().toISOString(),
           status: 'active', // CRÍTICO: Establecer status explícitamente para que se encuentre al buscar fichajes activos
