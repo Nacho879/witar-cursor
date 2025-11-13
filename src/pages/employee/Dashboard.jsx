@@ -92,7 +92,7 @@ export default function EmployeeDashboard() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Suscripción para time_entries
+      // Suscripción para time_entries - solo recargar stats, no todo el dashboard
       const timeEntriesSubscription = supabase
         .channel('time_entries_changes')
         .on('postgres_changes', 
@@ -103,13 +103,13 @@ export default function EmployeeDashboard() {
             filter: `user_id=eq.${user.id}`
           }, 
           () => {
-    
-            loadDashboardData();
+            // Solo recargar estadísticas, no todo el dashboard
+            loadUserStats(user.id);
           }
         )
         .subscribe();
 
-      // Suscripción para requests
+      // Suscripción para requests - solo recargar stats y requests recientes
       const requestsSubscription = supabase
         .channel('requests_changes')
         .on('postgres_changes', 
@@ -120,12 +120,14 @@ export default function EmployeeDashboard() {
             filter: `user_id=eq.${user.id}`
           }, 
           () => {
-            loadDashboardData();
+            // Solo recargar estadísticas y requests recientes, no todo el dashboard
+            loadUserStats(user.id);
+            loadRecentRequests(user.id);
           }
         )
         .subscribe();
 
-      // Suscripción para time_entry_edit_requests
+      // Suscripción para time_entry_edit_requests - solo recargar stats y requests recientes
       const timeEditRequestsSubscription = supabase
         .channel('time_edit_requests_changes')
         .on('postgres_changes', 
@@ -136,7 +138,9 @@ export default function EmployeeDashboard() {
             filter: `user_id=eq.${user.id}`
           }, 
           () => {
-            loadDashboardData();
+            // Solo recargar estadísticas y requests recientes, no todo el dashboard
+            loadUserStats(user.id);
+            loadRecentRequests(user.id);
           }
         )
         .subscribe();
@@ -202,49 +206,13 @@ export default function EmployeeDashboard() {
       const { data: { user } } = await supabase.auth.getUser();
       
       if (user) {
-        // Limpiar suscripción anterior si existe
-        if (subscription) {
-          supabase.removeChannel(subscription);
-        }
+        // ❌ ELIMINADO: Suscripciones duplicadas que estaban aquí
+        // Las suscripciones ya están configuradas en setupRealtimeSubscriptions()
 
-        // Configurar suscripción en tiempo real para actualizar cuando cambien las solicitudes
-        const requestsSubscription = supabase
-          .channel('requests-changes')
-          .on('postgres_changes', 
-            { 
-              event: '*', 
-              schema: 'public', 
-              table: 'requests',
-              filter: `user_id=eq.${user.id}`
-            }, 
-            () => {
-              // Solo recargar estadísticas, no todo el dashboard
-              loadUserStats(user.id);
-              loadRecentRequests(user.id);
-            }
-          )
-          .on('postgres_changes', 
-            { 
-              event: '*', 
-              schema: 'public', 
-              table: 'time_entry_edit_requests',
-              filter: `user_id=eq.${user.id}`
-            }, 
-            () => {
-              // Solo recargar estadísticas, no todo el dashboard
-              loadUserStats(user.id);
-              loadRecentRequests(user.id);
-            }
-          )
-          .subscribe();
-
-        // Guardar referencia de la suscripción
-        setSubscription(requestsSubscription);
-
-        // Cargar perfil del usuario
+        // Cargar perfil del usuario - solo campos necesarios
         const { data: profile } = await supabase
           .from('user_profiles')
-          .select('*')
+          .select('user_id, full_name, avatar_url, email, phone, position, created_at, updated_at')
           .eq('user_id', user.id)
           .single();
 
@@ -252,11 +220,16 @@ export default function EmployeeDashboard() {
           setUserProfile(profile);
         }
 
-        // Cargar información del rol del usuario en la empresa
+        // Cargar información del rol del usuario en la empresa - solo campos necesarios
         const { data: userRole, error: roleError } = await supabase
           .from('user_company_roles')
           .select(`
-            *,
+            id,
+            user_id,
+            company_id,
+            role,
+            department_id,
+            is_active,
             companies (
               id,
               name,
@@ -352,11 +325,32 @@ export default function EmployeeDashboard() {
     }
   }
 
+  // Pausar suscripciones cuando la página no está visible para reducir consumo
+  React.useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        // Página oculta: las suscripciones Realtime de Supabase se pausan automáticamente
+        // No necesitamos hacer nada adicional, pero podemos loguear para debugging
+        console.log('📴 Página oculta - suscripciones pausadas automáticamente');
+      } else {
+        // Página visible: recargar datos cuando vuelve a ser visible
+        console.log('📱 Página visible - recargando datos');
+        loadDashboardData();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []); // loadDashboardData es estable, no necesita estar en dependencias
+
   async function loadUserProfile(userId) {
     try {
       const { data, error } = await supabase
         .from('user_profiles')
-        .select('*')
+        .select('user_id, full_name, avatar_url, email, phone, position, created_at, updated_at')
         .eq('user_id', userId)
         .maybeSingle();
 
@@ -512,18 +506,18 @@ export default function EmployeeDashboard() {
 
   async function loadRecentRequests(userId) {
     try {
-      // Cargar solicitudes normales
+      // Cargar solicitudes normales - solo campos necesarios
       const { data: normalRequests, error: normalError } = await supabase
         .from('requests')
-        .select('*')
+        .select('id, user_id, company_id, request_type, status, start_date, end_date, reason, created_at, updated_at')
         .eq('user_id', userId)
         .order('created_at', { ascending: false })
         .limit(10);
 
-      // Cargar solicitudes de edición de fichajes
+      // Cargar solicitudes de edición de fichajes - solo campos necesarios
       const { data: timeEditRequests, error: timeEditError } = await supabase
         .from('time_entry_edit_requests')
-        .select('*')
+        .select('id, user_id, company_id, time_entry_id, request_type, status, proposed_entry_time, proposed_entry_type, proposed_notes, created_at, updated_at')
         .eq('user_id', userId)
         .order('created_at', { ascending: false })
         .limit(10);

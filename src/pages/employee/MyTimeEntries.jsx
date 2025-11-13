@@ -308,7 +308,7 @@ export default function MyTimeEntries() {
 
       const { data, error } = await supabase
         .from('time_entries')
-        .select('*')
+        .select('id, user_id, company_id, entry_type, entry_time, notes, location_lat, location_lng, created_at')
         .eq('user_id', user.id)
         .gte('entry_time', dateRange.start.toISOString())
         .lte('entry_time', dateRange.end.toISOString())
