@@ -105,13 +105,17 @@ export default function AdminDashboard() {
   React.useEffect(() => {
     loadDashboardData();
     
-    // Actualizar datos cada 30 segundos para reflejar cambios de estado en tiempo real
+    // Actualizar datos cada 2 minutos para reflejar cambios de estado en tiempo real
+    // (aumentado de 30s para reducir consumo)
     const interval = setInterval(() => {
-      loadDashboardData();
-      if (companyId) {
-        loadNotifications();
+      // Solo actualizar si la página está visible
+      if (!document.hidden) {
+        loadDashboardData();
+        if (companyId) {
+          loadNotifications();
+        }
       }
-    }, 30000);
+    }, 120000); // 2 minutos
     
     return () => clearInterval(interval);
   }, []);
@@ -121,6 +125,29 @@ export default function AdminDashboard() {
     if (companyId) {
       loadNotifications();
     }
+  }, [companyId]);
+
+  // Pausar actualizaciones cuando la página no está visible para reducir consumo
+  React.useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        // Página oculta: las actualizaciones automáticas se pausan
+        console.log('📴 Página oculta - actualizaciones pausadas');
+      } else {
+        // Página visible: recargar datos cuando vuelve a ser visible
+        console.log('📱 Página visible - recargando datos');
+        loadDashboardData();
+        if (companyId) {
+          loadNotifications();
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [companyId]);
 
   // Función para enviar notificación de recordatorio de fichaje
@@ -202,10 +229,10 @@ export default function AdminDashboard() {
         };
       }
 
-      // Obtener fichajes de hoy
+      // Obtener fichajes de hoy - solo campos necesarios
       const { data: timeEntries } = await supabase
         .from('time_entries')
-        .select('*')
+        .select('id, entry_type, entry_time, notes')
         .eq('user_id', userId)
         .eq('company_id', companyId)
         .gte('entry_time', startOfDay.toISOString())
@@ -643,21 +670,23 @@ export default function AdminDashboard() {
       const teamUserIds = allEmployees?.map(emp => emp.user_id) || [];
 
       if (teamUserIds.length > 0) {
-        // Cargar todas las solicitudes normales de TODA la empresa
+        // Cargar solicitudes normales de TODA la empresa - solo campos necesarios y limitadas
         const { data: normalRequests, error } = await supabase
           .from('requests')
-          .select('*')
+          .select('id, user_id, company_id, request_type, status, start_date, end_date, reason, created_at, updated_at')
           .eq('company_id', companyId)
           .in('user_id', teamUserIds)
-          .order('created_at', { ascending: false });
+          .order('created_at', { ascending: false })
+          .limit(20); // Limitar a las últimas 20 solicitudes
 
-        // Cargar todas las solicitudes de edición de fichajes de TODA la empresa
+        // Cargar solicitudes de edición de fichajes de TODA la empresa - solo campos necesarios y limitadas
         const { data: timeEditRequests, error: timeEditError } = await supabase
           .from('time_entry_edit_requests')
-          .select('*')
+          .select('id, user_id, company_id, time_entry_id, request_type, status, proposed_entry_time, proposed_entry_type, proposed_notes, created_at, updated_at')
           .eq('company_id', companyId)
           .in('user_id', teamUserIds)
-          .order('created_at', { ascending: false });
+          .order('created_at', { ascending: false })
+          .limit(20); // Limitar a las últimas 20 solicitudes
 
         if (!error && !timeEditError) {
           // Obtener los perfiles de usuario por separado
@@ -718,7 +747,7 @@ export default function AdminDashboard() {
 
       const { data, error } = await supabase
         .from('notifications')
-        .select('*')
+        .select('id, company_id, recipient_id, sender_id, type, title, message, read_at, created_at, data')
         .eq('company_id', companyId)
         .or(`recipient_id.eq.${user.id},recipient_id.is.null`)
         .order('created_at', { ascending: false })
