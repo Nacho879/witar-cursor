@@ -106,27 +106,38 @@ export default function Profile() {
           })
           .subscribe();
 
-        // Refresco periódico (cada 60s) para contar sesión activa en curso
-        // IMPORTANTE: No ejecutar si hay un fichaje activo para evitar interferencias
+        // Refresco periódico (cada 2 minutos) para contar sesión activa en curso
+        // IMPORTANTE: No ejecutar si hay un fichaje activo o si la página está oculta
         statsInterval = setInterval(() => {
-          // Solo recargar si no hay fichaje activo para evitar interferencias con FloatingTimeClock
+          // Solo recargar si no hay fichaje activo y la página está visible
           const hasActiveSession = localStorage.getItem('witar_active_session') === 'true';
-          if (!hasActiveSession) {
+          if (!hasActiveSession && !document.hidden) {
             loadStats();
           }
-        }, 60000);
+        }, 120000); // 2 minutos (aumentado de 60s para reducir consumo)
       } catch (e) {
         console.error('Error configurando actualización de estadísticas:', e);
       }
     };
     setup();
 
+    // Pausar actualizaciones cuando la página no está visible
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        // Página visible: recargar stats
+        loadStats();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     return () => {
       if (statsInterval) clearInterval(statsInterval);
       if (loadStatsTimeoutRef.current) clearTimeout(loadStatsTimeoutRef.current);
       if (timeEntriesSubscription) supabase.removeChannel(timeEntriesSubscription);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, []);
+  }, []); // loadStats es estable, no necesita estar en dependencias
 
   async function loadProfileData() {
     try {
@@ -149,11 +160,11 @@ export default function Profile() {
         console.error('❌ Error ensuring user profile:', error);
       }
 
-      // Cargar perfil del usuario
+      // Cargar perfil del usuario - solo campos necesarios
       console.log('🔍 Loading user profile from database...');
       const { data: profile, error: profileError } = await supabase
         .from('user_profiles')
-        .select('*')
+        .select('user_id, full_name, avatar_url, email, phone, position, created_at, updated_at')
         .eq('user_id', user.id)
         .single();
 
@@ -315,12 +326,18 @@ export default function Profile() {
         }
       }
 
-      // Obtener estadísticas de fichajes
+      // Obtener estadísticas de fichajes - limitar a últimos 90 días para optimizar consumo
+      const now = new Date();
+      const ninetyDaysAgo = new Date(now);
+      ninetyDaysAgo.setDate(now.getDate() - 90);
+      ninetyDaysAgo.setHours(0, 0, 0, 0);
+
       const { data: timeEntries, error: timeError } = await supabase
         .from('time_entries')
         .select('entry_time, entry_type')
         .eq('user_id', user.id)
-        .eq('company_id', activeCompanyId);
+        .eq('company_id', activeCompanyId)
+        .gte('entry_time', ninetyDaysAgo.toISOString());
 
       // Obtener estadísticas de solicitudes
       const { data: requests, error: requestsError } = await supabase
@@ -419,10 +436,10 @@ export default function Profile() {
       }
       if (!activeCompanyId) return;
 
-      // Cargar solicitudes recientes
+      // Cargar solicitudes recientes - solo campos necesarios
       const { data: requests } = await supabase
         .from('requests')
-        .select('*')
+        .select('id, user_id, company_id, request_type, status, start_date, end_date, reason, created_at')
         .eq('user_id', user.id)
         .eq('company_id', activeCompanyId)
         .order('created_at', { ascending: false })
@@ -430,10 +447,10 @@ export default function Profile() {
 
       if (requests) setRecentRequests(requests);
 
-      // Cargar fichajes recientes
+      // Cargar fichajes recientes - solo campos necesarios
       const { data: timeEntries } = await supabase
         .from('time_entries')
-        .select('*')
+        .select('id, user_id, company_id, entry_type, entry_time, notes, created_at')
         .eq('user_id', user.id)
         .eq('company_id', activeCompanyId)
         .order('entry_time', { ascending: false })
@@ -463,7 +480,7 @@ export default function Profile() {
 
       const { data, error } = await supabase
         .from('notifications')
-        .select('*')
+        .select('id, company_id, recipient_id, sender_id, type, title, message, read_at, created_at, data')
         .eq('company_id', companyInfo.company.id)
         .eq('recipient_id', user.id)
         .order('created_at', { ascending: false })

@@ -82,16 +82,30 @@ export default function MyTimeEntries() {
       subscription = sub;
     });
 
-    // Intervalo de actualización periódica como respaldo (cada 30 segundos)
+    // Intervalo de actualización periódica como respaldo (cada 2 minutos para reducir consumo)
     const interval = setInterval(() => {
-      loadTimeEntries();
-    }, 30000);
+      // Solo actualizar si la página está visible
+      if (!document.hidden) {
+        loadTimeEntries();
+      }
+    }, 120000); // 2 minutos
+
+    // Pausar actualizaciones cuando la página no está visible
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        // Página visible: recargar datos
+        loadTimeEntries();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       if (subscription) {
         supabase.removeChannel(subscription);
       }
       clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [selectedDate, filterType, customStartDate, customEndDate]);
 

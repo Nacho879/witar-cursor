@@ -364,11 +364,18 @@ export default function EmployeeDashboard() {
 
   async function loadUserStats(userId) {
     try {
-      // Obtener todos los fichajes del usuario
+      // Obtener fichajes del usuario - limitar a últimos 90 días para optimizar consumo
+      // (suficiente para calcular estadísticas de semana y mes)
+      const now = new Date();
+      const ninetyDaysAgo = new Date(now);
+      ninetyDaysAgo.setDate(now.getDate() - 90);
+      ninetyDaysAgo.setHours(0, 0, 0, 0);
+
       const { data: timeEntries, error: timeEntriesError } = await supabase
         .from('time_entries')
         .select('entry_time, entry_type')
         .eq('user_id', userId)
+        .gte('entry_time', ninetyDaysAgo.toISOString())
         .order('entry_time', { ascending: true });
 
       if (timeEntriesError) {
