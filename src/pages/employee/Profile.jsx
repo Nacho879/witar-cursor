@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { 
   User, 
-  Mail, 
   Phone, 
   MapPin, 
   Calendar, 
@@ -17,13 +16,9 @@ import {
   Clock,
   CheckCircle,
   AlertCircle,
-  Upload,
   Lock,
   FileDown,
-  FileSpreadsheet,
-  Bell,
-  TrendingUp,
-  Activity
+  FileSpreadsheet
 } from 'lucide-react';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
 import jsPDF from 'jspdf';
@@ -50,11 +45,6 @@ export default function Profile() {
     requestsCount: 0,
     documentsCount: 0
   });
-  const [recentRequests, setRecentRequests] = useState([]);
-  const [recentTimeEntries, setRecentTimeEntries] = useState([]);
-  const [recentDocuments, setRecentDocuments] = useState([]);
-  const [notifications, setNotifications] = useState([]);
-  const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0);
 
   useEffect(() => {
     loadProfileData();
@@ -63,8 +53,6 @@ export default function Profile() {
   useEffect(() => {
     if (companyInfo?.company?.id) {
       loadStats();
-      loadRecentData();
-      loadNotifications();
     }
   }, [companyInfo]);
 
@@ -164,7 +152,7 @@ export default function Profile() {
       console.log('🔍 Loading user profile from database...');
       const { data: profile, error: profileError } = await supabase
         .from('user_profiles')
-        .select('user_id, full_name, avatar_url, email, phone, position, created_at, updated_at')
+        .select('user_id, full_name, avatar_url, phone, position, created_at, updated_at')
         .eq('user_id', user.id)
         .single();
 
@@ -419,132 +407,7 @@ export default function Profile() {
     }
   }
 
-  async function loadRecentData() {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
 
-      let activeCompanyId = companyInfo?.company?.id || companyInfo?.company_id;
-      if (!activeCompanyId) {
-        const { data: roleData } = await supabase
-          .from('user_company_roles')
-          .select('company_id')
-          .eq('user_id', user.id)
-          .eq('is_active', true)
-          .single();
-        activeCompanyId = roleData?.company_id || null;
-      }
-      if (!activeCompanyId) return;
-
-      // Cargar solicitudes recientes - solo campos necesarios
-      const { data: requests } = await supabase
-        .from('requests')
-        .select('id, user_id, company_id, request_type, status, start_date, end_date, reason, created_at')
-        .eq('user_id', user.id)
-        .eq('company_id', activeCompanyId)
-        .order('created_at', { ascending: false })
-        .limit(5);
-
-      if (requests) setRecentRequests(requests);
-
-      // Cargar fichajes recientes - solo campos necesarios
-      const { data: timeEntries } = await supabase
-        .from('time_entries')
-        .select('id, user_id, company_id, entry_type, entry_time, notes, created_at')
-        .eq('user_id', user.id)
-        .eq('company_id', activeCompanyId)
-        .order('entry_time', { ascending: false })
-        .limit(5);
-
-      if (timeEntries) setRecentTimeEntries(timeEntries);
-
-      // Cargar documentos recientes (sin file_url para optimizar ancho de banda)
-      const { data: documents } = await supabase
-        .from('documents')
-        .select('id, title, description, category, file_type, file_size, user_id, company_id, uploaded_by, created_at, updated_at')
-        .eq('user_id', user.id)
-        .eq('company_id', activeCompanyId)
-        .order('created_at', { ascending: false })
-        .limit(5);
-
-      if (documents) setRecentDocuments(documents);
-    } catch (error) {
-      console.error('Error loading recent data:', error);
-    }
-  }
-
-  async function loadNotifications() {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user || !companyInfo?.company?.id) return;
-
-      const { data, error } = await supabase
-        .from('notifications')
-        .select('id, company_id, recipient_id, sender_id, type, title, message, read_at, created_at, data')
-        .eq('company_id', companyInfo.company.id)
-        .eq('recipient_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(10);
-
-      if (error) throw error;
-
-      setNotifications(data || []);
-      setUnreadNotificationsCount((data || []).filter(n => !n.read_at).length);
-    } catch (error) {
-      console.error('Error loading notifications:', error);
-    }
-  }
-
-  async function markNotificationAsRead(notificationId) {
-    try {
-      const { error } = await supabase
-        .from('notifications')
-        .update({ read_at: new Date().toISOString() })
-        .eq('id', notificationId);
-
-      if (error) throw error;
-
-      setNotifications(prev =>
-        prev.map(n =>
-          n.id === notificationId ? { ...n, read_at: new Date().toISOString() } : n
-        )
-      );
-      setUnreadNotificationsCount(prev => Math.max(0, prev - 1));
-    } catch (error) {
-      console.error('Error marking notification as read:', error);
-    }
-  }
-
-  function formatTimeAgo(dateString) {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffInSeconds = Math.floor((now - date) / 1000);
-
-    if (diffInSeconds < 60) return 'Hace un momento';
-    if (diffInSeconds < 3600) return `Hace ${Math.floor(diffInSeconds / 60)} min`;
-    if (diffInSeconds < 86400) return `Hace ${Math.floor(diffInSeconds / 3600)} h`;
-    if (diffInSeconds < 604800) return `Hace ${Math.floor(diffInSeconds / 86400)} días`;
-    return date.toLocaleDateString('es-ES');
-  }
-
-  function getRequestStatusColor(status) {
-    switch (status) {
-      case 'pending': return 'text-yellow-600 bg-yellow-100 dark:bg-yellow-900/20';
-      case 'approved': return 'text-green-600 bg-green-100 dark:bg-green-900/20';
-      case 'rejected': return 'text-red-600 bg-red-100 dark:bg-red-900/20';
-      default: return 'text-gray-600 bg-gray-100 dark:bg-gray-900/20';
-    }
-  }
-
-  function getRequestTypeLabel(type) {
-    switch (type) {
-      case 'vacation': return 'Vacaciones';
-      case 'sick_leave': return 'Baja médica';
-      case 'personal_leave': return 'Día personal';
-      case 'permission': return 'Permiso';
-      default: return type || 'Solicitud';
-    }
-  }
 
   async function handleAvatarUpload(event) {
     const file = event.target.files[0];
@@ -975,9 +838,9 @@ export default function Profile() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
+      <div className="grid grid-cols-1 gap-4 sm:gap-6">
         {/* Información Personal */}
-        <div className="lg:col-span-2 space-y-4 sm:space-y-6">
+        <div className="space-y-4 sm:space-y-6">
           {/* Perfil Principal */}
           <div className="card w-full flex flex-col">
             <div className="border-b border-border flex-shrink-0 p-4 sm:p-6">
@@ -1234,213 +1097,6 @@ export default function Profile() {
           </div>
         </div>
 
-        {/* Sidebar */}
-        <div className="space-y-4 sm:space-y-6">
-          {/* Acciones Rápidas */}
-          <div className="card w-full flex flex-col">
-            <div className="border-b border-border flex-shrink-0 p-4 sm:p-6">
-              <h3 className="text-base sm:text-lg font-semibold text-foreground">
-                Acciones Rápidas
-              </h3>
-            </div>
-            
-            <div className="p-4 sm:p-6 flex-1 space-y-3">
-              <button 
-                onClick={() => handleQuickAction('time-entries')}
-                className="w-full flex items-center gap-3 p-3 text-left hover:bg-secondary rounded-lg transition-colors"
-              >
-                <Clock className="w-5 h-5 text-blue-600" />
-                <span className="text-foreground">Ver mis fichajes</span>
-              </button>
-              
-              <button 
-                onClick={() => handleQuickAction('requests')}
-                className="w-full flex items-center gap-3 p-3 text-left hover:bg-secondary rounded-lg transition-colors"
-              >
-                <FileText className="w-5 h-5 text-green-600" />
-                <span className="text-foreground">Mis solicitudes</span>
-              </button>
-              
-              <button 
-                onClick={() => handleQuickAction('documents')}
-                className="w-full flex items-center gap-3 p-3 text-left hover:bg-secondary rounded-lg transition-colors"
-              >
-                <FileText className="w-5 h-5 text-purple-600" />
-                <span className="text-foreground">Mis documentos</span>
-              </button>
-              
-              <button 
-                onClick={() => handleQuickAction('download')}
-                className="w-full flex items-center gap-3 p-3 text-left hover:bg-secondary rounded-lg transition-colors"
-              >
-                <Download className="w-5 h-5 text-orange-600" />
-                <span className="text-foreground">Descargar datos</span>
-              </button>
-              
-              <button 
-                onClick={() => setShowChangePasswordModal(true)}
-                className="w-full flex items-center gap-3 p-3 text-left hover:bg-secondary rounded-lg transition-colors"
-              >
-                <Lock className="w-5 h-5 text-red-600" />
-                <span className="text-foreground">Cambiar contraseña</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Solicitudes Recientes */}
-          <div className="card w-full flex flex-col">
-            <div className="border-b border-border flex-shrink-0 p-4 sm:p-6">
-              <div className="flex items-center justify-between">
-                <h3 className="text-base sm:text-lg font-semibold text-foreground">
-                  Solicitudes Recientes
-                </h3>
-                {recentRequests.length > 0 && (
-                  <button
-                    onClick={() => handleQuickAction('requests')}
-                    className="text-sm text-primary hover:underline"
-                  >
-                    Ver todas
-                  </button>
-                )}
-              </div>
-            </div>
-            
-            <div className="p-4 sm:p-6 flex-1 overflow-y-auto">
-              {recentRequests.length === 0 ? (
-                <div className="text-center py-4">
-                  <FileText className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-                  <p className="text-sm text-muted-foreground">No hay solicitudes</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {recentRequests.map((request) => (
-                    <div key={request.id} className="p-3 rounded-lg border border-border hover:shadow-md transition-shadow">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-foreground">
-                            {getRequestTypeLabel(request.request_type)}
-                          </p>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            {formatTimeAgo(request.created_at)}
-                          </p>
-                        </div>
-                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${getRequestStatusColor(request.status)}`}>
-                          {request.status === 'pending' ? 'Pendiente' : request.status === 'approved' ? 'Aprobada' : 'Rechazada'}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Fichajes Recientes */}
-          <div className="card w-full flex flex-col">
-            <div className="border-b border-border flex-shrink-0 p-4 sm:p-6">
-              <div className="flex items-center justify-between">
-                <h3 className="text-base sm:text-lg font-semibold text-foreground">
-                  Fichajes Recientes
-                </h3>
-                {recentTimeEntries.length > 0 && (
-                  <button
-                    onClick={() => handleQuickAction('time-entries')}
-                    className="text-sm text-primary hover:underline"
-                  >
-                    Ver todos
-                  </button>
-                )}
-              </div>
-            </div>
-            
-            <div className="p-4 sm:p-6 flex-1 overflow-y-auto">
-              {recentTimeEntries.length === 0 ? (
-                <div className="text-center py-4">
-                  <Clock className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-                  <p className="text-sm text-muted-foreground">No hay fichajes</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {recentTimeEntries.map((entry) => {
-                    const entryDisplay = getEntryTypeDisplay(entry.entry_type);
-                    return (
-                      <div key={entry.id} className="p-3 rounded-lg border border-border hover:shadow-md transition-shadow">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-foreground">
-                              {entryDisplay.text}
-                            </p>
-                            <p className="text-xs text-muted-foreground mt-1">
-                              {format(new Date(entry.entry_time), 'dd/MM/yyyy HH:mm', { locale: es })}
-                            </p>
-                          </div>
-                          <span className="text-2xl">{entryDisplay.icon}</span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Notificaciones */}
-          <div className="card w-full flex flex-col">
-            <div className="border-b border-border flex-shrink-0 p-4 sm:p-6">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Bell className="w-4 h-4 sm:w-5 sm:h-5 text-green-600" />
-                  <h3 className="text-base sm:text-lg font-semibold text-foreground">
-                    Notificaciones
-                  </h3>
-                </div>
-                {unreadNotificationsCount > 0 && (
-                  <div className="w-5 h-5 bg-red-500 rounded-full flex items-center justify-center">
-                    <span className="text-xs font-semibold text-white">{unreadNotificationsCount}</span>
-                  </div>
-                )}
-              </div>
-            </div>
-            
-            <div className="p-4 sm:p-6 flex-1 overflow-y-auto">
-              {notifications.length === 0 ? (
-                <div className="text-center py-4">
-                  <Bell className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-                  <p className="text-sm text-muted-foreground">No hay notificaciones</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {notifications.slice(0, 5).map((notification) => (
-                    <div
-                      key={notification.id}
-                      className={`p-3 rounded-lg border border-border hover:shadow-md transition-shadow cursor-pointer ${
-                        !notification.read_at ? 'bg-green-50 dark:bg-green-900/10 border-green-200 dark:border-green-800' : ''
-                      }`}
-                      onClick={() => !notification.read_at && markNotificationAsRead(notification.id)}
-                    >
-                      <div className="flex items-start gap-2">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-foreground">
-                            {notification.title}
-                          </p>
-                          <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
-                            {notification.message}
-                          </p>
-                          <span className="text-xs text-muted-foreground mt-1 block">
-                            {formatTimeAgo(notification.created_at)}
-                          </span>
-                        </div>
-                        {!notification.read_at && (
-                          <div className="w-2 h-2 bg-green-500 rounded-full flex-shrink-0 mt-1"></div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
       </div>
 
       {/* Download Data Modal */}

@@ -15,7 +15,6 @@ import {
   AlertCircle,
   Bell
 } from 'lucide-react';
-import TimeClock from '@/components/TimeClock';
 
 // Funciones de utilidad fuera del componente
 function getStatusColor(status) {
@@ -212,7 +211,7 @@ export default function EmployeeDashboard() {
         // Cargar perfil del usuario - solo campos necesarios
         const { data: profile } = await supabase
           .from('user_profiles')
-          .select('user_id, full_name, avatar_url, email, phone, position, created_at, updated_at')
+          .select('user_id, full_name, avatar_url, phone, position, created_at, updated_at')
           .eq('user_id', user.id)
           .single();
 
@@ -312,10 +311,11 @@ export default function EmployeeDashboard() {
         }
 
         // Cargar estadísticas y otros datos...
+        const companyId = userRole?.companies?.id || userRole?.company_id || null;
         await Promise.all([
           loadUserStats(user.id),
           loadRecentRequests(user.id),
-          loadNotifications(user.id, userRole.companies?.id)
+          loadNotifications(user.id, companyId)
         ]);
       }
     } catch (error) {
@@ -350,7 +350,7 @@ export default function EmployeeDashboard() {
     try {
       const { data, error } = await supabase
         .from('user_profiles')
-        .select('user_id, full_name, avatar_url, email, phone, position, created_at, updated_at')
+        .select('user_id, full_name, avatar_url, phone, position, created_at, updated_at')
         .eq('user_id', userId)
         .maybeSingle();
 
@@ -384,7 +384,6 @@ export default function EmployeeDashboard() {
       }
 
       // Calcular horas de esta semana
-      const now = new Date();
       const startOfWeek = new Date(now);
       startOfWeek.setDate(now.getDate() - now.getDay()); // Domingo
       startOfWeek.setHours(0, 0, 0, 0);

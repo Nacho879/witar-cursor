@@ -649,7 +649,11 @@ const router = createBrowserRouter([
     path: "*",
     element: <NotFound />
   },
-]);
+], {
+  future: {
+    v7_startTransition: true,
+  },
+});
 
 export default function App() {
   return <RouterProvider router={router} />;
