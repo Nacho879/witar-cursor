@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabaseClient';
+import { BrowserNotificationService } from '@/lib/browserNotificationService';
 import { 
   Bell, 
   X, 
@@ -117,8 +118,41 @@ export default function NotificationCenter() {
             filter: `recipient_id=eq.${user.id}`
           },
           (payload) => {
+            console.log('🔔 Nueva notificación recibida:', payload.new);
             setNotifications(prev => [payload.new, ...prev]);
             setUnreadCount(prev => prev + 1);
+            
+            // Enviar notificación del navegador si es recordatorio de fichaje
+            if (payload.new.type === 'clock_in_reminder') {
+              console.log('⏰ Notificación de recordatorio de fichaje detectada');
+              
+              // Parsear el campo data si viene como string JSON
+              let notificationData = payload.new.data;
+              if (typeof notificationData === 'string') {
+                try {
+                  notificationData = JSON.parse(notificationData);
+                } catch (e) {
+                  console.warn('Error parseando data de notificación:', e);
+                  notificationData = {};
+                }
+              }
+              
+              const employeeName = notificationData?.employee_name || 'Usuario';
+              console.log('👤 Nombre del empleado:', employeeName);
+              console.log('📱 Intentando enviar notificación del navegador...');
+              
+              BrowserNotificationService.sendClockInReminderNotification(employeeName)
+                .then(notification => {
+                  if (notification) {
+                    console.log('✅ Notificación del navegador enviada exitosamente');
+                  } else {
+                    console.warn('⚠️ No se pudo enviar la notificación del navegador');
+                  }
+                })
+                .catch(error => {
+                  console.error('❌ Error enviando notificación del navegador:', error);
+                });
+            }
           }
         )
         .subscribe();

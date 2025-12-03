@@ -19,6 +19,7 @@ import {
 import InvitationBadge from '@/components/InvitationBadge';
 import FloatingTimeClock from '@/components/FloatingTimeClock';
 import WitarLogo from '@/components/WitarLogo';
+import NotificationCenter from '@/components/NotificationCenter';
 import { InvitationProvider } from '@/contexts/InvitationContext';
 import * as React from 'react';
 
@@ -233,18 +234,21 @@ export default function AdminLayout({ children }){
 
         {/* Main content */}
         <div className='lg:col-start-2'>
-          {/* Mobile header - solo visible en móvil cuando sidebar está cerrada */}
-          {!sidebarOpen && (
-            <div className='lg:hidden flex items-center justify-between p-4 border-b border-border bg-card'>
+          {/* Header con NotificationCenter */}
+          <div className='flex items-center justify-between p-4 border-b border-border bg-card'>
+            {!sidebarOpen && (
               <button
                 onClick={() => setSidebarOpen(true)}
-                className='p-2 rounded hover:bg-secondary'
+                className='lg:hidden p-2 rounded hover:bg-secondary'
               >
                 <Menu className='w-5 h-5' />
               </button>
-              <WitarLogo size="small" />
-            </div>
-          )}
+            )}
+            <div className={sidebarOpen ? 'hidden' : 'lg:block'} />
+            <WitarLogo size="small" className={sidebarOpen ? 'hidden' : 'lg:block'} />
+            <div className='flex-1' />
+            <NotificationCenter />
+          </div>
 
           {/* Main content area */}
           <main className='p-4 lg:pt-2 lg:px-6 lg:pb-6'>{children}</main>

@@ -1,6 +1,8 @@
 import * as React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabaseClient';
+import { BrowserNotificationService } from '@/lib/browserNotificationService';
+import Forbidden from '@/pages/errors/Forbidden';
 
 export default function Protected({ roles, children }) {
   const [ok, setOk] = React.useState(false);
@@ -67,6 +69,17 @@ export default function Protected({ roles, children }) {
         sessionStorage.setItem('userRole', userRoles.role);
         sessionStorage.setItem('userCompany', JSON.stringify(userRoles.companies));
         // NO guardar access_token - Supabase maneja la sesión automáticamente
+        
+        // Solicitar permisos de notificaciones del navegador cuando el usuario esté autenticado
+        BrowserNotificationService.requestPermission().then(permission => {
+          if (permission === 'granted') {
+            console.log('✅ Permisos de notificaciones del navegador concedidos');
+          } else if (permission === 'denied') {
+            console.log('⚠️ Permisos de notificaciones del navegador denegados');
+          }
+        }).catch(error => {
+          console.error('Error solicitando permisos de notificaciones:', error);
+        });
       } else {
         setOk(false);
         setLoading(false);
