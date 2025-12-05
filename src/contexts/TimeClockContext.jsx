@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/lib/supabaseClient';
+import { supabase, isCorsError } from '@/lib/supabaseClient';
 
 const TimeClockContext = createContext();
 
@@ -92,7 +92,20 @@ export function TimeClockProvider({ children }) {
 
   async function checkUserCompany() {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      // Verificar primero si hay una sesión activa antes de llamar a getUser()
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError || !session) {
+        // No hay sesión activa, no intentar obtener el usuario
+        return;
+      }
+
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      
+      if (userError || !user) {
+        return;
+      }
+
       if (user) {
         const { data: userRole } = await supabase
           .from('user_company_roles')
@@ -106,7 +119,16 @@ export function TimeClockProvider({ children }) {
         }
       }
     } catch (error) {
-      console.error('Error checking user company:', error);
+      // Silenciar errores de CORS y autenticación cuando no hay sesión
+      if (isCorsError(error)) {
+        // Error de CORS: el usuario necesita configurar las URLs en Supabase Dashboard
+        // No mostrar el error en consola para no saturar los logs
+        return;
+      }
+      
+      if (error.message && !error.message.includes('session')) {
+        console.error('Error checking user company:', error);
+      }
     }
   }
 
@@ -251,8 +273,19 @@ export function TimeClockProvider({ children }) {
     if (!companyId) return;
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      // Verificar primero si hay una sesión activa antes de llamar a getUser()
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError || !session) {
+        // No hay sesión activa, no intentar sincronizar
+        return;
+      }
+
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      
+      if (userError || !user) {
+        return;
+      }
 
       // Solo sincronizar si hay un fichaje activo localmente
       const currentIsActive = localStorage.getItem(STORAGE_KEYS.ACTIVE_SESSION) === 'true';

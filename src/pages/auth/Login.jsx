@@ -13,6 +13,7 @@ export default function Login() {
   const [loginAttempts, setLoginAttempts] = React.useState(0);
   const [showCaptcha, setShowCaptcha] = React.useState(false);
   const [captchaAnswer, setCaptchaAnswer] = React.useState('');
+  const [captchaCorrectAnswer, setCaptchaCorrectAnswer] = React.useState('');
   const [isBlocked, setIsBlocked] = React.useState(false);
   const [blockUntil, setBlockUntil] = React.useState(null);
   const [showPasswordModal, setShowPasswordModal] = React.useState(false);
@@ -52,13 +53,14 @@ export default function Login() {
     const num1 = Math.floor(Math.random() * 10) + 1;
     const num2 = Math.floor(Math.random() * 10) + 1;
     const result = num1 + num2;
-    setCaptchaAnswer(result.toString());
+    setCaptchaCorrectAnswer(result.toString());
+    setCaptchaAnswer(''); // Limpiar la respuesta del usuario
     return `${num1} + ${num2} = ?`;
   };
 
   // Función para verificar CAPTCHA
   const verifyCaptcha = (input) => {
-    return input === captchaAnswer;
+    return input.trim() === captchaCorrectAnswer;
   };
 
   // Función para bloquear temporalmente
@@ -88,6 +90,7 @@ export default function Login() {
     setLoginAttempts(0);
     setShowCaptcha(false);
     setCaptchaAnswer('');
+    setCaptchaCorrectAnswer('');
     localStorage.removeItem('loginAttempts');
   };
 
@@ -105,7 +108,7 @@ export default function Login() {
 
     // Verificar CAPTCHA si es necesario
     if (showCaptcha) {
-      if (!captchaAnswer.trim()) {
+      if (!captchaAnswer || !captchaAnswer.trim()) {
         setMsg('Por favor, completa el CAPTCHA');
         setLoading(false);
         return;
@@ -114,6 +117,8 @@ export default function Login() {
       if (!verifyCaptcha(captchaAnswer)) {
         setMsg('CAPTCHA incorrecto. Intenta de nuevo.');
         setCaptchaAnswer('');
+        // Regenerar CAPTCHA
+        setCaptchaQuestion(generateCaptcha());
         incrementAttempts();
         setLoading(false);
         return;
@@ -128,7 +133,20 @@ export default function Login() {
       
       if (error) {
         incrementAttempts();
-        setMsg(error.message);
+        
+        // Manejar errores específicos
+        let errorMessage = error.message;
+        
+        // Detectar errores de CORS o red
+        if (error.message.includes('Failed to fetch') || 
+            error.message.includes('CORS') || 
+            error.message.includes('NetworkError') ||
+            error.message.includes('ERR_FAILED')) {
+          errorMessage = 'Error de conexión. Por favor, verifica tu conexión a internet y que la URL de Supabase esté configurada correctamente.';
+          console.error('❌ Error de conexión/CORS:', error);
+        }
+        
+        setMsg(errorMessage);
         setLoading(false);
         return;
       }
@@ -142,6 +160,7 @@ export default function Login() {
           console.log('🔍 Usuario temporal detectado, mostrando modal de cambio de contraseña');
           setTempPasswordUser(data.session.user);
           setShowPasswordModal(true);
+          setLoading(false);
           return;
         }
 
@@ -150,10 +169,12 @@ export default function Login() {
           console.log('🔍 Token de invitación detectado, redirigiendo a página de aceptación');
           try {
             // En lugar de procesar la invitación aquí, redirigir de vuelta a la página de aceptación
+            setLoading(false);
             navigate(`/accept-invitation?token=${invitationToken}`);
             return;
           } catch (error) {
             console.error('Error redirecting to invitation:', error);
+            setLoading(false);
           }
         }
 
@@ -195,10 +216,12 @@ export default function Login() {
 
           if (pendingInvitation) {
             console.log('🔍 Invitación pendiente encontrada, redirigiendo a aceptación');
+            setLoading(false);
             navigate(`/accept-invitation?token=${pendingInvitation.token}`);
             return;
           } else {
             console.log('❌ No hay rol ni invitación pendiente, redirigiendo a employee por defecto');
+            setLoading(false);
             navigate('/employee');
             return;
           }
@@ -210,16 +233,28 @@ export default function Login() {
                              userRole.role === 'admin' ? '/admin' : 
                              userRole.role === 'manager' ? '/manager' : '/employee';
           console.log('🔀 Redirigiendo a:', redirectPath);
+          setLoading(false);
           navigate(redirectPath);
         } else {
           console.log('❌ No se encontró rol, redirigiendo a employee por defecto');
+          setLoading(false);
           navigate('/employee');
         }
       }
     } catch (error) {
-      console.error('Login error:', error);
+      console.error('❌ Login error:', error);
       incrementAttempts();
-      setMsg('Error inesperado al iniciar sesión');
+      
+      // Manejar errores de red o CORS
+      let errorMessage = 'Error inesperado al iniciar sesión';
+      
+      if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
+        errorMessage = 'Error de conexión. Por favor, verifica tu conexión a internet y la configuración de Supabase.';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      setMsg(errorMessage);
       setLoading(false);
     }
   }
